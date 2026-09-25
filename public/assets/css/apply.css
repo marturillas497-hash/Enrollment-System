@@ -1,0 +1,63 @@
+        :root {
+            --neu-bg: #e8edf5;
+            --neu-shadow-dark: #c3cad6;
+            --neu-shadow-light: #ffffff;
+            --royal-blue: #1e3a8a;
+            --royal-blue-light: #2f52b8;
+        }
+        body {
+            background: var(--neu-bg);
+            min-height: 100vh;
+            padding: 24px 0;
+        }
+        .apply-box {
+            max-width: 820px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(30, 58, 138, 0.18);
+        }
+        .apply-header {
+            background: linear-gradient(135deg, var(--royal-blue) 0%, var(--royal-blue-light) 100%);
+            color: #fff;
+            padding: 2rem 2.5rem;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .apply-header img { height: 56px; border-radius: 50%; }
+        .apply-body { padding: 2.5rem; }
+        .section-title {
+            color: var(--royal-blue);
+            font-weight: 700;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 1rem;
+            margin-top: 2rem;
+        }
+        .section-title:first-child { margin-top: 0; }
+        .neu-input, .neu-select {
+            background: var(--neu-bg) !important;
+            border: none !important;
+            border-radius: 14px !important;
+            box-shadow: inset 4px 4px 8px var(--neu-shadow-dark), inset -4px -4px 8px var(--neu-shadow-light);
+            padding: 0.7rem 1rem !important;
+        }
+        .neu-input:focus, .neu-select:focus {
+            box-shadow: inset 4px 4px 8px var(--neu-shadow-dark), inset -4px -4px 8px var(--neu-shadow-light), 0 0 0 2px var(--royal-blue-light);
+        }
+        .btn-neu-primary {
+            background: var(--royal-blue);
+            color: #fff;
+            border: none;
+            border-radius: 14px;
+            padding: 0.8rem 1rem;
+            box-shadow: 6px 6px 14px var(--neu-shadow-dark), -6px -6px 14px var(--neu-shadow-light);
+            transition: transform 0.1s ease;
+        }
+        .btn-neu-primary:hover { background: var(--royal-blue-light); color: #fff; }
+        .btn-neu-primary:active { transform: translateY(1px); }
+        .back-link { color: #fff; opacity: 0.85; text-decoration: none; }
+        .back-link:hover { color: #fff; opacity: 1; }

@@ -1,0 +1,311 @@
+<?php
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../includes/session.php';
+
+$user = requireRole(['admission_staff']);
+$pdo = getDbConnection();
+
+$applicationId = $_GET['id'] ?? null;
+$message = '';
+$error = '';
+
+// --- Handle actions (validate / reject / save corrections) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
+    $id = $_POST['application_id'] ?? '';
+
+    if ($action === 'save_and_validate') {
+        $f = fn(string $key) => trim($_POST[$key] ?? '');
+        $evaluatedYearLevel = $f('evaluated_year_level');
+
+        if ($evaluatedYearLevel === '' || !ctype_digit($evaluatedYearLevel)) {
+            $error = 'Evaluated year level is required and must be a number.';
+            $applicationId = $id;
+        } else {
+            $stmt = $pdo->prepare(
+                'UPDATE Admission_Application SET
+                    applicant_last_name = :last_name, applicant_first_name = :first_name,
+                    applicant_middle_name = :middle_name, applicant_suffix = :suffix,
+                    birthdate = :birthdate,
+                    applicant_province = :province, applicant_municipality = :municipality,
+                    applicant_barangay = :barangay, applicant_purok = :purok,
+                    father_last_name = :father_last_name, father_first_name = :father_first_name,
+                    father_middle_name = :father_middle_name, father_suffix = :father_suffix,
+                    father_occupation = :father_occupation,
+                    mother_maiden_name = :mother_maiden_name, mother_first_name = :mother_first_name,
+                    mother_middle_name = :mother_middle_name, mother_occupation = :mother_occupation,
+                    contact_no = :contact_no, email_address = :email_address,
+                    guardian_name = :guardian_name, guardian_relationship = :guardian_relationship,
+                    guardian_contact_no = :guardian_contact_no,
+                    status = \'validated\', validated_by = :validated_by,
+                    date_validated = CURDATE(), evaluated_year_level = :evaluated_year_level
+                WHERE application_id = :id'
+            );
+            $stmt->execute([
+                'last_name' => $f('applicant_last_name'), 'first_name' => $f('applicant_first_name'),
+                'middle_name' => $f('applicant_middle_name') ?: null, 'suffix' => $f('applicant_suffix') ?: null,
+                'birthdate' => $f('birthdate'),
+                'province' => $f('applicant_province') ?: null, 'municipality' => $f('applicant_municipality') ?: null,
+                'barangay' => $f('applicant_barangay') ?: null, 'purok' => $f('applicant_purok') ?: null,
+                'father_last_name' => $f('father_last_name') ?: null, 'father_first_name' => $f('father_first_name') ?: null,
+                'father_middle_name' => $f('father_middle_name') ?: null, 'father_suffix' => $f('father_suffix') ?: null,
+                'father_occupation' => $f('father_occupation') ?: null,
+                'mother_maiden_name' => $f('mother_maiden_name') ?: null, 'mother_first_name' => $f('mother_first_name') ?: null,
+                'mother_middle_name' => $f('mother_middle_name') ?: null, 'mother_occupation' => $f('mother_occupation') ?: null,
+                'contact_no' => $f('contact_no') ?: null, 'email_address' => $f('email_address') ?: null,
+                'guardian_name' => $f('guardian_name') ?: null, 'guardian_relationship' => $f('guardian_relationship') ?: null,
+                'guardian_contact_no' => $f('guardian_contact_no') ?: null,
+                'validated_by' => $user['account_id'],
+                'evaluated_year_level' => $evaluatedYearLevel,
+                'id' => $id,
+            ]);
+            $message = "Application #$id validated.";
+            $applicationId = null; // back to the list
+        }
+    } elseif ($action === 'reject') {
+        $reason = trim($_POST['rejection_reason'] ?? '');
+        if ($reason === '') {
+            $error = 'A rejection reason is required.';
+            $applicationId = $id;
+        } else {
+            $stmt = $pdo->prepare(
+                'UPDATE Admission_Application SET
+                    status = \'rejected\', rejected_by = :rejected_by,
+                    date_rejected = CURDATE(), rejection_reason = :reason
+                 WHERE application_id = :id'
+            );
+            $stmt->execute(['rejected_by' => $user['account_id'], 'reason' => $reason, 'id' => $id]);
+            $message = "Application #$id rejected.";
+            $applicationId = null;
+        }
+    }
+}
+
+// --- Detail/edit view for one application ---
+$application = null;
+if ($applicationId) {
+    $stmt = $pdo->prepare(
+        'SELECT a.*, p.program_code, p.program_name
+         FROM Admission_Application a
+         JOIN Program p ON p.program_id = a.program_id
+         WHERE a.application_id = :id'
+    );
+    $stmt->execute(['id' => $applicationId]);
+    $application = $stmt->fetch();
+}
+
+// --- List/search view ---
+$search = trim($_GET['q'] ?? '');
+$applications = [];
+if (!$application) {
+    if ($search !== '') {
+        $stmt = $pdo->prepare(
+            "SELECT a.application_id, a.applicant_last_name, a.applicant_first_name, a.status, a.application_date,
+                    p.program_code
+             FROM Admission_Application a
+             JOIN Program p ON p.program_id = a.program_id
+             WHERE a.applicant_last_name LIKE :q1 OR a.applicant_first_name LIKE :q2
+             ORDER BY a.application_date DESC"
+        );
+        $stmt->execute(['q1' => "%$search%", 'q2' => "%$search%"]);
+    } else {
+        $stmt = $pdo->query(
+            "SELECT a.application_id, a.applicant_last_name, a.applicant_first_name, a.status, a.application_date,
+                    p.program_code
+             FROM Admission_Application a
+             JOIN Program p ON p.program_id = a.program_id
+             WHERE a.status = 'pending'
+             ORDER BY a.application_date ASC"
+        );
+    }
+    $applications = $stmt->fetchAll();
+}
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Review Applications</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<?php require __DIR__ . '/../../includes/navbar.php'; ?>
+<div class="container">
+
+    <?php if ($message): ?>
+        <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
+    <?php endif; ?>
+    <?php if ($error): ?>
+        <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+    <?php endif; ?>
+
+    <?php if ($application): ?>
+
+        <h1 class="h4 mb-3">
+            Reviewing #<?= $application['application_id'] ?> —
+            <?= htmlspecialchars($application['applicant_first_name'] . ' ' . $application['applicant_last_name']) ?>
+            <span class="badge bg-secondary"><?= htmlspecialchars($application['status']) ?></span>
+        </h1>
+        <p class="text-muted">
+            Applying to <?= htmlspecialchars($application['program_code']) ?> as
+            <?= htmlspecialchars($application['student_type']) ?>. Compare every field below against the
+            applicant's physical documents and correct anything that doesn't match before validating.
+        </p>
+
+        <?php if ($application['status'] !== 'pending'): ?>
+            <div class="alert alert-info">
+                This application is already <?= htmlspecialchars($application['status']) ?> and can no
+                longer be edited here.
+            </div>
+        <?php else: ?>
+
+        <form method="post" class="card mb-3">
+            <div class="card-body">
+                <input type="hidden" name="action" value="save_and_validate">
+                <input type="hidden" name="application_id" value="<?= $application['application_id'] ?>">
+
+                <?php $v = fn(string $key) => htmlspecialchars($application[$key] ?? ''); ?>
+
+                <h2 class="h6">Applicant</h2>
+                <div class="row">
+                    <div class="col-md-4 mb-3"><label class="form-label">Last Name</label>
+                        <input class="form-control" name="applicant_last_name" value="<?= $v('applicant_last_name') ?>" required></div>
+                    <div class="col-md-4 mb-3"><label class="form-label">First Name</label>
+                        <input class="form-control" name="applicant_first_name" value="<?= $v('applicant_first_name') ?>" required></div>
+                    <div class="col-md-2 mb-3"><label class="form-label">Middle Name</label>
+                        <input class="form-control" name="applicant_middle_name" value="<?= $v('applicant_middle_name') ?>"></div>
+                    <div class="col-md-2 mb-3"><label class="form-label">Suffix</label>
+                        <input class="form-control" name="applicant_suffix" value="<?= $v('applicant_suffix') ?>"></div>
+                </div>
+                <div class="mb-3 col-md-3"><label class="form-label">Birthdate</label>
+                    <input type="date" class="form-control" name="birthdate" value="<?= $v('birthdate') ?>" required></div>
+
+                <h2 class="h6 mt-3">Address</h2>
+                <div class="row">
+                    <div class="col-md-3 mb-3"><label class="form-label">Province</label>
+                        <input class="form-control" name="applicant_province" value="<?= $v('applicant_province') ?>"></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">Municipality</label>
+                        <input class="form-control" name="applicant_municipality" value="<?= $v('applicant_municipality') ?>"></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">Barangay</label>
+                        <input class="form-control" name="applicant_barangay" value="<?= $v('applicant_barangay') ?>"></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">Purok</label>
+                        <input class="form-control" name="applicant_purok" value="<?= $v('applicant_purok') ?>"></div>
+                </div>
+
+                <h2 class="h6 mt-3">Father</h2>
+                <div class="row">
+                    <div class="col-md-3 mb-3"><label class="form-label">Last Name</label>
+                        <input class="form-control" name="father_last_name" value="<?= $v('father_last_name') ?>"></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">First Name</label>
+                        <input class="form-control" name="father_first_name" value="<?= $v('father_first_name') ?>"></div>
+                    <div class="col-md-2 mb-3"><label class="form-label">Middle Name</label>
+                        <input class="form-control" name="father_middle_name" value="<?= $v('father_middle_name') ?>"></div>
+                    <div class="col-md-1 mb-3"><label class="form-label">Suffix</label>
+                        <input class="form-control" name="father_suffix" value="<?= $v('father_suffix') ?>"></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">Occupation</label>
+                        <input class="form-control" name="father_occupation" value="<?= $v('father_occupation') ?>"></div>
+                </div>
+
+                <h2 class="h6 mt-3">Mother</h2>
+                <div class="row">
+                    <div class="col-md-3 mb-3"><label class="form-label">Maiden Name</label>
+                        <input class="form-control" name="mother_maiden_name" value="<?= $v('mother_maiden_name') ?>"></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">First Name</label>
+                        <input class="form-control" name="mother_first_name" value="<?= $v('mother_first_name') ?>"></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">Middle Name</label>
+                        <input class="form-control" name="mother_middle_name" value="<?= $v('mother_middle_name') ?>"></div>
+                    <div class="col-md-3 mb-3"><label class="form-label">Occupation</label>
+                        <input class="form-control" name="mother_occupation" value="<?= $v('mother_occupation') ?>"></div>
+                </div>
+
+                <h2 class="h6 mt-3">Contact &amp; Guardian</h2>
+                <div class="row">
+                    <div class="col-md-6 mb-3"><label class="form-label">Contact No.</label>
+                        <input class="form-control" name="contact_no" value="<?= $v('contact_no') ?>"></div>
+                    <div class="col-md-6 mb-3"><label class="form-label">Email</label>
+                        <input class="form-control" name="email_address" value="<?= $v('email_address') ?>"></div>
+                    <div class="col-md-4 mb-3"><label class="form-label">Guardian Name</label>
+                        <input class="form-control" name="guardian_name" value="<?= $v('guardian_name') ?>"></div>
+                    <div class="col-md-4 mb-3"><label class="form-label">Relationship</label>
+                        <input class="form-control" name="guardian_relationship" value="<?= $v('guardian_relationship') ?>"></div>
+                    <div class="col-md-4 mb-3"><label class="form-label">Guardian Contact No.</label>
+                        <input class="form-control" name="guardian_contact_no" value="<?= $v('guardian_contact_no') ?>"></div>
+                </div>
+
+                <h2 class="h6 mt-3">Placement</h2>
+                <div class="mb-3 col-md-3">
+                    <label class="form-label">Evaluated Year Level</label>
+                    <input type="number" min="1" max="5" class="form-control" name="evaluated_year_level"
+                           value="<?= $v('evaluated_year_level') ?: '1' ?>" required>
+                    <div class="form-text">Freshmen normally start at 1. For transferees, base this on credited
+                        units once transferee credit evaluation exists — for now, use your best judgment.</div>
+                </div>
+
+                <button type="submit" class="btn btn-success">Save Corrections &amp; Validate</button>
+            </div>
+        </form>
+
+        <form method="post" class="card border-danger">
+            <div class="card-body">
+                <input type="hidden" name="action" value="reject">
+                <input type="hidden" name="application_id" value="<?= $application['application_id'] ?>">
+                <label class="form-label">Reject this application</label>
+                <textarea class="form-control mb-2" name="rejection_reason" rows="2"
+                          placeholder="Reason (shown to the applicant)"></textarea>
+                <button type="submit" class="btn btn-outline-danger"
+                        onclick="return confirm('Reject this application? This cannot be undone here.')">
+                    Reject Application
+                </button>
+            </div>
+        </form>
+
+        <?php endif; ?>
+
+        <a href="/enrollment-system/public/staff/review-application.php" class="d-inline-block mt-3">&larr; Back to list</a>
+
+    <?php else: ?>
+
+        <h1 class="h4 mb-3">Applications</h1>
+
+        <form method="get" class="d-flex mb-3" style="max-width: 400px;">
+            <input type="text" class="form-control me-2" name="q" placeholder="Search by name"
+                   value="<?= htmlspecialchars($search) ?>">
+            <button type="submit" class="btn btn-outline-primary">Search</button>
+        </form>
+
+        <?php if (!$search): ?>
+            <p class="text-muted">Showing pending applications, oldest first. Search above to find a specific
+                applicant regardless of status.</p>
+        <?php endif; ?>
+
+        <div class="table-responsive">
+<table class="table table-hover bg-white">
+            <thead>
+                <tr><th>#</th><th>Name</th><th>Program</th><th>Submitted</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                <?php foreach ($applications as $a): ?>
+                    <tr>
+                        <td><?= $a['application_id'] ?></td>
+                        <td><?= htmlspecialchars($a['applicant_first_name'] . ' ' . $a['applicant_last_name']) ?></td>
+                        <td><?= htmlspecialchars($a['program_code']) ?></td>
+                        <td><?= htmlspecialchars($a['application_date']) ?></td>
+                        <td><span class="badge bg-secondary"><?= htmlspecialchars($a['status']) ?></span></td>
+                        <td>
+                            <a href="?id=<?= $a['application_id'] ?>" class="btn btn-sm btn-outline-primary">
+                                Review
+                            </a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($applications)): ?>
+                    <tr><td colspan="6" class="text-muted">No applications found.</td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+</div>
+
+    <?php endif; ?>
+</div>
+</body>
+</html>

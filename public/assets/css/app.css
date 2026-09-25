@@ -1,0 +1,129 @@
+    body { margin-left: 270px; padding-top: 32px; background: #f4f6fb; }
+    .mist-sidebar {
+        position: fixed; top: 0; left: 0; width: 270px; height: 100vh;
+        background: #1B1F8C; color: #fff; display: flex; flex-direction: column;
+        overflow-y: auto; z-index: 1030;
+    }
+    .mist-sidebar .brand {
+        padding: 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.15);
+        display: flex; align-items: center;
+    }
+    .mist-sidebar .brand img { height: 40px; margin-right: 10px; }
+    .mist-sidebar .brand .brand-text { line-height: 1.1; }
+    .mist-sidebar .brand .brand-text strong { font-size: 1.15rem; display: block; }
+    .mist-sidebar .brand .brand-text small { opacity: 0.75; letter-spacing: 0.04em; }
+
+    .mist-sidebar .profile-card {
+        padding: 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.15);
+        display: flex; align-items: center; gap: 12px; color: #fff; text-decoration: none;
+    }
+    .mist-sidebar .profile-card:hover { background: rgba(255,255,255,0.06); color: #fff; }
+    .mist-sidebar .profile-avatar {
+        width: 54px; height: 54px; border-radius: 50%; background: #fff; color: #1B1F8C;
+        display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;
+    }
+    .mist-sidebar .profile-card .welcome-label { font-size: 0.7rem; opacity: 0.75; letter-spacing: 0.05em; }
+    .mist-sidebar .profile-card .profile-name { font-weight: 700; font-size: 1.05rem; line-height: 1.2; }
+    .mist-sidebar .profile-card .profile-subtitle { font-size: 0.65rem; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.03em; }
+    .mist-sidebar .role-badge {
+        display: inline-block; background: #fff; color: #1B1F8C; font-weight: 700; font-size: 0.7rem;
+        padding: 2px 10px; border-radius: 20px; margin-top: 4px;
+    }
+
+    .mist-sidebar .nav-items { flex: 1 1 auto; }
+    .mist-sidebar .nav-item-link {
+        display: flex; align-items: center; gap: 12px; padding: 14px 16px; color: #fff;
+        text-decoration: none; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: 600;
+        border-left: 4px solid transparent;
+    }
+    .mist-sidebar .nav-item-link:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .mist-sidebar .nav-item-link.active {
+        background: rgba(255,255,255,0.16); color: #fff;
+        border-left: 4px solid #fff; padding-left: 12px;
+    }
+    .mist-sidebar .nav-item-link i { font-size: 1.1rem; width: 20px; text-align: center; }
+
+    .mist-sidebar .logout-link {
+        display: flex; align-items: center; gap: 12px; padding: 16px; color: #FF8A5B;
+        text-decoration: none; font-weight: 700; border-top: 1px solid rgba(255,255,255,0.15);
+        background: none; border-left: none; border-right: none; border-bottom: none; width: 100%; text-align: left;
+    }
+    .mist-sidebar .logout-link:hover { background: rgba(255,255,255,0.08); color: #FF8A5B; }
+
+    /* ============================================================
+       Global content styling — matches the login/apply pages.
+       Applied here (not per-page) so every existing page picks it
+       up automatically, the same trick used for the sidebar layout.
+       ============================================================ */
+    :root {
+        --royal-blue: #1e3a8a;
+        --royal-blue-light: #2f52b8;
+        --neu-shadow-dark: #c9d0de;
+        --neu-shadow-light: #ffffff;
+        --light-blue-accent: #dde6fb;
+    }
+
+    /* Page title as a "tab" heading — underlined in light blue, not a full-width rule */
+    h1 {
+        display: inline-block;
+        color: var(--royal-blue);
+        font-weight: 700;
+        padding-bottom: 0.5rem;
+        margin-bottom: 1.5rem;
+        border-bottom: 3px solid var(--light-blue-accent);
+    }
+
+    /* Form fields — same inset-shadow neumorphic look as the login page */
+    .form-control, .form-select {
+        background: #f4f6fb !important;
+        border: 1px solid transparent !important;
+        border-radius: 12px !important;
+        box-shadow: inset 3px 3px 6px var(--neu-shadow-dark), inset -3px -3px 6px var(--neu-shadow-light) !important;
+    }
+    .form-control:focus, .form-select:focus {
+        background: #f4f6fb !important;
+        box-shadow: inset 3px 3px 6px var(--neu-shadow-dark), inset -3px -3px 6px var(--neu-shadow-light),
+                    0 0 0 2px var(--royal-blue-light) !important;
+    }
+
+    /* Buttons */
+    .btn-primary {
+        background: var(--royal-blue) !important;
+        border-color: var(--royal-blue) !important;
+        border-radius: 12px !important;
+        box-shadow: 3px 3px 8px var(--neu-shadow-dark), -3px -3px 8px var(--neu-shadow-light);
+    }
+    .btn-primary:hover, .btn-primary:focus { background: var(--royal-blue-light) !important; border-color: var(--royal-blue-light) !important; }
+    .btn-outline-primary { color: var(--royal-blue) !important; border-color: var(--royal-blue) !important; border-radius: 12px !important; }
+    .btn-outline-primary:hover { background: var(--royal-blue) !important; border-color: var(--royal-blue) !important; }
+    .btn-success, .btn-outline-success, .btn-danger, .btn-outline-danger,
+    .btn-warning, .btn-outline-warning, .btn-info, .btn-outline-info,
+    .btn-secondary, .btn-outline-secondary { border-radius: 12px !important; }
+
+    /* Cards — soft neumorphic shadow instead of a hard border, light-blue header accent */
+    .card { border: none !important; border-radius: 16px !important; box-shadow: 5px 5px 14px var(--neu-shadow-dark), -5px -5px 14px var(--neu-shadow-light); }
+    .card-header { background: var(--light-blue-accent) !important; color: var(--royal-blue) !important; font-weight: 700; border-bottom: none !important; }
+
+    /* Tables — light-blue header row, soft shadow on the wrapper (already present on every table via .table-responsive) */
+    .table-responsive { border-radius: 14px; box-shadow: 3px 3px 10px var(--neu-shadow-dark), -3px -3px 10px var(--neu-shadow-light); overflow: hidden; }
+    .table thead th { background: var(--light-blue-accent); color: var(--royal-blue); font-weight: 700; border-bottom: 2px solid var(--royal-blue-light) !important; }
+
+    /* --- Mobile: sidebar becomes an off-canvas panel instead of taking up permanent space --- */
+    .mist-menu-toggle {
+        display: none; position: fixed; top: 14px; left: 14px; z-index: 1040;
+        background: #1B1F8C; color: #fff; border: none; border-radius: 10px;
+        width: 44px; height: 44px; font-size: 1.3rem; align-items: center; justify-content: center;
+    }
+    .mist-sidebar-backdrop {
+        display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1025;
+    }
+    @media (max-width: 767.98px) {
+        body { margin-left: 0; padding-top: 76px; } /* room for the fixed hamburger button */
+        .mist-sidebar {
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+        }
+        .mist-sidebar.show { transform: translateX(0); }
+        .mist-menu-toggle { display: flex; }
+        .mist-sidebar-backdrop.show { display: block; }
+    }
