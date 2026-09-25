@@ -69,17 +69,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="blob blob-1"></div>
             <div class="blob blob-2"></div>
             <div class="brand-content">
-                <img src="/enrollment-system/public/assets/mist-logo.png" alt="MIST Logo" class="logo-slot" style="border:none;background:transparent;object-fit:cover;">
-                <p class="text-uppercase mb-1" style="letter-spacing: 0.15em; opacity: 0.85;">Welcome</p>
+                <img src="/enrollment-system/public/assets/mist-logo.png" alt="MIST Logo" class="logo-slot logo-img">
+                <p class="text-uppercase mb-1 welcome-label">Welcome</p>
                 <h1 class="fw-bold mb-3">Makilala Institute of<br>Science and Technology</h1>
-                <p class="mb-0" style="opacity: 0.85; max-width: 340px;">
+                <p class="mb-0 brand-tagline">
                     Enrollment System
                 </p>
             </div>
         </div>
 
         <div class="signin-panel flex-grow-1 d-flex flex-column justify-content-center">
-            <div class="w-100" style="max-width: 420px; margin: 0 auto;">
+            <div class="w-100 signin-form-wrap">
                 <h2 class="h3 mb-4">Sign In</h2>
 
                 <?php if ($error): ?>
@@ -115,10 +115,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                     <div class="mb-3">
                         <label for="password" class="form-label">Password</label>
-                        <div style="position:relative;">
-                            <input type="password" class="form-control neu-input" id="password" name="password" required style="padding-right:2.75rem !important;">
-                            <button type="button" id="togglePassword" tabindex="-1"
-                                    style="position:absolute; right:10px; top:50%; transform:translateY(-50%); border:none; background:transparent; padding:0; line-height:1; color:#6c757d;">
+                        <div class="password-field-wrap">
+                            <input type="password" class="form-control neu-input pw-input" id="password" name="password" required>
+                            <button type="button" id="togglePassword" tabindex="-1" class="password-toggle-btn">
                                 <i class="bi bi-eye"></i>
                             </button>
                         </div>
@@ -139,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <hr>
 
-                <p class="text-center mb-0" style="white-space: nowrap; font-size: 0.95rem;">
+                <p class="text-center mb-0 signup-line">
                     New applicant? <a href="/enrollment-system/public/apply.php">Submit an Admission Application</a>
                 </p>
             </div>

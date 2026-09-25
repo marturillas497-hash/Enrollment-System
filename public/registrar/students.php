@@ -102,7 +102,7 @@ $students = $stmt->fetchAll();
         </div>
     <?php endif; ?>
 
-    <form method="get" class="d-flex mb-3" style="max-width: 400px;">
+    <form method="get" class="d-flex mb-3 search-bar">
         <input type="text" class="form-control me-2" name="q" placeholder="Search by name or ID number"
                value="<?= htmlspecialchars($search) ?>">
         <button type="submit" class="btn btn-outline-primary">Search</button>

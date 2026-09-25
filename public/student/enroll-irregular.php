@@ -161,7 +161,7 @@ if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body class="bg-light">
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
-<div class="container" style="max-width: 800px;">
+<div class="container container-lg">
     <h1 class="h4 mb-3">Choose Your Subjects</h1>
 
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>

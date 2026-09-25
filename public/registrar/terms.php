@@ -33,6 +33,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // A subject counts as failed/dropped if the teacher marked it so, or — if remarks
             // was left blank — if a posted grade is worse than 3.00 (the conventional passing line).
             // Explicit remarks always win over the numeric fallback.
+            //
+            // 'Incomplete' and truly-blank (nothing entered) are grouped into incomplete_count —
+            // both mean "no final grade was posted" and must NOT be silently treated as passed.
+            // Bugfix (Sept 2026): previously a row with remarks='Incomplete' matched neither the
+            // failed_count nor the ungraded_count case, so it fell through and the enrollment was
+            // marked 'regular' standing as if every subject had passed. Incomplete now forces
+            // 'irregular' standing, same as a real failure, until it's resolved.
             $stmt = $pdo->prepare(
                 "SELECT e.enrollment_id,
                         SUM(CASE
@@ -40,7 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             WHEN (es.remarks IS NULL OR es.remarks = '') AND es.grade IS NOT NULL AND es.grade > 3.00 THEN 1
                             ELSE 0
                         END) AS failed_count,
-                        SUM(CASE WHEN es.grade IS NULL AND (es.remarks IS NULL OR es.remarks = '') THEN 1 ELSE 0 END) AS ungraded_count
+                        SUM(CASE
+                            WHEN es.remarks = 'Incomplete' THEN 1
+                            WHEN es.grade IS NULL AND (es.remarks IS NULL OR es.remarks = '') THEN 1
+                            ELSE 0
+                        END) AS incomplete_count
                  FROM Enrollment e
                  LEFT JOIN Enrolled_subject es ON es.enrollment_id = e.enrollment_id
                  WHERE e.term_id = :term_id
@@ -57,10 +68,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $irregularCount = 0;
             $incompleteCount = 0;
             foreach ($enrollments as $e) {
-                $standing = $e['failed_count'] > 0 ? 'irregular' : 'regular';
+                $standing = ($e['failed_count'] > 0 || $e['incomplete_count'] > 0) ? 'irregular' : 'regular';
                 $updateStanding->execute(['standing' => $standing, 'id' => $e['enrollment_id']]);
                 $standing === 'irregular' ? $irregularCount++ : $regularCount++;
-                if ($e['ungraded_count'] > 0) {
+                if ($e['incomplete_count'] > 0) {
                     $incompleteCount++;
                 }
             }
@@ -73,8 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $message = "Term #$termId closed. Standing recalculated: $regularCount regular, $irregularCount irregular.";
             if ($incompleteCount > 0) {
-                $message .= " Note: $incompleteCount enrollment(s) had at least one ungraded, unmarked subject —"
-                    . " those were treated as passing for this calculation. Double-check with the relevant teachers.";
+                $message .= " Note: $incompleteCount enrollment(s) had at least one incomplete or ungraded subject"
+                    . " and were set to irregular standing pending resolution. Follow up with the relevant teachers.";
             }
         } catch (Exception $e) {
             $pdo->rollBack();

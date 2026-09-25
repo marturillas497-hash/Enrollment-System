@@ -168,7 +168,7 @@ $availableOfferings = $stmt->fetchAll();
 </head>
 <body class="bg-light">
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
-<div class="container" style="max-width: 900px;">
+<div class="container container-xl">
     <h1 class="h4 mb-1">
         <?= htmlspecialchars($student['first_name'] . ' ' . $student['last_name']) ?>
         (<?= htmlspecialchars($student['student_id_number']) ?>)
@@ -193,7 +193,7 @@ $availableOfferings = $stmt->fetchAll();
                 <div class="card-header fw-bold">Year <?= htmlspecialchars($yearLevel) ?> — Semester <?= htmlspecialchars($semester) ?></div>
                 <div class="table-responsive">
                 <table class="table bg-white mb-0">
-                    <thead><tr><th>Subject</th><th>Grade Credited</th><th>Remarks</th><th style="width:100px"></th></tr></thead>
+                    <thead><tr><th>Subject</th><th>Grade Credited</th><th>Remarks</th><th class="col-w-100"></th></tr></thead>
                     <tbody>
                     <?php foreach ($rows as $r): ?>
                         <?php

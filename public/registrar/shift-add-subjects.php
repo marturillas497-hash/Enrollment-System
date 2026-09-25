@@ -83,7 +83,7 @@ $availableOfferings = $stmt->fetchAll();
 </head>
 <body class="bg-light">
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
-<div class="container" style="max-width: 700px;">
+<div class="container container-md">
     <h1 class="h4 mb-1">
         <?= htmlspecialchars($enrollment['first_name'] . ' ' . $enrollment['last_name']) ?>
         (<?= htmlspecialchars($enrollment['student_id_number']) ?>)

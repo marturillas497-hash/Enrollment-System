@@ -267,7 +267,7 @@ if (!$application) {
 
         <h1 class="h4 mb-3">Applications</h1>
 
-        <form method="get" class="d-flex mb-3" style="max-width: 400px;">
+        <form method="get" class="d-flex mb-3 search-bar">
             <input type="text" class="form-control me-2" name="q" placeholder="Search by name"
                    value="<?= htmlspecialchars($search) ?>">
             <button type="submit" class="btn btn-outline-primary">Search</button>

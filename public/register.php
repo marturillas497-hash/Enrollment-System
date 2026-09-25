@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
-    <div class="container" style="max-width: 420px;">
+    <div class="container container-xs">
         <div class="py-5">
             <a href="/enrollment-system/public/login.php" class="d-inline-block mb-3">&larr; Back</a>
             <div class="alert alert-warning">

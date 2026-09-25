@@ -277,7 +277,7 @@ if (!$request) {
         <form method="post" class="d-inline">
             <input type="hidden" name="action" value="reject">
             <input type="hidden" name="request_id" value="<?= $requestId ?>">
-            <input type="text" name="reason" placeholder="Rejection reason" class="form-control d-inline-block" style="width:240px;">
+            <input type="text" name="reason" placeholder="Rejection reason" class="form-control d-inline-block input-w-240">
             <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Reject this shift request?')">Reject</button>
         </form>
 

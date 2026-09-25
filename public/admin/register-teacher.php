@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body class="bg-light">
     <?php require __DIR__ . '/../../includes/navbar.php'; ?>
-    <div class="container" style="max-width: 560px;">
+    <div class="container container-sm">
 
         <h1 class="h3 mb-4">Register a Teacher</h1>
 

@@ -109,7 +109,7 @@ $roster = $stmt->fetchAll();
         <input type="hidden" name="offering_id" value="<?= $offeringId ?>">
         <div class="table-responsive">
 <table class="table bg-white">
-            <thead><tr><th>ID Number</th><th>Name</th><th style="width:120px">Grade</th><th>Remarks</th></tr></thead>
+            <thead><tr><th>ID Number</th><th>Name</th><th class="col-w-120">Grade</th><th>Remarks</th></tr></thead>
             <tbody>
             <?php foreach ($roster as $r): ?>
                 <tr>

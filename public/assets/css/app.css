@@ -127,3 +127,22 @@
         .mist-menu-toggle { display: flex; }
         .mist-sidebar-backdrop.show { display: block; }
     }
+
+/* Page-width utility classes — replaces the inline style="max-width:...px" that used
+   to be scattered across form/profile/dashboard pages. Pick the closest size rather
+   than adding a new one-off value. */
+.container-xs { max-width: 420px; }
+.container-sm { max-width: 560px; }
+.container-md { max-width: 700px; }
+.container-lg { max-width: 800px; }
+.container-xl { max-width: 900px; }
+
+/* Narrow search-bar forms above a filterable table */
+.search-bar { max-width: 400px; }
+
+/* Narrow table column widths */
+.col-w-100 { width: 100px; }
+.col-w-120 { width: 120px; }
+
+/* One-off narrow inline input (rejection-reason field next to a button) */
+.input-w-240 { width: 240px; }

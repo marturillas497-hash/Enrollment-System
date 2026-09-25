@@ -1,0 +1,6 @@
+.DS_Store
+Thumbs.db
+.vscode/
+
+#local shit
+/notes/

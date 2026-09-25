@@ -79,3 +79,16 @@
         .btn-neu-primary:hover { background: var(--royal-blue-light); color: #fff; }
         .btn-neu-primary:active { transform: translateY(1px); }
         .back-link { color: var(--royal-blue); text-decoration: none; }
+
+/* --- Added: replaces the inline styles previously on login.php --- */
+.logo-img { border: none; background: transparent; object-fit: cover; }
+.welcome-label { letter-spacing: 0.15em; opacity: 0.85; }
+.brand-tagline { opacity: 0.85; max-width: 340px; }
+.signin-form-wrap { max-width: 420px; margin: 0 auto; }
+.password-field-wrap { position: relative; }
+.pw-input { padding-right: 2.75rem !important; }
+.password-toggle-btn {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    border: none; background: transparent; padding: 0; line-height: 1; color: #6c757d;
+}
+.signup-line { white-space: nowrap; font-size: 0.95rem; }
