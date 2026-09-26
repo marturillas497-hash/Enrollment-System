@@ -25,3 +25,16 @@ define('APP_ENV', 'development');
  * name instead of '' below (e.g. '/enrollment-system').
  */
 define('BASE_URL', APP_ENV === 'development' ? '/enrollment-system/public' : '');
+
+/**
+ * SITE_URL is the full, absolute origin (scheme + host), needed anywhere a
+ * link or image has to resolve outside the browser that's currently on this
+ * site, emails being the main case, a recipient's inbox has no notion of
+ * "relative to this page". BASE_URL alone is not enough there.
+ *
+ * Update the production value to the real domain once deployed (Hostinger
+ * or InfinityFree, whichever branch is live).
+ */
+define('SITE_URL', APP_ENV === 'development'
+    ? 'http://localhost/enrollment-system/public'
+    : 'https://your-domain-here.com');

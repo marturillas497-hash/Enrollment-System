@@ -3,12 +3,14 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/username_helper.php';
 require_once __DIR__ . '/../../src/helpers/password_helper.php';
+require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 
 $user = requireRole(['admin']);
 $pdo = getDbConnection();
 
 $error = '';
 $created = null; // ['username' => ..., 'password' => ...] shown exactly once
+$mailWarning = '';
 
 $departments = $pdo->query('SELECT department_id, department_name FROM Department ORDER BY department_name')->fetchAll();
 
@@ -18,9 +20,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $middleName   = trim($_POST['middle_name'] ?? '');
     $suffix       = trim($_POST['suffix'] ?? '');
     $departmentId = $_POST['department_id'] ?? '';
+    $email        = trim($_POST['email'] ?? '');
 
-    if ($lastName === '' || $firstName === '' || $departmentId === '') {
-        $error = 'Last name, first name, and department are required.';
+    if ($lastName === '' || $firstName === '' || $departmentId === '' || $email === '') {
+        $error = 'Last name, first name, department, and email are required.';
     } else {
         try {
             $pdo->beginTransaction();
@@ -30,11 +33,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // 1. Accounts row — role=registrar, forced password reset on first login.
             $stmt = $pdo->prepare(
-                "INSERT INTO Accounts (username, password_hash, role, must_change_password)
-                 VALUES (:username, :hash, 'registrar', 1)"
+                "INSERT INTO Accounts (username, email, password_hash, role, must_change_password)
+                 VALUES (:username, :email, :hash, 'registrar', 1)"
             );
             $stmt->execute([
                 'username' => $username,
+                'email'    => $email,
                 'hash'     => password_hash($tempPassword, PASSWORD_DEFAULT),
             ]);
             $newAccountId = (int)$pdo->lastInsertId();
@@ -56,7 +60,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            $created = ['username' => $username, 'password' => $tempPassword];
+            $created = ['username' => $username, 'password' => $tempPassword, 'email' => $email];
+
+            $mailSent = sendAccountCredentialsEmail($email, $firstName . ' ' . $lastName, $username, $tempPassword);
+            if (!$mailSent) {
+                $mailWarning = 'The account was created, but the credentials email could not be sent. Share the credentials below manually.';
+            }
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = 'Could not create the registrar account. ' . $e->getMessage();
@@ -81,13 +90,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
         <?php endif; ?>
 
+        <?php if ($mailWarning): ?>
+            <div class="alert alert-warning"><?= htmlspecialchars($mailWarning) ?></div>
+        <?php endif; ?>
+
         <?php if ($created): ?>
             <div class="card border-success mb-4">
                 <div class="card-body">
                     <h2 class="h5 card-title text-success">Registrar account created</h2>
+                    <?php if (!$mailWarning): ?>
+                        <p class="card-text text-success">
+                            Email has been sent to <strong><?= htmlspecialchars($created['email']) ?></strong>.
+                        </p>
+                    <?php endif; ?>
                     <p class="card-text text-muted">
-                        Hand these credentials to the registrar directly. This password will not be
-                        shown again — if it's lost, it has to be reset, not retrieved.
+                        This password will not be shown again — if it's lost, it has to be reset,
+                        not retrieved.
                     </p>
                     <dl class="row mb-0">
                         <dt class="col-sm-4">Username</dt>
@@ -133,6 +151,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <input type="text" class="form-control" name="suffix"
                                value="<?= htmlspecialchars($_POST['suffix'] ?? '') ?>" placeholder="Jr., III, etc.">
                     </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-control" name="email"
+                           value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Department</label>

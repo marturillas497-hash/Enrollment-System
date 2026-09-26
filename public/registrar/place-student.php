@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/password_helper.php';
+require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -16,6 +17,7 @@ $applicationId = $_GET['id'] ?? ($_POST['application_id'] ?? null);
 $error = '';
 $movedMessage = isset($_GET['moved']) ? 'Program updated — this application now belongs to a different department and no longer appears here.' : '';
 $created = null; // ['username'=>, 'password'=>, 'student_id_number'=>, 'subjects'=>[]] after final commit
+$mailWarning = '';
 $stage = 'pick_term'; // pick_term -> confirm
 
 $application = null;
@@ -158,12 +160,13 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         // rename both to the real student_id_number once we know it.
         $tempPassword = generateTempPassword();
         $placeholderUsername = 'PENDING-' . bin2hex(random_bytes(6));
+        $studentEmail = $application['email_address'];
 
         $stmt = $pdo->prepare(
-            "INSERT INTO Accounts (username, password_hash, role, must_change_password)
-             VALUES (:username, :hash, 'student', 1)"
+            "INSERT INTO Accounts (username, email, password_hash, role, must_change_password)
+             VALUES (:username, :email, :hash, 'student', 1)"
         );
-        $stmt->execute(['username' => $placeholderUsername, 'hash' => password_hash($tempPassword, PASSWORD_DEFAULT)]);
+        $stmt->execute(['username' => $placeholderUsername, 'email' => $studentEmail, 'hash' => password_hash($tempPassword, PASSWORD_DEFAULT)]);
         $newAccountId = (int)$pdo->lastInsertId();
 
         $stmt = $pdo->prepare(
@@ -254,7 +257,19 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
             'subjects_count' => $enrolledCount,
             'student_id' => $newStudentId,
             'student_type' => $application['student_type'],
+            'email' => $studentEmail,
         ];
+
+        if ($studentEmail) {
+            $studentName = $application['applicant_first_name'] . ' ' . $application['applicant_last_name'];
+            $mailSent = sendAccountCredentialsEmail($studentEmail, $studentName, $studentIdNumber, $tempPassword);
+            if (!$mailSent) {
+                $mailWarning = 'The student was placed, but the credentials email could not be sent. Share the credentials below manually.';
+            }
+        } else {
+            $mailWarning = 'No email was on file for this applicant. Share the credentials below manually.';
+        }
+
         $application = null; // done, drop back to the list
     } catch (Exception $e) {
         $pdo->rollBack();
@@ -327,11 +342,19 @@ if (!$application && !$created) {
 
     <?php if ($created): ?>
 
+        <?php if ($mailWarning): ?>
+            <div class="alert alert-warning"><?= htmlspecialchars($mailWarning) ?></div>
+        <?php endif; ?>
+
         <div class="card border-success mb-4">
             <div class="card-body">
                 <h2 class="h5 card-title text-success">Student placed successfully</h2>
-                <p class="text-muted">Hand these credentials to the student directly. The password will not
-                    be shown again.</p>
+                <?php if (!$mailWarning): ?>
+                    <p class="text-success">
+                        Email has been sent to <strong><?= htmlspecialchars($created['email']) ?></strong>.
+                    </p>
+                <?php endif; ?>
+                <p class="text-muted">This password will not be shown again.</p>
                 <dl class="row mb-0">
                     <dt class="col-sm-4">Student ID Number / Username</dt>
                     <dd class="col-sm-8"><code><?= htmlspecialchars($created['student_id_number']) ?></code></dd>

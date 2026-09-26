@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/password_helper.php';
+require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -13,6 +14,7 @@ $myDepartmentId = $stmt->fetchColumn();
 $message = '';
 $error = '';
 $regenerated = null; // ['username'=>, 'password'=>] shown once after regenerating
+$mailWarning = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regenerate_password') {
     $accountId = $_POST['account_id'] ?? '';
@@ -20,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regen
     // Confirm both that this is a student account AND that their current program (via their
     // latest enrollment) is in this registrar's own department.
     $stmt = $pdo->prepare(
-        "SELECT a.username FROM Accounts a
+        "SELECT a.username, a.email, s.first_name, s.last_name FROM Accounts a
          JOIN Student s ON s.account_id = a.account_id
          JOIN Enrollment e ON e.enrollment_id = (
              SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
@@ -42,7 +44,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regen
         );
         $stmt->execute(['hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $accountId]);
 
-        $regenerated = ['username' => $account['username'], 'password' => $newPassword];
+        $regenerated = ['username' => $account['username'], 'password' => $newPassword, 'email' => $account['email']];
+
+        if ($account['email']) {
+            $studentName = $account['first_name'] . ' ' . $account['last_name'];
+            $mailSent = sendPasswordResetEmail($account['email'], $studentName, $account['username'], $newPassword);
+            if (!$mailSent) {
+                $mailWarning = 'The password was reset, but the email could not be sent. Share the credentials below manually.';
+            }
+        } else {
+            $mailWarning = 'No email is on file for this student. Share the credentials below manually.';
+        }
     }
 }
 
@@ -89,10 +101,17 @@ $students = $stmt->fetchAll();
 
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
+    <?php if ($mailWarning): ?>
+        <div class="alert alert-warning"><?= htmlspecialchars($mailWarning) ?></div>
+    <?php endif; ?>
+
     <?php if ($regenerated): ?>
         <div class="alert alert-success">
-            <strong>New temporary password generated.</strong> Hand these to the student directly — this
-            won't be shown again, and their old password no longer works.
+            <strong>New temporary password generated.</strong>
+            <?php if (!$mailWarning): ?>
+                Email has been sent to <strong><?= htmlspecialchars($regenerated['email']) ?></strong>.
+            <?php endif; ?>
+            Their old password no longer works.
             <dl class="row mb-0 mt-2">
                 <dt class="col-sm-2">Username</dt>
                 <dd class="col-sm-10"><code><?= htmlspecialchars($regenerated['username']) ?></code></dd>

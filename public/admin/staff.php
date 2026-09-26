@@ -2,18 +2,27 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/password_helper.php';
+require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 
 $user = requireRole(['admin']);
 $pdo = getDbConnection();
 
 $error = '';
 $regenerated = null;
+$mailWarning = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regenerate_password') {
     $accountId = $_POST['account_id'] ?? '';
 
     $stmt = $pdo->prepare(
-        "SELECT username FROM Accounts WHERE account_id = :id AND role IN ('registrar','teacher','admission_staff')"
+        "SELECT a.username, a.email,
+                COALESCE(r.last_name, t.last_name, sa.last_name) AS last_name,
+                COALESCE(r.first_name, t.first_name, sa.first_name) AS first_name
+         FROM Accounts a
+         LEFT JOIN Registrar r ON r.account_id = a.account_id AND a.role = 'registrar'
+         LEFT JOIN Teacher t ON t.account_id = a.account_id AND a.role = 'teacher'
+         LEFT JOIN Admission_Staff sa ON sa.account_id = a.account_id AND a.role = 'admission_staff'
+         WHERE a.account_id = :id AND a.role IN ('registrar','teacher','admission_staff')"
     );
     $stmt->execute(['id' => $accountId]);
     $account = $stmt->fetch();
@@ -24,7 +33,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regen
         $newPassword = generateTempPassword();
         $pdo->prepare('UPDATE Accounts SET password_hash = :hash, must_change_password = 1 WHERE account_id = :id')
             ->execute(['hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $accountId]);
-        $regenerated = ['username' => $account['username'], 'password' => $newPassword];
+        $regenerated = ['username' => $account['username'], 'password' => $newPassword, 'email' => $account['email']];
+
+        if ($account['email']) {
+            $staffName = $account['first_name'] . ' ' . $account['last_name'];
+            $mailSent = sendPasswordResetEmail($account['email'], $staffName, $account['username'], $newPassword);
+            if (!$mailSent) {
+                $mailWarning = 'The password was reset, but the email could not be sent. Share the credentials below manually.';
+            }
+        } else {
+            $mailWarning = 'No email is on file for this account. Share the credentials below manually.';
+        }
     }
 }
 
@@ -56,10 +75,17 @@ $staff = $pdo->query(
 
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
+    <?php if ($mailWarning): ?>
+        <div class="alert alert-warning"><?= htmlspecialchars($mailWarning) ?></div>
+    <?php endif; ?>
+
     <?php if ($regenerated): ?>
         <div class="alert alert-success">
-            <strong>New temporary password generated.</strong> Hand these to them directly — this
-            won't be shown again, and their old password no longer works.
+            <strong>New temporary password generated.</strong>
+            <?php if (!$mailWarning): ?>
+                Email has been sent to <strong><?= htmlspecialchars($regenerated['email']) ?></strong>.
+            <?php endif; ?>
+            Their old password no longer works.
             <dl class="row mb-0 mt-2">
                 <dt class="col-sm-2">Username</dt>
                 <dd class="col-sm-10"><code><?= htmlspecialchars($regenerated['username']) ?></code></dd>

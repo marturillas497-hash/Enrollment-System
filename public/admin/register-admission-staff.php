@@ -3,21 +3,24 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/username_helper.php';
 require_once __DIR__ . '/../../src/helpers/password_helper.php';
+require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 
 $user = requireRole(['admin']);
 $pdo = getDbConnection();
 
 $error = '';
 $created = null;
+$mailWarning = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $lastName   = trim($_POST['last_name'] ?? '');
     $firstName  = trim($_POST['first_name'] ?? '');
     $middleName = trim($_POST['middle_name'] ?? '');
     $suffix     = trim($_POST['suffix'] ?? '');
+    $email      = trim($_POST['email'] ?? '');
 
-    if ($lastName === '' || $firstName === '') {
-        $error = 'Last name and first name are required.';
+    if ($lastName === '' || $firstName === '' || $email === '') {
+        $error = 'Last name, first name, and email are required.';
     } else {
         try {
             $pdo->beginTransaction();
@@ -26,10 +29,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $tempPassword = generateTempPassword();
 
             $stmt = $pdo->prepare(
-                "INSERT INTO Accounts (username, password_hash, role, must_change_password)
-                 VALUES (:username, :hash, 'admission_staff', 1)"
+                "INSERT INTO Accounts (username, email, password_hash, role, must_change_password)
+                 VALUES (:username, :email, :hash, 'admission_staff', 1)"
             );
-            $stmt->execute(['username' => $username, 'hash' => password_hash($tempPassword, PASSWORD_DEFAULT)]);
+            $stmt->execute(['username' => $username, 'email' => $email, 'hash' => password_hash($tempPassword, PASSWORD_DEFAULT)]);
             $newAccountId = (int)$pdo->lastInsertId();
 
             $stmt = $pdo->prepare(
@@ -43,7 +46,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $pdo->commit();
-            $created = ['username' => $username, 'password' => $tempPassword];
+            $created = ['username' => $username, 'password' => $tempPassword, 'email' => $email];
+
+            $mailSent = sendAccountCredentialsEmail($email, $firstName . ' ' . $lastName, $username, $tempPassword);
+            if (!$mailSent) {
+                $mailWarning = 'The account was created, but the credentials email could not be sent. Share the credentials below manually.';
+            }
         } catch (Exception $e) {
             $pdo->rollBack();
             $error = 'Could not create the admission staff account. ' . $e->getMessage();
@@ -65,12 +73,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
+        <?php if ($mailWarning): ?>
+            <div class="alert alert-warning"><?= htmlspecialchars($mailWarning) ?></div>
+        <?php endif; ?>
+
         <?php if ($created): ?>
             <div class="card border-success mb-4">
                 <div class="card-body">
                     <h2 class="h5 card-title text-success">Admission staff account created</h2>
+                    <?php if (!$mailWarning): ?>
+                        <p class="card-text text-success">
+                            Email has been sent to <strong><?= htmlspecialchars($created['email']) ?></strong>.
+                        </p>
+                    <?php endif; ?>
                     <p class="card-text text-muted">
-                        Hand these credentials to them directly. This password will not be shown again.
+                        This password will not be shown again — if it's lost, it has to be reset,
+                        not retrieved.
                     </p>
                     <dl class="row mb-0">
                         <dt class="col-sm-4">Username</dt>
@@ -108,6 +126,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <input type="text" class="form-control" name="suffix"
                                value="<?= htmlspecialchars($_POST['suffix'] ?? '') ?>" placeholder="Jr., III, etc.">
                     </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-control" name="email"
+                           value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
                 </div>
                 <button type="submit" class="btn btn-primary w-100">Create Admission Staff Account</button>
             </form>
