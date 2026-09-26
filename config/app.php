@@ -24,7 +24,7 @@ define('APP_ENV', 'development');
  * folder ends up under the web root instead, set this to that folder's
  * name instead of '' below (e.g. '/enrollment-system').
  */
-define('BASE_URL', APP_ENV === 'development' ? '/enrollment-system/public' : '');
+define('BASE_URL', APP_ENV === 'development' ? '/enrollment-system/public' : '/public');
 
 /**
  * SITE_URL is the full, absolute origin (scheme + host), needed anywhere a
@@ -37,4 +37,4 @@ define('BASE_URL', APP_ENV === 'development' ? '/enrollment-system/public' : '')
  */
 define('SITE_URL', APP_ENV === 'development'
     ? 'http://localhost/enrollment-system/public'
-    : 'https://your-domain-here.com');
+    : 'https://enrollment4c.infinityfree.io/public');
