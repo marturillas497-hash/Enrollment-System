@@ -1,4 +1,4 @@
-        :root {
+:root {
             --neu-bg: #e8edf5;
             --neu-shadow-dark: #c3cad6;
             --neu-shadow-light: #ffffff;
@@ -61,3 +61,12 @@
         .btn-neu-primary:active { transform: translateY(1px); }
         .back-link { color: #fff; opacity: 0.85; text-decoration: none; }
         .back-link:hover { color: #fff; opacity: 1; }
+
+@media (max-width: 575.98px) {
+    body { padding: 0; }
+    .apply-box { border-radius: 0; box-shadow: none; }
+    .apply-header { padding: 1.5rem; }
+    .apply-header img { height: 44px; }
+    .apply-body { padding: 1.5rem; }
+    .section-title { margin-top: 1.5rem; }
+}

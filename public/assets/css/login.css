@@ -1,4 +1,4 @@
-        :root {
+:root {
             --neu-bg: #e8edf5;
             --neu-shadow-dark: #c3cad6;
             --neu-shadow-light: #ffffff;
@@ -92,3 +92,24 @@
     border: none; background: transparent; padding: 0; line-height: 1; color: #6c757d;
 }
 .signup-line { white-space: nowrap; font-size: 0.95rem; }
+
+@media (max-width: 767.98px) {
+    body { padding: 0; align-items: flex-start; }
+    .login-box {
+        flex-direction: column;
+        max-width: 100%;
+        min-height: 100vh;
+        border-radius: 0;
+        box-shadow: none;
+    }
+    .mobile-brand-header {
+        background: linear-gradient(135deg, var(--royal-blue) 0%, var(--royal-blue-light) 100%);
+        color: #fff;
+        padding: 1.5rem;
+    }
+    .mobile-logo { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+    .mobile-brand-title { font-weight: 700; font-size: 0.95rem; line-height: 1.25; }
+    .mobile-brand-tagline { font-size: 0.75rem; opacity: 0.85; }
+    .signin-panel { padding: 2rem 1.5rem; }
+    .signin-form-wrap { max-width: 100%; }
+}

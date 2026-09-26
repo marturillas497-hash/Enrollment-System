@@ -58,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Login — MIST Enrollment System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
@@ -75,6 +76,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p class="mb-0 brand-tagline">
                     Enrollment System
                 </p>
+            </div>
+        </div>
+
+        <div class="mobile-brand-header d-flex d-md-none align-items-center gap-3">
+            <img src="<?= BASE_URL ?>/assets/mist-logo.png" alt="MIST Logo" class="mobile-logo">
+            <div>
+                <p class="mb-0 mobile-brand-title">Makilala Institute of Science and Technology</p>
+                <p class="mb-0 mobile-brand-tagline">Enrollment System</p>
             </div>
         </div>
 
@@ -146,4 +155,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
 </body>
 </html>
-
