@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </dl>
                 </div>
             </div>
-            <a href="/enrollment-system/public/admin/register-admission-staff.php" class="btn btn-outline-primary">
+            <a href="<?= BASE_URL ?>/admin/register-admission-staff.php" class="btn btn-outline-primary">
                 Register Another
             </a>
         <?php else: ?>

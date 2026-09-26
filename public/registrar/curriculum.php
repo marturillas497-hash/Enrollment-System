@@ -239,7 +239,7 @@ $curricula = $curricula->fetchAll();
             <?php endforeach; ?>
         <?php endforeach; ?>
 
-        <a href="/enrollment-system/public/registrar/curriculum.php">&larr; Back to all curricula</a>
+        <a href="<?= BASE_URL ?>/registrar/curriculum.php">&larr; Back to all curricula</a>
 
     <?php else: ?>
 

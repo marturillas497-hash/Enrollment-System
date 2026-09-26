@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
 
 $pdo = getDbConnection();
@@ -110,14 +111,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <title>Admission Application — MIST Enrollment System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/enrollment-system/public/assets/css/apply.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/apply.css">
 </head>
 <body>
 <div class="apply-box">
     <div class="apply-header">
-        <img src="/enrollment-system/public/assets/mist-logo.png" alt="MIST Logo">
+        <img src="<?= BASE_URL ?>/assets/mist-logo.png" alt="MIST Logo">
         <div>
-            <a href="/enrollment-system/public/login.php" class="back-link small d-block mb-1">&larr; Back to Login</a>
+            <a href="<?= BASE_URL ?>/login.php" class="back-link small d-block mb-1">&larr; Back to Login</a>
             <h1 class="h4 mb-0">Admission Application</h1>
         </div>
     </div>

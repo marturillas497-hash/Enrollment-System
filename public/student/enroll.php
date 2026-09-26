@@ -117,7 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
 
     <?php if ($error): ?>
         <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
-        <a href="/enrollment-system/public/student/dashboard.php" class="btn btn-outline-secondary">Back to Dashboard</a>
+        <a href="<?= BASE_URL ?>/student/dashboard.php" class="btn btn-outline-secondary">Back to Dashboard</a>
 
     <?php elseif ($result): ?>
         <div class="alert alert-success">
@@ -130,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
                 </p>
             <?php endif; ?>
         </div>
-        <a href="/enrollment-system/public/student/dashboard.php" class="btn btn-primary">Back to Dashboard</a>
+        <a href="<?= BASE_URL ?>/student/dashboard.php" class="btn btn-primary">Back to Dashboard</a>
 
     <?php else: ?>
         <h1 class="h4 mb-3">Confirm Enrollment</h1>

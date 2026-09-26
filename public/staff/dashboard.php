@@ -31,7 +31,7 @@ $validatedThisWeek = (int)$pdo->query(
 
         <div class="row mb-4">
             <div class="col-md-4 mb-3">
-                <a href="/enrollment-system/public/staff/review-application.php" class="text-decoration-none">
+                <a href="<?= BASE_URL ?>/staff/review-application.php" class="text-decoration-none">
                     <div class="card text-center">
                         <div class="card-body">
                             <div class="display-6"><?= $pendingCount ?></div>
@@ -58,7 +58,7 @@ $validatedThisWeek = (int)$pdo->query(
             </div>
         </div>
 
-        <a href="/enrollment-system/public/staff/review-application.php" class="btn btn-primary">Review Applications</a>
+        <a href="<?= BASE_URL ?>/staff/review-application.php" class="btn btn-primary">Review Applications</a>
     </div>
 </body>
 </html>

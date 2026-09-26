@@ -2,5 +2,5 @@
 require_once __DIR__ . '/../includes/session.php';
 
 logoutUser();
-header('Location: /enrollment-system/public/login.php');
+header('Location: ' . BASE_URL . '/login.php');
 exit;

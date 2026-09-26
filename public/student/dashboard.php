@@ -120,14 +120,14 @@ foreach ($subjects as $s) {
         <div class="alert alert-info">
             You have a pending program shift request — the registrar will place you in the new
             program's enrollment once it's evaluated and approved.
-            <a href="/enrollment-system/public/student/shift-request.php">View status</a>
+            <a href="<?= BASE_URL ?>/student/shift-request.php">View status</a>
         </div>
     <?php elseif ($canEnroll): ?>
         <div class="alert alert-primary d-flex justify-content-between align-items-center">
             <div>A new term is open: <strong><?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?></strong></div>
             <div>
-                <a href="/enrollment-system/public/student/shift-request.php" class="btn btn-outline-primary">Request Program Shift</a>
-                <a href="/enrollment-system/public/student/enroll.php" class="btn btn-primary">Enroll</a>
+                <a href="<?= BASE_URL ?>/student/shift-request.php" class="btn btn-outline-primary">Request Program Shift</a>
+                <a href="<?= BASE_URL ?>/student/enroll.php" class="btn btn-primary">Enroll</a>
             </div>
         </div>
     <?php elseif ($canEnrollIrregular): ?>
@@ -136,7 +136,7 @@ foreach ($subjects as $s) {
                 A new term is open: <strong><?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?></strong>
                 — your standing is <strong>irregular</strong>, so you'll pick your own subjects this term.
             </div>
-            <a href="/enrollment-system/public/student/enroll-irregular.php" class="btn btn-primary">Choose Subjects</a>
+            <a href="<?= BASE_URL ?>/student/enroll-irregular.php" class="btn btn-primary">Choose Subjects</a>
         </div>
     <?php elseif ($currentTerm && $alreadyEnrolledThisTerm && $currentTermEnrollmentStatus === 'pending'): ?>
         <div class="alert alert-info">

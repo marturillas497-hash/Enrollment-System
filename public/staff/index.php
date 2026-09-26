@@ -3,8 +3,8 @@ require_once __DIR__ . '/../../includes/session.php';
 
 $user = currentUser();
 if ($user !== null && $user['role'] === 'admission_staff') {
-    header('Location: /enrollment-system/public/staff/dashboard.php');
+    header('Location: ' . BASE_URL . '/staff/dashboard.php');
 } else {
-    header('Location: /enrollment-system/public/login.php');
+    header('Location: ' . BASE_URL . '/login.php');
 }
 exit;

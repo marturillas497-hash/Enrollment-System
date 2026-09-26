@@ -171,7 +171,7 @@ if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
             Your subject selections have been submitted and are waiting on registrar approval.
             You'll see them on your dashboard once approved.
         </div>
-        <a href="/enrollment-system/public/student/dashboard.php" class="btn btn-primary">Back to Dashboard</a>
+        <a href="<?= BASE_URL ?>/student/dashboard.php" class="btn btn-primary">Back to Dashboard</a>
 
     <?php elseif ($eligible): ?>
         <p class="text-muted">
@@ -223,7 +223,7 @@ if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
         </form>
     <?php else: ?>
-        <a href="/enrollment-system/public/student/dashboard.php" class="btn btn-outline-secondary">Back to Dashboard</a>
+        <a href="<?= BASE_URL ?>/student/dashboard.php" class="btn btn-outline-secondary">Back to Dashboard</a>
     <?php endif; ?>
 </div>
 </body>

@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
 
             if ((int)$account['must_change_password'] === 1) {
-                header('Location: /enrollment-system/public/change-password.php');
+                header('Location: ' . BASE_URL . '/change-password.php');
             } else {
                 header('Location: ' . DASHBOARD_BY_ROLE[$account['role']]);
             }
@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Login — MIST Enrollment System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="/enrollment-system/public/assets/css/login.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/login.css">
 </head>
 <body>
     <div class="login-box">
@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="blob blob-1"></div>
             <div class="blob blob-2"></div>
             <div class="brand-content">
-                <img src="/enrollment-system/public/assets/mist-logo.png" alt="MIST Logo" class="logo-slot logo-img">
+                <img src="<?= BASE_URL ?>/assets/mist-logo.png" alt="MIST Logo" class="logo-slot logo-img">
                 <p class="text-uppercase mb-1 welcome-label">Welcome</p>
                 <h1 class="fw-bold mb-3">Makilala Institute of<br>Science and Technology</h1>
                 <p class="mb-0 brand-tagline">
@@ -139,7 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <hr>
 
                 <p class="text-center mb-0 signup-line">
-                    New applicant? <a href="/enrollment-system/public/apply.php">Submit an Admission Application</a>
+                    New applicant? <a href="<?= BASE_URL ?>/apply.php">Submit an Admission Application</a>
                 </p>
             </div>
         </div>

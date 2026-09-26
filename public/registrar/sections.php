@@ -168,7 +168,7 @@ $sections = $sections->fetchAll();
                 </div>
             </div>
             <?php if ($editing): ?>
-                <a href="/enrollment-system/public/registrar/sections.php" class="d-inline-block mt-1">Cancel edit</a>
+                <a href="<?= BASE_URL ?>/registrar/sections.php" class="d-inline-block mt-1">Cancel edit</a>
             <?php endif; ?>
         </div>
     </form>

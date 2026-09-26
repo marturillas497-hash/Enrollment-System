@@ -115,7 +115,7 @@ $offerings = $offerings->fetchAll();
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <?php if (empty($terms)): ?>
-        <div class="alert alert-warning">No ongoing term. Open one in <a href="/enrollment-system/public/registrar/terms.php">School Terms</a> first.</div>
+        <div class="alert alert-warning">No ongoing term. Open one in <a href="<?= BASE_URL ?>/registrar/terms.php">School Terms</a> first.</div>
     <?php else: ?>
     <form method="post" class="card mb-4">
         <div class="card-body">

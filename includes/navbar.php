@@ -72,7 +72,7 @@ function navActive(string $href): string
 }
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
-<link rel="stylesheet" href="/enrollment-system/public/assets/css/app.css">
+<link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/app.css">
 
 <button type="button" class="mist-menu-toggle" id="mistMenuToggle" aria-label="Open menu">
     <i class="bi bi-list"></i>
@@ -81,14 +81,14 @@ function navActive(string $href): string
 
 <div class="mist-sidebar" id="mistSidebar">
     <div class="brand">
-        <img src="/enrollment-system/public/assets/mist-logo.png" alt="MIST Logo">
+        <img src="<?= BASE_URL ?>/assets/mist-logo.png" alt="MIST Logo">
         <div class="brand-text">
             <strong>MIST</strong>
             <small>ENROLLMENT SYSTEM</small>
         </div>
     </div>
 
-    <a href="/enrollment-system/public/profile.php" class="profile-card">
+    <a href="<?= BASE_URL ?>/profile.php" class="profile-card">
         <div class="profile-avatar"><i class="bi bi-person-fill"></i></div>
         <div>
             <div class="welcome-label">WELCOME BACK,</div>
@@ -100,41 +100,41 @@ function navActive(string $href): string
 
     <div class="nav-items">
         <?php if ($role === 'admin'): ?>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/admin/dashboard.php') ?>" href="/enrollment-system/public/admin/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/admin/register-registrar.php') ?>" href="/enrollment-system/public/admin/register-registrar.php"><i class="bi bi-person-plus"></i> Register Registrar</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/admin/register-teacher.php') ?>" href="/enrollment-system/public/admin/register-teacher.php"><i class="bi bi-person-plus"></i> Register Teacher</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/admin/register-admission-staff.php') ?>" href="/enrollment-system/public/admin/register-admission-staff.php"><i class="bi bi-person-plus"></i> Register Admission Staff</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/admin/staff.php') ?>" href="/enrollment-system/public/admin/staff.php"><i class="bi bi-people"></i> Staff Accounts</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/dashboard.php') ?>" href="<?= BASE_URL ?>/admin/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-registrar.php') ?>" href="<?= BASE_URL ?>/admin/register-registrar.php"><i class="bi bi-person-plus"></i> Register Registrar</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-teacher.php') ?>" href="<?= BASE_URL ?>/admin/register-teacher.php"><i class="bi bi-person-plus"></i> Register Teacher</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-admission-staff.php') ?>" href="<?= BASE_URL ?>/admin/register-admission-staff.php"><i class="bi bi-person-plus"></i> Register Admission Staff</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/staff.php') ?>" href="<?= BASE_URL ?>/admin/staff.php"><i class="bi bi-people"></i> Staff Accounts</a>
         <?php elseif ($role === 'registrar'): ?>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/dashboard.php') ?>" href="/enrollment-system/public/registrar/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/place-student.php') ?>" href="/enrollment-system/public/registrar/place-student.php"><i class="bi bi-person-check"></i> Place Student</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/students.php') ?>" href="/enrollment-system/public/registrar/students.php"><i class="bi bi-people"></i> Students</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/subjects.php') ?>" href="/enrollment-system/public/registrar/subjects.php"><i class="bi bi-journal-bookmark"></i> Subjects</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/prerequisites.php') ?>" href="/enrollment-system/public/registrar/prerequisites.php"><i class="bi bi-diagram-2"></i> Prerequisites</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/curriculum.php') ?>" href="/enrollment-system/public/registrar/curriculum.php"><i class="bi bi-file-earmark-text"></i> Curriculum</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/sections.php') ?>" href="/enrollment-system/public/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/terms.php') ?>" href="/enrollment-system/public/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/class-offerings.php') ?>" href="/enrollment-system/public/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/shift-requests.php') ?>" href="/enrollment-system/public/registrar/shift-requests.php"><i class="bi bi-box-arrow-in-right"></i> Shift Requests</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/registrar/irregular-enrollments.php') ?>" href="/enrollment-system/public/registrar/irregular-enrollments.php"><i class="bi bi-list-check"></i> Irregular Enrollments</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/dashboard.php') ?>" href="<?= BASE_URL ?>/registrar/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/place-student.php') ?>" href="<?= BASE_URL ?>/registrar/place-student.php"><i class="bi bi-person-check"></i> Place Student</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/students.php') ?>" href="<?= BASE_URL ?>/registrar/students.php"><i class="bi bi-people"></i> Students</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/subjects.php') ?>" href="<?= BASE_URL ?>/registrar/subjects.php"><i class="bi bi-journal-bookmark"></i> Subjects</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/prerequisites.php') ?>" href="<?= BASE_URL ?>/registrar/prerequisites.php"><i class="bi bi-diagram-2"></i> Prerequisites</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/curriculum.php') ?>" href="<?= BASE_URL ?>/registrar/curriculum.php"><i class="bi bi-file-earmark-text"></i> Curriculum</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/sections.php') ?>" href="<?= BASE_URL ?>/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/terms.php') ?>" href="<?= BASE_URL ?>/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/class-offerings.php') ?>" href="<?= BASE_URL ?>/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/shift-requests.php') ?>" href="<?= BASE_URL ?>/registrar/shift-requests.php"><i class="bi bi-box-arrow-in-right"></i> Shift Requests</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/irregular-enrollments.php') ?>" href="<?= BASE_URL ?>/registrar/irregular-enrollments.php"><i class="bi bi-list-check"></i> Irregular Enrollments</a>
         <?php elseif ($role === 'admission_staff'): ?>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/staff/dashboard.php') ?>" href="/enrollment-system/public/staff/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/staff/review-application.php') ?>" href="/enrollment-system/public/staff/review-application.php"><i class="bi bi-clipboard-check"></i> Review Applications</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/staff/dashboard.php') ?>" href="<?= BASE_URL ?>/staff/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/staff/review-application.php') ?>" href="<?= BASE_URL ?>/staff/review-application.php"><i class="bi bi-clipboard-check"></i> Review Applications</a>
         <?php elseif ($role === 'teacher'): ?>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/teacher/dashboard.php') ?>" href="/enrollment-system/public/teacher/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/teacher/my-subjects.php') ?>" href="/enrollment-system/public/teacher/my-subjects.php"><i class="bi bi-journal-bookmark"></i> My Subjects</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/teacher/my-students.php') ?>" href="/enrollment-system/public/teacher/my-students.php"><i class="bi bi-people"></i> My Students</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/teacher/grades.php') ?>" href="/enrollment-system/public/teacher/grades.php"><i class="bi bi-clipboard-check"></i> Grades</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/teacher/schedule.php') ?>" href="/enrollment-system/public/teacher/schedule.php"><i class="bi bi-calendar-week"></i> Schedule</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/profile.php') ?>" href="/enrollment-system/public/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/dashboard.php') ?>" href="<?= BASE_URL ?>/teacher/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/my-subjects.php') ?>" href="<?= BASE_URL ?>/teacher/my-subjects.php"><i class="bi bi-journal-bookmark"></i> My Subjects</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/my-students.php') ?>" href="<?= BASE_URL ?>/teacher/my-students.php"><i class="bi bi-people"></i> My Students</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/grades.php') ?>" href="<?= BASE_URL ?>/teacher/grades.php"><i class="bi bi-clipboard-check"></i> Grades</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/schedule.php') ?>" href="<?= BASE_URL ?>/teacher/schedule.php"><i class="bi bi-calendar-week"></i> Schedule</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/profile.php') ?>" href="<?= BASE_URL ?>/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
         <?php elseif ($role === 'student'): ?>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/student/dashboard.php') ?>" href="/enrollment-system/public/student/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/student/enrollment.php') ?>" href="/enrollment-system/public/student/enrollment.php"><i class="bi bi-pencil-square"></i> Enrollment</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/student/my-subjects.php') ?>" href="/enrollment-system/public/student/my-subjects.php"><i class="bi bi-journal-bookmark"></i> My Subjects</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/student/schedule.php') ?>" href="/enrollment-system/public/student/schedule.php"><i class="bi bi-calendar-week"></i> Schedule</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/student/grades.php') ?>" href="/enrollment-system/public/student/grades.php"><i class="bi bi-clipboard-check"></i> Grades</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/student/enrollment-history.php') ?>" href="/enrollment-system/public/student/enrollment-history.php"><i class="bi bi-clock-history"></i> Enrollment History</a>
-            <a class="nav-item-link<?= navActive('/enrollment-system/public/profile.php') ?>" href="/enrollment-system/public/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/student/dashboard.php') ?>" href="<?= BASE_URL ?>/student/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/student/enrollment.php') ?>" href="<?= BASE_URL ?>/student/enrollment.php"><i class="bi bi-pencil-square"></i> Enrollment</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/student/my-subjects.php') ?>" href="<?= BASE_URL ?>/student/my-subjects.php"><i class="bi bi-journal-bookmark"></i> My Subjects</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/student/schedule.php') ?>" href="<?= BASE_URL ?>/student/schedule.php"><i class="bi bi-calendar-week"></i> Schedule</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/student/grades.php') ?>" href="<?= BASE_URL ?>/student/grades.php"><i class="bi bi-clipboard-check"></i> Grades</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/student/enrollment-history.php') ?>" href="<?= BASE_URL ?>/student/enrollment-history.php"><i class="bi bi-clock-history"></i> Enrollment History</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/profile.php') ?>" href="<?= BASE_URL ?>/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
         <?php endif; ?>
     </div>
 
@@ -155,7 +155,7 @@ function navActive(string $href): string
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <a href="/enrollment-system/public/logout.php" class="btn btn-danger">Log Out</a>
+        <a href="<?= BASE_URL ?>/logout.php" class="btn btn-danger">Log Out</a>
       </div>
     </div>
   </div>

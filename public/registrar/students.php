@@ -129,7 +129,7 @@ $students = $stmt->fetchAll();
                         <button type="submit" class="btn btn-sm btn-outline-warning">Regenerate Password</button>
                     </form>
                     <?php if ($s['student_type'] === 'transferee'): ?>
-                        <a href="/enrollment-system/public/registrar/transferee-credit.php?student_id=<?= $s['student_id'] ?>"
+                        <a href="<?= BASE_URL ?>/registrar/transferee-credit.php?student_id=<?= $s['student_id'] ?>"
                            class="btn btn-sm btn-outline-info">Credit Eval</a>
                     <?php endif; ?>
                 </td>

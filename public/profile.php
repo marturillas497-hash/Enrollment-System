@@ -157,7 +157,7 @@ switch ($user['role']) {
         </div>
     </div>
 
-    <a href="/enrollment-system/public/change-password.php" class="btn btn-outline-primary mt-3">Change Password</a>
+    <a href="<?= BASE_URL ?>/change-password.php" class="btn btn-outline-primary mt-3">Change Password</a>
 </div>
 </body>
 </html>

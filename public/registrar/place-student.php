@@ -84,7 +84,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         $newDepartmentId = $deptCheck->fetchColumn();
 
         if ((int)$newDepartmentId !== (int)$myDepartmentId) {
-            header('Location: /enrollment-system/public/registrar/place-student.php?moved=1');
+            header('Location: ' . BASE_URL . '/registrar/place-student.php?moved=1');
             exit;
         }
 
@@ -344,12 +344,12 @@ if (!$application && !$created) {
         </div>
 
         <?php if ($created['student_type'] === 'transferee'): ?>
-            <a href="/enrollment-system/public/registrar/transferee-credit.php?student_id=<?= $created['student_id'] ?>"
+            <a href="<?= BASE_URL ?>/registrar/transferee-credit.php?student_id=<?= $created['student_id'] ?>"
                class="btn btn-success">
                 Continue to Transferee Credit Evaluation
             </a>
         <?php endif; ?>
-        <a href="/enrollment-system/public/registrar/place-student.php" class="btn btn-outline-primary">
+        <a href="<?= BASE_URL ?>/registrar/place-student.php" class="btn btn-outline-primary">
             Place Another Student
         </a>
 

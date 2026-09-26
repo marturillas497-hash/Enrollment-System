@@ -99,7 +99,7 @@ if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 )->execute(['by' => $user['account_id'], 'id' => $requestId]);
 
                 $pdo->commit();
-                header("Location: /enrollment-system/public/registrar/shift-add-subjects.php?enrollment_id=$newEnrollmentId");
+                header("Location: " . BASE_URL . "/registrar/shift-add-subjects.php?enrollment_id=$newEnrollmentId");
                 exit;
             } catch (Exception $e) {
                 $pdo->rollBack();
@@ -282,7 +282,7 @@ if (!$request) {
         </form>
 
         <?php endif; ?>
-        <div class="mt-3"><a href="/enrollment-system/public/registrar/shift-requests.php">&larr; Back to list</a></div>
+        <div class="mt-3"><a href="<?= BASE_URL ?>/registrar/shift-requests.php">&larr; Back to list</a></div>
 
     <?php else: ?>
 

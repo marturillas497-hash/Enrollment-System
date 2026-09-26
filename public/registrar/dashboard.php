@@ -87,13 +87,13 @@ if ($currentTerm) {
                 Current term: <strong><?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?></strong> (ongoing)
             </div>
         <?php else: ?>
-            <div class="alert alert-warning">No term is currently open. <a href="/enrollment-system/public/registrar/terms.php">Open one</a>.</div>
+            <div class="alert alert-warning">No term is currently open. <a href="<?= BASE_URL ?>/registrar/terms.php">Open one</a>.</div>
         <?php endif; ?>
 
         <h2 class="h6 text-muted mt-4 mb-2">Needs Your Attention</h2>
         <div class="row mb-4">
             <div class="col-md-4 mb-3">
-                <a href="/enrollment-system/public/registrar/place-student.php" class="text-decoration-none">
+                <a href="<?= BASE_URL ?>/registrar/place-student.php" class="text-decoration-none">
                     <div class="card text-center">
                         <div class="card-body">
                             <div class="display-6"><?= $pendingPlacements ?></div>
@@ -103,7 +103,7 @@ if ($currentTerm) {
                 </a>
             </div>
             <div class="col-md-4 mb-3">
-                <a href="/enrollment-system/public/registrar/shift-requests.php" class="text-decoration-none">
+                <a href="<?= BASE_URL ?>/registrar/shift-requests.php" class="text-decoration-none">
                     <div class="card text-center">
                         <div class="card-body">
                             <div class="display-6"><?= $pendingShifts ?></div>
@@ -113,7 +113,7 @@ if ($currentTerm) {
                 </a>
             </div>
             <div class="col-md-4 mb-3">
-                <a href="/enrollment-system/public/registrar/irregular-enrollments.php" class="text-decoration-none">
+                <a href="<?= BASE_URL ?>/registrar/irregular-enrollments.php" class="text-decoration-none">
                     <div class="card text-center">
                         <div class="card-body">
                             <div class="display-6"><?= $pendingIrregular ?></div>

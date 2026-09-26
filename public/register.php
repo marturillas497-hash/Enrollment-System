@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="bg-light">
     <div class="container container-xs">
         <div class="py-5">
-            <a href="/enrollment-system/public/login.php" class="d-inline-block mb-3">&larr; Back</a>
+            <a href="<?= BASE_URL ?>/login.php" class="d-inline-block mb-3">&larr; Back</a>
             <div class="alert alert-warning">
                 <strong>Dev-only.</strong> Creates a bare <code>Accounts</code> row with no profile.
                 Real accounts get created by the admin/registrar/system flows built in later phases.
@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <?php if ($success): ?>
                 <div class="alert alert-success">
-                    Test account created. <a href="/enrollment-system/public/login.php">Log in</a>
+                    Test account created. <a href="<?= BASE_URL ?>/login.php">Log in</a>
                 </div>
             <?php else: ?>
                 <form method="post" novalidate>

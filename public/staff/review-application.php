@@ -261,7 +261,7 @@ if (!$application) {
 
         <?php endif; ?>
 
-        <a href="/enrollment-system/public/staff/review-application.php" class="d-inline-block mt-3">&larr; Back to list</a>
+        <a href="<?= BASE_URL ?>/staff/review-application.php" class="d-inline-block mt-3">&larr; Back to list</a>
 
     <?php else: ?>
 

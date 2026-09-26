@@ -57,7 +57,7 @@ $offerings = $stmt->fetchAll();
                 <td><?= htmlspecialchars($o['program_code'] . ' ' . $o['section_name']) ?></td>
                 <td><?= htmlspecialchars(($o['day_of_week'] ?? '') . ' ' . ($o['start_time'] ?? '') . '–' . ($o['end_time'] ?? '') . ' ' . ($o['room'] ?? '')) ?></td>
                 <td><?= $o['enrolled_count'] ?></td>
-                <td><a href="/enrollment-system/public/teacher/grade-entry.php?offering_id=<?= $o['offering_id'] ?>"
+                <td><a href="<?= BASE_URL ?>/teacher/grade-entry.php?offering_id=<?= $o['offering_id'] ?>"
                        class="btn btn-sm btn-outline-primary">Enter Grades</a></td>
             </tr>
         <?php endforeach; ?>

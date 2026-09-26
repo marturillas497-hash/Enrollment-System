@@ -4,6 +4,8 @@
  * Every page that needs to know who's logged in should require this file.
  */
 
+require_once __DIR__ . '/../config/app.php';
+
 // A session cookie with no explicit lifetime is a "session cookie" in the strict
 // sense — some browsers drop it the moment the window fully closes, others don't
 // consistently. Setting an explicit lifetime here makes "resume my session after
@@ -24,11 +26,11 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 const DASHBOARD_BY_ROLE = [
-    'student'         => '/enrollment-system/public/student/dashboard.php',
-    'teacher'         => '/enrollment-system/public/teacher/dashboard.php',
-    'registrar'       => '/enrollment-system/public/registrar/dashboard.php',
-    'admission_staff' => '/enrollment-system/public/staff/dashboard.php',
-    'admin'           => '/enrollment-system/public/admin/dashboard.php',
+    'student'         => BASE_URL . '/student/dashboard.php',
+    'teacher'         => BASE_URL . '/teacher/dashboard.php',
+    'registrar'       => BASE_URL . '/registrar/dashboard.php',
+    'admission_staff' => BASE_URL . '/staff/dashboard.php',
+    'admin'           => BASE_URL . '/admin/dashboard.php',
 ];
 
 /** Returns the logged-in user's session data, or null if nobody's logged in. */
@@ -42,7 +44,7 @@ function requireLogin(): array
 {
     $user = currentUser();
     if ($user === null) {
-        header('Location: /enrollment-system/public/login.php');
+        header('Location: ' . BASE_URL . '/login.php');
         exit;
     }
     return $user;

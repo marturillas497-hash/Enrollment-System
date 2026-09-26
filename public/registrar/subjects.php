@@ -110,7 +110,7 @@ if ($search !== '') {
             </div>
             <button type="submit" class="btn btn-primary"><?= $editing ? 'Save Changes' : 'Add Subject' ?></button>
             <?php if ($editing): ?>
-                <a href="/enrollment-system/public/registrar/subjects.php" class="btn btn-outline-secondary">Cancel</a>
+                <a href="<?= BASE_URL ?>/registrar/subjects.php" class="btn btn-outline-secondary">Cancel</a>
             <?php endif; ?>
         </div>
     </form>
@@ -120,7 +120,7 @@ if ($search !== '') {
                value="<?= htmlspecialchars($search) ?>">
         <button type="submit" class="btn btn-outline-primary">Search</button>
         <?php if ($search !== ''): ?>
-            <a href="/enrollment-system/public/registrar/subjects.php" class="btn btn-outline-secondary ms-2">Clear</a>
+            <a href="<?= BASE_URL ?>/registrar/subjects.php" class="btn btn-outline-secondary ms-2">Clear</a>
         <?php endif; ?>
     </form>
 

@@ -135,7 +135,7 @@ if (!$enrollment) {
             <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Reject this enrollment?')">Reject</button>
         </form>
 
-        <div class="mt-3"><a href="/enrollment-system/public/registrar/irregular-enrollments.php">&larr; Back to list</a></div>
+        <div class="mt-3"><a href="<?= BASE_URL ?>/registrar/irregular-enrollments.php">&larr; Back to list</a></div>
 
     <?php else: ?>
         <h1 class="h4 mb-3">Pending Irregular Enrollments</h1>

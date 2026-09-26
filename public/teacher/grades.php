@@ -58,7 +58,7 @@ $offerings = $stmt->fetchAll();
                         <span class="badge bg-success">Complete</span>
                     <?php endif; ?>
                 </td>
-                <td><a href="/enrollment-system/public/teacher/grade-entry.php?offering_id=<?= $o['offering_id'] ?>"
+                <td><a href="<?= BASE_URL ?>/teacher/grade-entry.php?offering_id=<?= $o['offering_id'] ?>"
                        class="btn btn-sm btn-outline-primary">Enter Grades</a></td>
             </tr>
         <?php endforeach; ?>
