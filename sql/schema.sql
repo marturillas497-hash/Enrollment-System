@@ -9,6 +9,7 @@ USE `bsis_enrollment_system`;
 CREATE TABLE `Accounts` (
   `account_id` INT NOT NULL AUTO_INCREMENT,
   `username` VARCHAR(225) NOT NULL,
+  `email` VARCHAR(255) NULL DEFAULT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
   `role` ENUM('student', 'teacher', 'registrar', 'admission_staff', 'admin') NOT NULL,
   `must_change_password` TINYINT(1) NOT NULL DEFAULT 1,

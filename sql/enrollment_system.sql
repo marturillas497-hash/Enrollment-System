@@ -41,6 +41,7 @@ DROP TABLE IF EXISTS `accounts`;
 CREATE TABLE `accounts` (
   `account_id` int(11) NOT NULL,
   `username` varchar(225) NOT NULL,
+  `email` varchar(255) DEFAULT NULL,
   `password_hash` varchar(255) NOT NULL,
   `role` enum('student','teacher','registrar','admission_staff','admin') NOT NULL,
   `must_change_password` tinyint(1) NOT NULL DEFAULT 1,
