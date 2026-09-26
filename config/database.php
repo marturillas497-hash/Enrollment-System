@@ -6,9 +6,9 @@
 
 // --- Adjust these if your local MySQL setup differs from XAMPP's defaults ---
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'bsis_enrollment_system');
+define('DB_NAME', 'enrollment_system');
 define('DB_USER', 'root');
-define('DB_PASS', ''); // XAMPP's default root password is empty
+define('DB_PASS', '');
 
 function getDbConnection(): PDO
 {
