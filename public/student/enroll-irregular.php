@@ -68,7 +68,7 @@ if ($eligible) {
 
         $missingPrereqs = [];
         foreach ($prereqs as $req) {
-            if (!hasPassedSubject($pdo, $student['student_id'], (int)$req['subject_id'])) {
+            if (!hasCompletedSubject($pdo, $student['student_id'], (int)$req['subject_id'])) {
                 $missingPrereqs[] = $req['subject_code'];
             }
         }
