@@ -5,23 +5,30 @@ require_once __DIR__ . '/../../includes/session.php';
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
 
+$stmt = $pdo->prepare('SELECT department_id FROM Registrar WHERE account_id = :aid');
+$stmt->execute(['aid' => $user['account_id']]);
+$myDepartmentId = $stmt->fetchColumn();
+
 $enrollmentId = $_GET['enrollment_id'] ?? ($_POST['enrollment_id'] ?? null);
 $error = '';
 $message = '';
 
+// Scoped to MY department via the enrollment's curriculum/program.
 $stmt = $pdo->prepare(
     'SELECT e.*, s.student_id_number, s.last_name, s.first_name, st.school_year, st.semester
      FROM Enrollment e
      JOIN Student s ON s.student_id = e.student_id
      JOIN School_term st ON st.term_id = e.term_id
-     WHERE e.enrollment_id = :id'
+     JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
+     JOIN Program p ON p.program_id = c.program_id
+     WHERE e.enrollment_id = :id AND p.department_id = :dept'
 );
-$stmt->execute(['id' => $enrollmentId]);
+$stmt->execute(['id' => $enrollmentId, 'dept' => $myDepartmentId]);
 $enrollment = $stmt->fetch();
 
 if ($enrollment === false) {
     require __DIR__ . '/../../includes/navbar.php';
-    echo '<div class="container"><div class="alert alert-danger">Enrollment not found.</div></div>';
+    echo '<div class="container"><div class="alert alert-danger">Enrollment not found, or not in your department.</div></div>';
     exit;
 }
 

@@ -42,8 +42,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     $grades = $_POST['grade'] ?? [];   // [enrolled_subject_id => value]
     $remarks = $_POST['remarks'] ?? []; // [enrolled_subject_id => value]
 
+    // offering_id is bound below too — $offeringId was already verified above to belong
+    // to this teacher, so a spoofed enrolled_subject_id from another offering just matches
+    // zero rows instead of silently updating a class this teacher doesn't own.
     $stmt = $pdo->prepare(
-        'UPDATE Enrolled_subject SET grade = :grade, remarks = :remarks WHERE enrolled_subject_id = :id'
+        'UPDATE Enrolled_subject SET grade = :grade, remarks = :remarks
+         WHERE enrolled_subject_id = :id AND offering_id = :oid'
     );
 
     $failedRows = [];
@@ -65,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             'grade' => $gradeToSave,
             'remarks' => $remarkValue !== '' ? $remarkValue : null,
             'id' => $enrolledSubjectId,
+            'oid' => $offeringId,
         ]);
     }
 

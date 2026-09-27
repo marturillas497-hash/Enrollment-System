@@ -28,6 +28,8 @@ if (!$currentTerm) {
     $error = 'No term is currently open.';
 } elseif (!$previous) {
     $error = 'No prior enrollment found — contact the registrar.';
+} elseif ($previous['student_standing'] !== 'regular') {
+    $error = 'Your standing is irregular — use the subject picker instead of automatic enrollment.';
 } elseif ($student['overall_status'] !== 'active') {
     $error = 'Your account is not active for enrollment — contact the registrar.';
 } else {

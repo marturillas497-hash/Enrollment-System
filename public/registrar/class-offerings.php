@@ -66,8 +66,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'end_time' => $endTime, 'start_time' => $startTime,
         ]);
         $conflict = $stmt->fetch();
+        $roomConflict = false;
 
-        if ($conflict) {
+        // Room conflict is a separate axis — deliberately NOT scoped to :dept, since a
+        // physical room can be double-booked by a registrar in a different department.
+        if (!$conflict && $room !== '') {
+            $stmt = $pdo->prepare(
+                "SELECT co.*, s.subject_code, t.last_name, sec.section_name
+                 FROM Class_Offering co
+                 JOIN Subject s ON s.subject_id = co.subject_id
+                 JOIN Teacher t ON t.teacher_id = co.teacher_id
+                 JOIN Section sec ON sec.section_id = co.section_id
+                 WHERE co.term_id = :term_id AND co.day_of_week = :day
+                   AND LOWER(co.room) = LOWER(:room)
+                   AND co.start_time < :end_time AND co.end_time > :start_time"
+            );
+            $stmt->execute([
+                'term_id' => $termId, 'day' => $day, 'room' => $room,
+                'end_time' => $endTime, 'start_time' => $startTime,
+            ]);
+            $conflict = $stmt->fetch();
+            $roomConflict = (bool)$conflict;
+        }
+
+        if ($conflict && $roomConflict) {
+            $error = "Room conflict: \"{$conflict['room']}\" is already booked for {$conflict['subject_code']} "
+                . "{$conflict['day_of_week']} {$conflict['start_time']}–{$conflict['end_time']} "
+                . "with teacher {$conflict['last_name']} / section {$conflict['section_name']} in this term.";
+        } elseif ($conflict) {
             $error = "Schedule conflict: {$conflict['subject_code']} already runs "
                 . "{$conflict['day_of_week']} {$conflict['start_time']}–{$conflict['end_time']} "
                 . "with teacher {$conflict['last_name']} / section {$conflict['section_name']} in this term.";

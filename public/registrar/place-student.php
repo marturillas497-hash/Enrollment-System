@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/password_helper.php';
 require_once __DIR__ . '/../../src/helpers/mail_helper.php';
+require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -104,6 +105,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
 // --- Stage: load subjects (POST) ---
 $subjectRows = [];
 $chosenTermId = $chosenCurriculumId = $chosenSectionId = null;
+$capacityWarning = '';
 
 if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'load_subjects') {
     $chosenTermId = $_POST['term_id'] ?? '';
@@ -138,6 +140,19 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         ]);
         $subjectRows = $stmt->fetchAll();
         $stage = 'confirm';
+
+        // Informational only — this student hasn't been placed yet, so occupancy + 1
+        // is what the section would become. Registrar can still proceed either way.
+        $sec = $pdo->prepare('SELECT section_name, max_slots FROM Section WHERE section_id = :id');
+        $sec->execute(['id' => $chosenSectionId]);
+        $sec = $sec->fetch();
+        if ($sec) {
+            $occupied = sectionOccupancy($pdo, (int)$chosenSectionId);
+            if ($occupied + 1 > (int)$sec['max_slots']) {
+                $capacityWarning = "Heads up: {$sec['section_name']} is at {$occupied}/{$sec['max_slots']} "
+                    . "— placing this student here will put it over capacity.";
+            }
+        }
     }
 }
 
@@ -385,6 +400,10 @@ if (!$application && !$created) {
         <p class="text-muted">
             <?= htmlspecialchars($application['program_code']) ?>, Year <?= $application['evaluated_year_level'] ?>
         </p>
+
+        <?php if ($capacityWarning): ?>
+            <div class="alert alert-warning"><?= htmlspecialchars($capacityWarning) ?></div>
+        <?php endif; ?>
 
         <form method="post">
             <input type="hidden" name="action" value="confirm_placement">

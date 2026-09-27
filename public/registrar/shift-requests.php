@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -37,7 +38,12 @@ if ($requestId) {
 if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
-    if ($action === 'save_credits') {
+    if ($request['status'] !== 'pending') {
+        // The UI already hides these actions once a request is decided — this is the
+        // actual guard, so a resubmitted/replayed form can't re-approve or re-reject
+        // (e.g. double-approve creating a second Enrollment for the same shift).
+        $error = 'This request has already been ' . $request['status'] . ' and cannot be changed.';
+    } elseif ($action === 'save_credits') {
         $targetSectionId = $_POST['target_section_id'] ?? '';
         $targetYearLevel = $_POST['target_year_level'] ?? '';
         $credits = $_POST['credit'] ?? []; // [enrolled_subject_id => credited_subject_id or '']
@@ -157,6 +163,22 @@ if ($request) {
     $targetSections = $stmt->fetchAll();
 
     $targetSubjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_code')->fetchAll();
+
+    // Informational only — doesn't block approval. Only meaningful once a target
+    // section has actually been picked and saved.
+    $capacityWarning = '';
+    if ($request['target_section_id']) {
+        $sec = $pdo->prepare('SELECT section_name, max_slots FROM Section WHERE section_id = :id');
+        $sec->execute(['id' => $request['target_section_id']]);
+        $sec = $sec->fetch();
+        if ($sec) {
+            $occupied = sectionOccupancy($pdo, (int)$request['target_section_id']);
+            if ($occupied + 1 > (int)$sec['max_slots']) {
+                $capacityWarning = "Heads up: {$sec['section_name']} is at {$occupied}/{$sec['max_slots']} "
+                    . "— approving this shift will put it over capacity.";
+            }
+        }
+    }
 }
 
 // --- List view ---
@@ -265,6 +287,10 @@ if (!$request) {
                 </span>
             </div>
         </form>
+
+        <?php if ($capacityWarning): ?>
+            <div class="alert alert-warning"><?= htmlspecialchars($capacityWarning) ?></div>
+        <?php endif; ?>
 
         <form method="post" class="d-inline">
             <input type="hidden" name="action" value="approve">

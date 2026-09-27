@@ -46,3 +46,24 @@ function hasTakenOrCreditedSubject(PDO $pdo, int $studentId, int $subjectId): bo
     ]);
     return $stmt->fetch() !== false;
 }
+
+/**
+ * How many active students currently call this section "home" — i.e. their most
+ * recent Enrollment row points here. Used for capacity warnings at the two places
+ * a student is newly assigned to a section (place-student.php, shift approval) —
+ * NOT at self-enroll, since continuing students already hold their seat and
+ * re-checking every term would treat every returning student as a new occupant.
+ */
+function sectionOccupancy(PDO $pdo, int $sectionId): int
+{
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM Student s
+         JOIN Enrollment e ON e.enrollment_id = (
+             SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
+             ORDER BY e2.enrollment_id DESC LIMIT 1
+         )
+         WHERE e.section_id = :sid AND s.overall_status = 'active'"
+    );
+    $stmt->execute(['sid' => $sectionId]);
+    return (int)$stmt->fetchColumn();
+}
