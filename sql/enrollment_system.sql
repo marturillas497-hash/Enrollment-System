@@ -3,22 +3,13 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 25, 2026 at 09:23 AM
+-- Generation Time: Sep 27, 2026 at 11:50 AM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
 SET time_zone = "+00:00";
-
--- Added so this file can be imported in one shot, without creating the
--- database by hand first. FK checks are disabled during import so the
--- DROP TABLE IF EXISTS lines below never fail on an existing install,
--- then re-enabled at the end. No data below this point was changed.
-SET FOREIGN_KEY_CHECKS = 0;
-
-CREATE DATABASE IF NOT EXISTS `enrollment_system` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-USE `enrollment_system`;
 
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -33,12 +24,10 @@ USE `enrollment_system`;
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Accounts`
+-- Table structure for table `accounts`
 --
 
-DROP TABLE IF EXISTS `Accounts`;
-
-CREATE TABLE `Accounts` (
+CREATE TABLE `accounts` (
   `account_id` int(11) NOT NULL,
   `username` varchar(225) NOT NULL,
   `email` varchar(255) DEFAULT NULL,
@@ -49,32 +38,31 @@ CREATE TABLE `Accounts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Accounts`
+-- Dumping data for table `accounts`
 --
 
-INSERT INTO `Accounts` (`account_id`, `username`, `password_hash`, `role`, `must_change_password`, `created_at`) VALUES
-(2, 'Admin', '$2y$10$pAW4arXLpS7wPSJrf3K7Ze42xc2mnRfy/XfwGx7fH3kQ2JaYevy3G', 'admin', 0, '2026-09-01 13:01:05'),
-(3, 'deguzman_justine', '$2y$10$w6wtrv4SrfktDBQQ3RqUOuhJBfRU0ycAzcliw.K6QHyt2o/Ot8T.G', 'registrar', 0, '2026-09-01 13:32:57'),
-(4, 'marturillas_ralphnico', '$2y$10$K9huyUun6Zi2s06D3lHUyum07oVBYjXnb7ZEWqpnXjZOHOy91JIyi', 'teacher', 0, '2026-09-01 13:34:25'),
-(5, 'deguzman_justine2', '$2y$10$5hkfxuiV53uLfj7r7xJq6uQXSCkrPoV/3TUzoWHGxyEQNIMdB4jC2', 'registrar', 0, '2026-09-02 00:39:54'),
-(6, 'juhoon', '$2y$10$cuHjreoOCIJo6Ggy64TS9.t3IfwIjMRuCormNP452R48mqWhJupTG', 'admission_staff', 0, '2026-09-02 00:42:10'),
-(7, '2026-00001', '$2y$10$BGI58WOB2Rw9LtgsL8Pxue4z6YnhH53VKNa1s0xuVUE03ED81uQ72', 'student', 0, '2026-09-02 01:12:44'),
-(8, 'sardua_glaiza', '$2y$10$lE64nNFyO6hACsjlSC7jzexwYckyirlw3Mvz4ZO8JCFw1Gm7IS2F2', 'registrar', 0, '2026-09-16 02:33:28'),
-(9, '2026-00002', '$2y$10$XVEWs.P/1hjyV0xxYXH/t.T6hc78gK5UTjo49.MicuPBO9VLU9HVa', 'student', 0, '2026-09-16 03:00:13'),
-(10, 'marturillas_ralphnico2', '$2y$10$zbHSp6wUvyxyK9ngef6D2u.MkacMIh.zzQ33kJ4L.MqYz4PsLV30.', 'teacher', 1, '2026-09-16 03:04:42'),
-(11, 'deguzman_justinedave', '$2y$10$IsswDZSysx5r8USwr0naYugBspf2h1TxnOIahS8P2dMAyFXWTdIYG', 'teacher', 0, '2026-09-16 03:05:36'),
-(12, '2026-00003', '$2y$10$GVznKTxrykSAJOJANM9.TOcrNN4rSPuhLkL.f2iCXC0bhviboUJMu', 'student', 0, '2026-09-16 12:01:59'),
-(13, '2026-00004', '$2y$10$MEqEnkjMFOiWu5KB6namX.OcbxkCNfLZDqlr.i1cXV4MkwgfBbfje', 'student', 0, '2026-09-19 23:16:59');
+INSERT INTO `accounts` (`account_id`, `username`, `email`, `password_hash`, `role`, `must_change_password`, `created_at`) VALUES
+(2, 'Admin', NULL, '$2y$10$pAW4arXLpS7wPSJrf3K7Ze42xc2mnRfy/XfwGx7fH3kQ2JaYevy3G', 'admin', 0, '2026-09-01 13:01:05'),
+(3, 'deguzman_justine', NULL, '$2y$10$w6wtrv4SrfktDBQQ3RqUOuhJBfRU0ycAzcliw.K6QHyt2o/Ot8T.G', 'registrar', 0, '2026-09-01 13:32:57'),
+(4, 'marturillas_ralphnico', NULL, '$2y$10$K9huyUun6Zi2s06D3lHUyum07oVBYjXnb7ZEWqpnXjZOHOy91JIyi', 'teacher', 0, '2026-09-01 13:34:25'),
+(5, 'deguzman_justine2', NULL, '$2y$10$5hkfxuiV53uLfj7r7xJq6uQXSCkrPoV/3TUzoWHGxyEQNIMdB4jC2', 'registrar', 0, '2026-09-02 00:39:54'),
+(6, 'juhoon', NULL, '$2y$10$cuHjreoOCIJo6Ggy64TS9.t3IfwIjMRuCormNP452R48mqWhJupTG', 'admission_staff', 0, '2026-09-02 00:42:10'),
+(7, '2026-00001', NULL, '$2y$10$BGI58WOB2Rw9LtgsL8Pxue4z6YnhH53VKNa1s0xuVUE03ED81uQ72', 'student', 0, '2026-09-02 01:12:44'),
+(8, 'sardua_glaiza', NULL, '$2y$10$lE64nNFyO6hACsjlSC7jzexwYckyirlw3Mvz4ZO8JCFw1Gm7IS2F2', 'registrar', 0, '2026-09-16 02:33:28'),
+(9, '2026-00002', NULL, '$2y$10$XVEWs.P/1hjyV0xxYXH/t.T6hc78gK5UTjo49.MicuPBO9VLU9HVa', 'student', 0, '2026-09-16 03:00:13'),
+(10, 'marturillas_ralphnico2', NULL, '$2y$10$zbHSp6wUvyxyK9ngef6D2u.MkacMIh.zzQ33kJ4L.MqYz4PsLV30.', 'teacher', 1, '2026-09-16 03:04:42'),
+(11, 'deguzman_justinedave', NULL, '$2y$10$IsswDZSysx5r8USwr0naYugBspf2h1TxnOIahS8P2dMAyFXWTdIYG', 'teacher', 0, '2026-09-16 03:05:36'),
+(12, '2026-00003', NULL, '$2y$10$GVznKTxrykSAJOJANM9.TOcrNN4rSPuhLkL.f2iCXC0bhviboUJMu', 'student', 0, '2026-09-16 12:01:59'),
+(13, '2026-00004', NULL, '$2y$10$MEqEnkjMFOiWu5KB6namX.OcbxkCNfLZDqlr.i1cXV4MkwgfBbfje', 'student', 0, '2026-09-19 23:16:59'),
+(15, 'diem_aren', 'Marturillas497@gmail.com', '$2y$10$/DP.yeD803LtqNJBt0S5WuepApLgcI5ufbs81f2/.vq4kEpDOode6', 'teacher', 1, '2026-09-26 05:51:52');
 
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Admission_Application`
+-- Table structure for table `admission_application`
 --
 
-DROP TABLE IF EXISTS `Admission_Application`;
-
-CREATE TABLE `Admission_Application` (
+CREATE TABLE `admission_application` (
   `application_id` int(11) NOT NULL,
   `applicant_last_name` varchar(255) NOT NULL,
   `applicant_first_name` varchar(255) NOT NULL,
@@ -112,10 +100,10 @@ CREATE TABLE `Admission_Application` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Admission_Application`
+-- Dumping data for table `admission_application`
 --
 
-INSERT INTO `Admission_Application` (`application_id`, `applicant_last_name`, `applicant_first_name`, `applicant_middle_name`, `applicant_suffix`, `birthdate`, `applicant_province`, `applicant_municipality`, `applicant_barangay`, `applicant_purok`, `father_last_name`, `father_first_name`, `father_middle_name`, `father_suffix`, `father_occupation`, `mother_maiden_name`, `mother_first_name`, `mother_middle_name`, `mother_occupation`, `contact_no`, `email_address`, `guardian_name`, `guardian_relationship`, `guardian_contact_no`, `student_type`, `program_id`, `application_date`, `status`, `validated_by`, `evaluated_year_level`, `date_validated`, `rejection_reason`, `rejected_by`, `date_rejected`) VALUES
+INSERT INTO `admission_application` (`application_id`, `applicant_last_name`, `applicant_first_name`, `applicant_middle_name`, `applicant_suffix`, `birthdate`, `applicant_province`, `applicant_municipality`, `applicant_barangay`, `applicant_purok`, `father_last_name`, `father_first_name`, `father_middle_name`, `father_suffix`, `father_occupation`, `mother_maiden_name`, `mother_first_name`, `mother_middle_name`, `mother_occupation`, `contact_no`, `email_address`, `guardian_name`, `guardian_relationship`, `guardian_contact_no`, `student_type`, `program_id`, `application_date`, `status`, `validated_by`, `evaluated_year_level`, `date_validated`, `rejection_reason`, `rejected_by`, `date_rejected`) VALUES
 (1, 'Apostol', 'Althea', NULL, NULL, '2004-09-14', 'Cotabato', 'Makilala', 'Bulakanon', NULL, 'Apostol', 'Beatriz', 'Mae', NULL, 'Farmer', 'Familgan', 'Beatriz', NULL, 'Housewife', '09096913123', 'beahfamilgandahan@gmail.com', 'Beatriz Dahan', NULL, '09096913123', 'freshman', 1, '2026-09-02', 'validated', 6, 1, '2026-09-02', NULL, NULL, NULL),
 (2, 'Dahan', 'Beatriz', NULL, NULL, '2005-06-01', 'Davao', 'Makilala', 'Bulakanon', '7 Apitong', 'Dahan', 'Beatriz', 'Mae', NULL, 'Farmer', 'Familgan', 'Beatriz', NULL, 'Housewife', '09096913123', 'beahfamilgandahan@gmail.com', 'Beatriz Dahan', 'Mother', '09096913123', 'freshman', 1, '2026-09-02', 'validated', 6, 1, '2026-09-02', NULL, NULL, NULL),
 (3, 'Marturillas', 'Ayumi Shane', 'Mae', NULL, '2013-08-17', 'Davao', 'Makilala', 'Kawayanon', NULL, 'Dahan', 'Beah', NULL, NULL, 'Business Owner', 'Quiboyen', 'Connie', 'Sanluis', 'Housewife', '09096913123', 'beahfamilgandahan@gmail.com', NULL, NULL, NULL, 'freshman', 1, '2026-09-02', 'validated', 6, 1, '2026-09-02', NULL, NULL, NULL),
@@ -126,12 +114,10 @@ INSERT INTO `Admission_Application` (`application_id`, `applicant_last_name`, `a
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Admission_Staff`
+-- Table structure for table `admission_staff`
 --
 
-DROP TABLE IF EXISTS `Admission_Staff`;
-
-CREATE TABLE `Admission_Staff` (
+CREATE TABLE `admission_staff` (
   `staff_id` int(11) NOT NULL,
   `account_id` int(11) NOT NULL,
   `last_name` varchar(45) NOT NULL,
@@ -143,12 +129,10 @@ CREATE TABLE `Admission_Staff` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Class_Offering`
+-- Table structure for table `class_offering`
 --
 
-DROP TABLE IF EXISTS `Class_Offering`;
-
-CREATE TABLE `Class_Offering` (
+CREATE TABLE `class_offering` (
   `offering_id` int(11) NOT NULL,
   `subject_id` int(11) NOT NULL,
   `teacher_id` int(11) NOT NULL,
@@ -161,10 +145,10 @@ CREATE TABLE `Class_Offering` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Class_Offering`
+-- Dumping data for table `class_offering`
 --
 
-INSERT INTO `Class_Offering` (`offering_id`, `subject_id`, `teacher_id`, `section_id`, `term_id`, `room`, `day_of_week`, `start_time`, `end_time`) VALUES
+INSERT INTO `class_offering` (`offering_id`, `subject_id`, `teacher_id`, `section_id`, `term_id`, `room`, `day_of_week`, `start_time`, `end_time`) VALUES
 (1, 1, 1, 1, 1, 'COMLAB 1', 'Monday', '07:30:00', '10:30:00'),
 (2, 2, 1, 1, 1, 'COMLAB 1', 'Monday', '10:30:00', '13:30:00'),
 (3, 3, 1, 1, 1, 'ROOM 1', 'Wednesday', '07:30:00', '10:30:00'),
@@ -189,12 +173,10 @@ INSERT INTO `Class_Offering` (`offering_id`, `subject_id`, `teacher_id`, `sectio
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Curriculum`
+-- Table structure for table `curriculum`
 --
 
-DROP TABLE IF EXISTS `Curriculum`;
-
-CREATE TABLE `Curriculum` (
+CREATE TABLE `curriculum` (
   `curriculum_id` int(11) NOT NULL,
   `program_id` int(11) NOT NULL,
   `curriculum_name` varchar(255) NOT NULL,
@@ -203,22 +185,20 @@ CREATE TABLE `Curriculum` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Curriculum`
+-- Dumping data for table `curriculum`
 --
 
-INSERT INTO `Curriculum` (`curriculum_id`, `program_id`, `curriculum_name`, `effective_year`, `is_active`) VALUES
+INSERT INTO `curriculum` (`curriculum_id`, `program_id`, `curriculum_name`, `effective_year`, `is_active`) VALUES
 (1, 1, 'BSIS Curriculum 2026', '2026', 1),
 (2, 6, 'BSM 2026', '2026', 1);
 
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Curriculum_subject`
+-- Table structure for table `curriculum_subject`
 --
 
-DROP TABLE IF EXISTS `Curriculum_subject`;
-
-CREATE TABLE `Curriculum_subject` (
+CREATE TABLE `curriculum_subject` (
   `curriculum_id` int(11) NOT NULL,
   `subject_id` int(11) NOT NULL,
   `year_level` int(11) NOT NULL,
@@ -226,10 +206,10 @@ CREATE TABLE `Curriculum_subject` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Curriculum_subject`
+-- Dumping data for table `curriculum_subject`
 --
 
-INSERT INTO `Curriculum_subject` (`curriculum_id`, `subject_id`, `year_level`, `semester`) VALUES
+INSERT INTO `curriculum_subject` (`curriculum_id`, `subject_id`, `year_level`, `semester`) VALUES
 (1, 1, 1, 1),
 (1, 2, 1, 1),
 (1, 3, 1, 1),
@@ -316,22 +296,20 @@ INSERT INTO `Curriculum_subject` (`curriculum_id`, `subject_id`, `year_level`, `
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Department`
+-- Table structure for table `department`
 --
 
-DROP TABLE IF EXISTS `Department`;
-
-CREATE TABLE `Department` (
+CREATE TABLE `department` (
   `department_id` int(11) NOT NULL,
   `department_name` varchar(255) NOT NULL,
   `max_units_per_term` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Department`
+-- Dumping data for table `department`
 --
 
-INSERT INTO `Department` (`department_id`, `department_name`, `max_units_per_term`) VALUES
+INSERT INTO `department` (`department_id`, `department_name`, `max_units_per_term`) VALUES
 (1, 'COLLEGE OF TECHNOLOGY AND INFORMATION SYSTEMS', 25),
 (2, 'COLLEGE OF CRIMINAL JUSTICE AND EDUCATION', 25),
 (3, 'COLLEGE OF PUBLIC ADMINISTRATION', 25),
@@ -342,24 +320,22 @@ INSERT INTO `Department` (`department_id`, `department_name`, `max_units_per_ter
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Enrolled_subject`
+-- Table structure for table `enrolled_subject`
 --
 
-DROP TABLE IF EXISTS `Enrolled_subject`;
-
-CREATE TABLE `Enrolled_subject` (
+CREATE TABLE `enrolled_subject` (
   `enrolled_subject_id` int(11) NOT NULL,
   `enrollment_id` int(11) NOT NULL,
   `offering_id` int(11) NOT NULL,
   `grade` decimal(3,2) DEFAULT NULL,
   `remarks` varchar(255) DEFAULT NULL
-) ;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Enrolled_subject`
+-- Dumping data for table `enrolled_subject`
 --
 
-INSERT INTO `Enrolled_subject` (`enrolled_subject_id`, `enrollment_id`, `offering_id`, `grade`, `remarks`) VALUES
+INSERT INTO `enrolled_subject` (`enrolled_subject_id`, `enrollment_id`, `offering_id`, `grade`, `remarks`) VALUES
 (1, 1, 1, 1.50, 'Passed'),
 (2, 1, 2, 5.00, 'Failed'),
 (3, 1, 3, 1.00, 'Passed'),
@@ -376,12 +352,10 @@ INSERT INTO `Enrolled_subject` (`enrolled_subject_id`, `enrollment_id`, `offerin
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Enrollment`
+-- Table structure for table `enrollment`
 --
 
-DROP TABLE IF EXISTS `Enrollment`;
-
-CREATE TABLE `Enrollment` (
+CREATE TABLE `enrollment` (
   `enrollment_id` int(11) NOT NULL,
   `student_id` int(11) NOT NULL,
   `term_id` int(11) NOT NULL,
@@ -397,10 +371,10 @@ CREATE TABLE `Enrollment` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Enrollment`
+-- Dumping data for table `enrollment`
 --
 
-INSERT INTO `Enrollment` (`enrollment_id`, `student_id`, `term_id`, `curriculum_id`, `section_id`, `year_level`, `date_enrolled`, `status`, `rejection_reason`, `approved_by`, `student_standing`, `source_shift_request_id`) VALUES
+INSERT INTO `enrollment` (`enrollment_id`, `student_id`, `term_id`, `curriculum_id`, `section_id`, `year_level`, `date_enrolled`, `status`, `rejection_reason`, `approved_by`, `student_standing`, `source_shift_request_id`) VALUES
 (1, 1, 1, 1, 1, 1, '2026-09-02 09:12:44', 'approved', NULL, 3, 'irregular', NULL),
 (2, 2, 1, 2, 3, 1, '2026-09-16 11:00:13', 'approved', NULL, 8, 'regular', NULL),
 (3, 3, 1, 2, 3, 1, '2026-09-16 20:01:59', 'approved', NULL, 8, 'regular', NULL),
@@ -409,12 +383,10 @@ INSERT INTO `Enrollment` (`enrollment_id`, `student_id`, `term_id`, `curriculum_
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Enrollment_Document`
+-- Table structure for table `enrollment_document`
 --
 
-DROP TABLE IF EXISTS `Enrollment_Document`;
-
-CREATE TABLE `Enrollment_Document` (
+CREATE TABLE `enrollment_document` (
   `document_id` int(11) NOT NULL,
   `document_type` varchar(45) NOT NULL,
   `status` enum('submitted','verified','missing') NOT NULL,
@@ -423,10 +395,10 @@ CREATE TABLE `Enrollment_Document` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Enrollment_Document`
+-- Dumping data for table `enrollment_document`
 --
 
-INSERT INTO `Enrollment_Document` (`document_id`, `document_type`, `status`, `verified_by`, `application_id`) VALUES
+INSERT INTO `enrollment_document` (`document_id`, `document_type`, `status`, `verified_by`, `application_id`) VALUES
 (1, 'Birth Certificate', 'verified', 3, 2),
 (2, 'Form 137 / Report Card', 'verified', 3, 2),
 (3, 'Certificate of Good Moral Character', 'missing', NULL, 2),
@@ -447,21 +419,19 @@ INSERT INTO `Enrollment_Document` (`document_id`, `document_type`, `status`, `ve
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Prerequisite`
+-- Table structure for table `prerequisite`
 --
 
-DROP TABLE IF EXISTS `Prerequisite`;
-
-CREATE TABLE `Prerequisite` (
+CREATE TABLE `prerequisite` (
   `subject_id` int(11) NOT NULL,
   `prerequisite_subject_id` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Prerequisite`
+-- Dumping data for table `prerequisite`
 --
 
-INSERT INTO `Prerequisite` (`subject_id`, `prerequisite_subject_id`) VALUES
+INSERT INTO `prerequisite` (`subject_id`, `prerequisite_subject_id`) VALUES
 (10, 3),
 (18, 4),
 (26, 18),
@@ -483,12 +453,10 @@ INSERT INTO `Prerequisite` (`subject_id`, `prerequisite_subject_id`) VALUES
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Program`
+-- Table structure for table `program`
 --
 
-DROP TABLE IF EXISTS `Program`;
-
-CREATE TABLE `Program` (
+CREATE TABLE `program` (
   `program_id` int(11) NOT NULL,
   `department_id` int(11) NOT NULL,
   `program_code` varchar(255) NOT NULL,
@@ -496,10 +464,10 @@ CREATE TABLE `Program` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Program`
+-- Dumping data for table `program`
 --
 
-INSERT INTO `Program` (`program_id`, `department_id`, `program_code`, `program_name`) VALUES
+INSERT INTO `program` (`program_id`, `department_id`, `program_code`, `program_name`) VALUES
 (1, 1, 'BSIS', 'BACHELOR OF SCIENCE IN INFORMATION SYSTEMS'),
 (2, 2, 'BSCRIM', 'BACHELOR OF SCIENCE IN CRIMINOLOGY'),
 (3, 3, 'BPA', 'BACHELOR OF SCIENCE IN PUBLIC ADMINISTRATION'),
@@ -510,12 +478,10 @@ INSERT INTO `Program` (`program_id`, `department_id`, `program_code`, `program_n
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Program_shift_request`
+-- Table structure for table `program_shift_request`
 --
 
-DROP TABLE IF EXISTS `Program_shift_request`;
-
-CREATE TABLE `Program_shift_request` (
+CREATE TABLE `program_shift_request` (
   `request_id` int(11) NOT NULL,
   `student_id` int(11) NOT NULL,
   `from_curriculum_id` int(11) NOT NULL,
@@ -534,12 +500,10 @@ CREATE TABLE `Program_shift_request` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Registrar`
+-- Table structure for table `registrar`
 --
 
-DROP TABLE IF EXISTS `Registrar`;
-
-CREATE TABLE `Registrar` (
+CREATE TABLE `registrar` (
   `registrar_id` int(11) NOT NULL,
   `account_id` int(11) NOT NULL,
   `last_name` varchar(255) NOT NULL,
@@ -551,10 +515,10 @@ CREATE TABLE `Registrar` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Registrar`
+-- Dumping data for table `registrar`
 --
 
-INSERT INTO `Registrar` (`registrar_id`, `account_id`, `last_name`, `first_name`, `middle_name`, `suffix`, `department_id`, `created_by`) VALUES
+INSERT INTO `registrar` (`registrar_id`, `account_id`, `last_name`, `first_name`, `middle_name`, `suffix`, `department_id`, `created_by`) VALUES
 (1, 3, 'De Guzman', 'Justine', NULL, NULL, 1, 2),
 (2, 5, 'De Guzman', 'Justine', NULL, NULL, 3, 2),
 (3, 8, 'Sardua', 'Glaiza', NULL, NULL, 6, 2);
@@ -562,12 +526,10 @@ INSERT INTO `Registrar` (`registrar_id`, `account_id`, `last_name`, `first_name`
 -- --------------------------------------------------------
 
 --
--- Table structure for table `School_term`
+-- Table structure for table `school_term`
 --
 
-DROP TABLE IF EXISTS `School_term`;
-
-CREATE TABLE `School_term` (
+CREATE TABLE `school_term` (
   `term_id` int(11) NOT NULL,
   `school_year` varchar(45) NOT NULL,
   `semester` int(11) NOT NULL,
@@ -577,10 +539,10 @@ CREATE TABLE `School_term` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `School_term`
+-- Dumping data for table `school_term`
 --
 
-INSERT INTO `School_term` (`term_id`, `school_year`, `semester`, `status`, `closed_by`, `date_closed`) VALUES
+INSERT INTO `school_term` (`term_id`, `school_year`, `semester`, `status`, `closed_by`, `date_closed`) VALUES
 (1, '2026-2027', 1, 'closed', 3, '2026-09-20 06:47:39'),
 (2, '2026-2027', 2, 'closed', 3, '2026-09-20 06:56:59'),
 (3, '2026-2027', 1, 'ongoing', NULL, NULL);
@@ -588,12 +550,10 @@ INSERT INTO `School_term` (`term_id`, `school_year`, `semester`, `status`, `clos
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Section`
+-- Table structure for table `section`
 --
 
-DROP TABLE IF EXISTS `Section`;
-
-CREATE TABLE `Section` (
+CREATE TABLE `section` (
   `section_id` int(11) NOT NULL,
   `section_name` varchar(45) NOT NULL,
   `year_level` int(11) NOT NULL,
@@ -602,10 +562,10 @@ CREATE TABLE `Section` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Section`
+-- Dumping data for table `section`
 --
 
-INSERT INTO `Section` (`section_id`, `section_name`, `year_level`, `program_id`, `max_slots`) VALUES
+INSERT INTO `section` (`section_id`, `section_name`, `year_level`, `program_id`, `max_slots`) VALUES
 (1, 'A', 1, 1, 45),
 (2, 'B', 1, 1, 45),
 (3, 'A', 1, 6, 30),
@@ -618,12 +578,10 @@ INSERT INTO `Section` (`section_id`, `section_name`, `year_level`, `program_id`,
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Shift_credit`
+-- Table structure for table `shift_credit`
 --
 
-DROP TABLE IF EXISTS `Shift_credit`;
-
-CREATE TABLE `Shift_credit` (
+CREATE TABLE `shift_credit` (
   `shift_credit_id` int(11) NOT NULL,
   `request_id` int(11) NOT NULL,
   `enrolled_subject_id` int(11) NOT NULL,
@@ -635,12 +593,10 @@ CREATE TABLE `Shift_credit` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Student`
+-- Table structure for table `student`
 --
 
-DROP TABLE IF EXISTS `Student`;
-
-CREATE TABLE `Student` (
+CREATE TABLE `student` (
   `student_id` int(11) NOT NULL,
   `student_id_number` varchar(45) NOT NULL,
   `account_id` int(11) NOT NULL,
@@ -673,10 +629,10 @@ CREATE TABLE `Student` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Student`
+-- Dumping data for table `student`
 --
 
-INSERT INTO `Student` (`student_id`, `student_id_number`, `account_id`, `application_id`, `last_name`, `first_name`, `middle_name`, `suffix`, `birthdate`, `province`, `municipality`, `barangay`, `purok`, `father_last_name`, `father_first_name`, `father_middle_name`, `father_suffix`, `mother_maiden_name`, `mother_first_name`, `mother_middle_name`, `father_occupation`, `mother_occupation`, `contact_no`, `email_address`, `guardian_name`, `guardian_relationship`, `guardian_contact_no`, `student_type`, `overall_status`) VALUES
+INSERT INTO `student` (`student_id`, `student_id_number`, `account_id`, `application_id`, `last_name`, `first_name`, `middle_name`, `suffix`, `birthdate`, `province`, `municipality`, `barangay`, `purok`, `father_last_name`, `father_first_name`, `father_middle_name`, `father_suffix`, `mother_maiden_name`, `mother_first_name`, `mother_middle_name`, `father_occupation`, `mother_occupation`, `contact_no`, `email_address`, `guardian_name`, `guardian_relationship`, `guardian_contact_no`, `student_type`, `overall_status`) VALUES
 (1, '2026-00001', 7, 2, 'Dahan', 'Beatriz', NULL, NULL, '2005-06-01', 'Davao', 'Makilala', 'Bulakanon', '7 Apitong', 'Dahan', 'Beatriz', 'Mae', NULL, 'Familgan', 'Beatriz', NULL, 'Farmer', 'Housewife', '09096913123', 'beahfamilgandahan@gmail.com', 'Beatriz Dahan', 'Mother', '09096913123', 'freshman', 'active'),
 (2, '2026-00002', 9, 5, 'De Guzman', 'Justine', 'Albino', NULL, '2004-12-16', 'Cotabato', 'Kidapawan', 'Manongol', '3-B Avocado', NULL, NULL, NULL, NULL, 'Abecia', 'Mary', 'Albino', NULL, 'Beautician', '09050882058', 'dabehave@gmail.com', 'Mary Abecia', 'Mother', '09050882058', 'transferee', 'active'),
 (3, '2026-00003', 12, 6, 'Bais', 'Ayumi Shane', 'Marturillas', NULL, '2013-08-17', 'Cotabato', 'Makilala', 'Luna Sur', '8', NULL, NULL, NULL, NULL, 'Marturillas', 'Rosalyn', 'Dizon', NULL, 'Housewife', '09074174906', 'Bais@gmail.com', 'Nico Marturillas', 'Brother', '09074174906', 'transferee', 'active'),
@@ -685,12 +641,10 @@ INSERT INTO `Student` (`student_id`, `student_id_number`, `account_id`, `applica
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Subject`
+-- Table structure for table `subject`
 --
 
-DROP TABLE IF EXISTS `Subject`;
-
-CREATE TABLE `Subject` (
+CREATE TABLE `subject` (
   `subject_id` int(11) NOT NULL,
   `subject_code` varchar(45) NOT NULL,
   `subject_name` varchar(255) NOT NULL,
@@ -699,10 +653,10 @@ CREATE TABLE `Subject` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Subject`
+-- Dumping data for table `subject`
 --
 
-INSERT INTO `Subject` (`subject_id`, `subject_code`, `subject_name`, `subject_description`, `units`) VALUES
+INSERT INTO `subject` (`subject_id`, `subject_code`, `subject_name`, `subject_description`, `units`) VALUES
 (1, 'CC101', 'Introduction to Computing', 'An Introduction to Computing course serves as a foundational gateway to the world of technology, providing students with a broad overview of computer systems, digital literacy, and the fundamental principles of computer science.', 3),
 (2, 'COMPROG 1', 'Computer Programming 1', 'Introduces the fundamental concepts, structures, and methodologies required to design, write, test, and debug high-quality software programs.', 3),
 (3, 'GE 101', 'Understanding the Self', 'Understanding the Self course is a foundational general education subject designed to guide students through a journey of self-discovery, identity exploration, and personal growth. Unlike purely technical or clinical psychology courses, it takes an interd', 3),
@@ -806,12 +760,10 @@ INSERT INTO `Subject` (`subject_id`, `subject_code`, `subject_name`, `subject_de
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Teacher`
+-- Table structure for table `teacher`
 --
 
-DROP TABLE IF EXISTS `Teacher`;
-
-CREATE TABLE `Teacher` (
+CREATE TABLE `teacher` (
   `teacher_id` int(11) NOT NULL,
   `account_id` int(11) NOT NULL,
   `last_name` varchar(255) NOT NULL,
@@ -822,36 +774,35 @@ CREATE TABLE `Teacher` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Teacher`
+-- Dumping data for table `teacher`
 --
 
-INSERT INTO `Teacher` (`teacher_id`, `account_id`, `last_name`, `first_name`, `middle_name`, `suffix`, `department_id`) VALUES
+INSERT INTO `teacher` (`teacher_id`, `account_id`, `last_name`, `first_name`, `middle_name`, `suffix`, `department_id`) VALUES
 (1, 4, 'Marturillas', 'Ralph Nico', NULL, NULL, 1),
 (2, 10, 'Marturillas', 'Ralph Nico', NULL, NULL, 6),
-(3, 11, 'De Guzman', 'Justine Dave', NULL, NULL, 6);
+(3, 11, 'De Guzman', 'Justine Dave', NULL, NULL, 6),
+(5, 15, 'Diem', 'Aren', NULL, NULL, 1);
 
 -- --------------------------------------------------------
 
 --
--- Table structure for table `Transferee_credit`
+-- Table structure for table `transferee_credit`
 --
 
-DROP TABLE IF EXISTS `Transferee_credit`;
-
-CREATE TABLE `Transferee_credit` (
+CREATE TABLE `transferee_credit` (
   `credit_id` int(11) NOT NULL,
   `student_id` int(11) NOT NULL,
   `previous_school` varchar(255) NOT NULL,
   `previous_subject_description` varchar(255) DEFAULT NULL,
   `previous_grade` decimal(3,2) NOT NULL,
   `credited_subject_id` int(11) NOT NULL
-) ;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
--- Dumping data for table `Transferee_credit`
+-- Dumping data for table `transferee_credit`
 --
 
-INSERT INTO `Transferee_credit` (`credit_id`, `student_id`, `previous_school`, `previous_subject_description`, `previous_grade`, `credited_subject_id`) VALUES
+INSERT INTO `transferee_credit` (`credit_id`, `student_id`, `previous_school`, `previous_subject_description`, `previous_grade`, `credited_subject_id`) VALUES
 (1, 3, 'USM KCC', 'Understanding the Self', 1.50, 3),
 (2, 3, 'USM KCC', 'Physical Education', 1.50, 4);
 
@@ -860,32 +811,32 @@ INSERT INTO `Transferee_credit` (`credit_id`, `student_id`, `previous_school`, `
 --
 
 --
--- Indexes for table `Accounts`
+-- Indexes for table `accounts`
 --
-ALTER TABLE `Accounts`
+ALTER TABLE `accounts`
   ADD PRIMARY KEY (`account_id`),
   ADD UNIQUE KEY `username_UNIQUE` (`username`);
 
 --
--- Indexes for table `Admission_Application`
+-- Indexes for table `admission_application`
 --
-ALTER TABLE `Admission_Application`
+ALTER TABLE `admission_application`
   ADD PRIMARY KEY (`application_id`),
   ADD KEY `program_id_idx` (`program_id`),
   ADD KEY `validated_by_idx` (`validated_by`),
   ADD KEY `rejected_by_idx` (`rejected_by`);
 
 --
--- Indexes for table `Admission_Staff`
+-- Indexes for table `admission_staff`
 --
-ALTER TABLE `Admission_Staff`
+ALTER TABLE `admission_staff`
   ADD PRIMARY KEY (`staff_id`),
   ADD KEY `account_id_fk_idx` (`account_id`);
 
 --
--- Indexes for table `Class_Offering`
+-- Indexes for table `class_offering`
 --
-ALTER TABLE `Class_Offering`
+ALTER TABLE `class_offering`
   ADD PRIMARY KEY (`offering_id`),
   ADD KEY `subject_id_idx` (`subject_id`),
   ADD KEY `teacher_id_idx` (`teacher_id`),
@@ -893,38 +844,38 @@ ALTER TABLE `Class_Offering`
   ADD KEY `term_id_idx` (`term_id`);
 
 --
--- Indexes for table `Curriculum`
+-- Indexes for table `curriculum`
 --
-ALTER TABLE `Curriculum`
+ALTER TABLE `curriculum`
   ADD PRIMARY KEY (`curriculum_id`),
   ADD KEY `program_id_idx` (`program_id`);
 
 --
--- Indexes for table `Curriculum_subject`
+-- Indexes for table `curriculum_subject`
 --
-ALTER TABLE `Curriculum_subject`
+ALTER TABLE `curriculum_subject`
   ADD PRIMARY KEY (`curriculum_id`,`subject_id`),
   ADD KEY `subject_id_idx` (`subject_id`);
 
 --
--- Indexes for table `Department`
+-- Indexes for table `department`
 --
-ALTER TABLE `Department`
+ALTER TABLE `department`
   ADD PRIMARY KEY (`department_id`);
 
 --
--- Indexes for table `Enrolled_subject`
+-- Indexes for table `enrolled_subject`
 --
-ALTER TABLE `Enrolled_subject`
+ALTER TABLE `enrolled_subject`
   ADD PRIMARY KEY (`enrolled_subject_id`),
   ADD UNIQUE KEY `enrollment_offering_UNIQUE` (`offering_id`,`enrollment_id`),
   ADD KEY `enrollment_id_idx` (`enrollment_id`),
   ADD KEY `offering_id_idx` (`offering_id`);
 
 --
--- Indexes for table `Enrollment`
+-- Indexes for table `enrollment`
 --
-ALTER TABLE `Enrollment`
+ALTER TABLE `enrollment`
   ADD PRIMARY KEY (`enrollment_id`),
   ADD UNIQUE KEY `student_term_UNIQUE` (`student_id`,`term_id`),
   ADD KEY `student_id_idx` (`student_id`),
@@ -935,30 +886,30 @@ ALTER TABLE `Enrollment`
   ADD KEY `enrollment_shift_request_fk_idx` (`source_shift_request_id`);
 
 --
--- Indexes for table `Enrollment_Document`
+-- Indexes for table `enrollment_document`
 --
-ALTER TABLE `Enrollment_Document`
+ALTER TABLE `enrollment_document`
   ADD PRIMARY KEY (`document_id`),
   ADD KEY `application_id_fk_idx` (`application_id`);
 
 --
--- Indexes for table `Prerequisite`
+-- Indexes for table `prerequisite`
 --
-ALTER TABLE `Prerequisite`
+ALTER TABLE `prerequisite`
   ADD PRIMARY KEY (`subject_id`,`prerequisite_subject_id`),
   ADD KEY `prerequisite_subject_id_idx` (`prerequisite_subject_id`);
 
 --
--- Indexes for table `Program`
+-- Indexes for table `program`
 --
-ALTER TABLE `Program`
+ALTER TABLE `program`
   ADD PRIMARY KEY (`program_id`),
   ADD KEY `department_id_idx` (`department_id`);
 
 --
--- Indexes for table `Program_shift_request`
+-- Indexes for table `program_shift_request`
 --
-ALTER TABLE `Program_shift_request`
+ALTER TABLE `program_shift_request`
   ADD PRIMARY KEY (`request_id`),
   ADD KEY `student_id_idx` (`student_id`),
   ADD KEY `from_curriculum_id_idx` (`from_curriculum_id`),
@@ -968,32 +919,33 @@ ALTER TABLE `Program_shift_request`
   ADD KEY `target_section_id_idx` (`target_section_id`);
 
 --
--- Indexes for table `Registrar`
+-- Indexes for table `registrar`
 --
-ALTER TABLE `Registrar`
+ALTER TABLE `registrar`
   ADD PRIMARY KEY (`registrar_id`),
   ADD UNIQUE KEY `account_id_UNIQUE` (`account_id`),
   ADD KEY `department_id_idx` (`department_id`),
   ADD KEY `created_by_fk_idx` (`created_by`);
 
 --
--- Indexes for table `School_term`
+-- Indexes for table `school_term`
 --
-ALTER TABLE `School_term`
+ALTER TABLE `school_term`
   ADD PRIMARY KEY (`term_id`),
   ADD KEY `closed_by_idx` (`closed_by`);
 
 --
--- Indexes for table `Section`
+-- Indexes for table `section`
 --
-ALTER TABLE `Section`
+ALTER TABLE `section`
   ADD PRIMARY KEY (`section_id`),
+  ADD UNIQUE KEY `uq_section_program_year_name` (`program_id`,`year_level`,`section_name`),
   ADD KEY `program_id_idx` (`program_id`);
 
 --
--- Indexes for table `Shift_credit`
+-- Indexes for table `shift_credit`
 --
-ALTER TABLE `Shift_credit`
+ALTER TABLE `shift_credit`
   ADD PRIMARY KEY (`shift_credit_id`),
   ADD KEY `request_id_idx` (`request_id`),
   ADD KEY `enrolled_subject_id_idx` (`enrolled_subject_id`),
@@ -1001,9 +953,9 @@ ALTER TABLE `Shift_credit`
   ADD KEY `evaluated_by_idx` (`evaluated_by`);
 
 --
--- Indexes for table `Student`
+-- Indexes for table `student`
 --
-ALTER TABLE `Student`
+ALTER TABLE `student`
   ADD PRIMARY KEY (`student_id`),
   ADD UNIQUE KEY `account_id_UNIQUE` (`account_id`),
   ADD UNIQUE KEY `student_id_number_UNIQUE` (`student_id_number`),
@@ -1012,24 +964,24 @@ ALTER TABLE `Student`
   ADD KEY `application_id_idx` (`application_id`);
 
 --
--- Indexes for table `Subject`
+-- Indexes for table `subject`
 --
-ALTER TABLE `Subject`
+ALTER TABLE `subject`
   ADD PRIMARY KEY (`subject_id`);
 
 --
--- Indexes for table `Teacher`
+-- Indexes for table `teacher`
 --
-ALTER TABLE `Teacher`
+ALTER TABLE `teacher`
   ADD PRIMARY KEY (`teacher_id`),
   ADD UNIQUE KEY `account_id_UNIQUE` (`account_id`),
   ADD KEY `account_id_idx` (`account_id`),
   ADD KEY `department_id_idx` (`department_id`);
 
 --
--- Indexes for table `Transferee_credit`
+-- Indexes for table `transferee_credit`
 --
-ALTER TABLE `Transferee_credit`
+ALTER TABLE `transferee_credit`
   ADD PRIMARY KEY (`credit_id`),
   ADD KEY `student_id_idx` (`student_id`),
   ADD KEY `credited_subject_id_idx` (`credited_subject_id`);
@@ -1039,259 +991,257 @@ ALTER TABLE `Transferee_credit`
 --
 
 --
--- AUTO_INCREMENT for table `Accounts`
+-- AUTO_INCREMENT for table `accounts`
 --
-ALTER TABLE `Accounts`
-  MODIFY `account_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+ALTER TABLE `accounts`
+  MODIFY `account_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
--- AUTO_INCREMENT for table `Admission_Application`
+-- AUTO_INCREMENT for table `admission_application`
 --
-ALTER TABLE `Admission_Application`
+ALTER TABLE `admission_application`
   MODIFY `application_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
--- AUTO_INCREMENT for table `Admission_Staff`
+-- AUTO_INCREMENT for table `admission_staff`
 --
-ALTER TABLE `Admission_Staff`
+ALTER TABLE `admission_staff`
   MODIFY `staff_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `Class_Offering`
+-- AUTO_INCREMENT for table `class_offering`
 --
-ALTER TABLE `Class_Offering`
+ALTER TABLE `class_offering`
   MODIFY `offering_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=21;
 
 --
--- AUTO_INCREMENT for table `Curriculum`
+-- AUTO_INCREMENT for table `curriculum`
 --
-ALTER TABLE `Curriculum`
+ALTER TABLE `curriculum`
   MODIFY `curriculum_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
--- AUTO_INCREMENT for table `Department`
+-- AUTO_INCREMENT for table `department`
 --
-ALTER TABLE `Department`
+ALTER TABLE `department`
   MODIFY `department_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
--- AUTO_INCREMENT for table `Enrolled_subject`
+-- AUTO_INCREMENT for table `enrolled_subject`
 --
-ALTER TABLE `Enrolled_subject`
-  MODIFY `enrolled_subject_id` int(11) NOT NULL AUTO_INCREMENT;
+ALTER TABLE `enrolled_subject`
+  MODIFY `enrolled_subject_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=13;
 
 --
--- AUTO_INCREMENT for table `Enrollment`
+-- AUTO_INCREMENT for table `enrollment`
 --
-ALTER TABLE `Enrollment`
+ALTER TABLE `enrollment`
   MODIFY `enrollment_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
--- AUTO_INCREMENT for table `Enrollment_Document`
+-- AUTO_INCREMENT for table `enrollment_document`
 --
-ALTER TABLE `Enrollment_Document`
+ALTER TABLE `enrollment_document`
   MODIFY `document_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
--- AUTO_INCREMENT for table `Program`
+-- AUTO_INCREMENT for table `program`
 --
-ALTER TABLE `Program`
+ALTER TABLE `program`
   MODIFY `program_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
--- AUTO_INCREMENT for table `Program_shift_request`
+-- AUTO_INCREMENT for table `program_shift_request`
 --
-ALTER TABLE `Program_shift_request`
+ALTER TABLE `program_shift_request`
   MODIFY `request_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `Registrar`
+-- AUTO_INCREMENT for table `registrar`
 --
-ALTER TABLE `Registrar`
+ALTER TABLE `registrar`
   MODIFY `registrar_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
--- AUTO_INCREMENT for table `School_term`
+-- AUTO_INCREMENT for table `school_term`
 --
-ALTER TABLE `School_term`
+ALTER TABLE `school_term`
   MODIFY `term_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
--- AUTO_INCREMENT for table `Section`
+-- AUTO_INCREMENT for table `section`
 --
-ALTER TABLE `Section`
+ALTER TABLE `section`
   MODIFY `section_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
--- AUTO_INCREMENT for table `Shift_credit`
+-- AUTO_INCREMENT for table `shift_credit`
 --
-ALTER TABLE `Shift_credit`
+ALTER TABLE `shift_credit`
   MODIFY `shift_credit_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `Student`
+-- AUTO_INCREMENT for table `student`
 --
-ALTER TABLE `Student`
+ALTER TABLE `student`
   MODIFY `student_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
--- AUTO_INCREMENT for table `Subject`
+-- AUTO_INCREMENT for table `subject`
 --
-ALTER TABLE `Subject`
+ALTER TABLE `subject`
   MODIFY `subject_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=101;
 
 --
--- AUTO_INCREMENT for table `Teacher`
+-- AUTO_INCREMENT for table `teacher`
 --
-ALTER TABLE `Teacher`
-  MODIFY `teacher_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+ALTER TABLE `teacher`
+  MODIFY `teacher_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
--- AUTO_INCREMENT for table `Transferee_credit`
+-- AUTO_INCREMENT for table `transferee_credit`
 --
-ALTER TABLE `Transferee_credit`
-  MODIFY `credit_id` int(11) NOT NULL AUTO_INCREMENT;
+ALTER TABLE `transferee_credit`
+  MODIFY `credit_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- Constraints for dumped tables
 --
 
 --
--- Constraints for table `Admission_Application`
+-- Constraints for table `admission_application`
 --
-ALTER TABLE `Admission_Application`
-  ADD CONSTRAINT `fk_admission_application_program_id` FOREIGN KEY (`program_id`) REFERENCES `Program` (`program_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_admission_application_rejected_by` FOREIGN KEY (`rejected_by`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_admission_application_validated_by` FOREIGN KEY (`validated_by`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `admission_application`
+  ADD CONSTRAINT `fk_admission_application_program_id` FOREIGN KEY (`program_id`) REFERENCES `program` (`program_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_admission_application_rejected_by` FOREIGN KEY (`rejected_by`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_admission_application_validated_by` FOREIGN KEY (`validated_by`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Admission_Staff`
+-- Constraints for table `admission_staff`
 --
-ALTER TABLE `Admission_Staff`
-  ADD CONSTRAINT `fk_admission_staff_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `admission_staff`
+  ADD CONSTRAINT `fk_admission_staff_account_id` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Class_Offering`
+-- Constraints for table `class_offering`
 --
-ALTER TABLE `Class_Offering`
-  ADD CONSTRAINT `fk_class_offering_section_id` FOREIGN KEY (`section_id`) REFERENCES `Section` (`section_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_class_offering_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_class_offering_teacher_id` FOREIGN KEY (`teacher_id`) REFERENCES `Teacher` (`teacher_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_class_offering_term_id` FOREIGN KEY (`term_id`) REFERENCES `School_term` (`term_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `class_offering`
+  ADD CONSTRAINT `fk_class_offering_section_id` FOREIGN KEY (`section_id`) REFERENCES `section` (`section_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_class_offering_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_class_offering_teacher_id` FOREIGN KEY (`teacher_id`) REFERENCES `teacher` (`teacher_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_class_offering_term_id` FOREIGN KEY (`term_id`) REFERENCES `school_term` (`term_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Curriculum`
+-- Constraints for table `curriculum`
 --
-ALTER TABLE `Curriculum`
-  ADD CONSTRAINT `fk_curriculum_program_id` FOREIGN KEY (`program_id`) REFERENCES `Program` (`program_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `curriculum`
+  ADD CONSTRAINT `fk_curriculum_program_id` FOREIGN KEY (`program_id`) REFERENCES `program` (`program_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Curriculum_subject`
+-- Constraints for table `curriculum_subject`
 --
-ALTER TABLE `Curriculum_subject`
-  ADD CONSTRAINT `fk_curriculum_subject_curriculum_id` FOREIGN KEY (`curriculum_id`) REFERENCES `Curriculum` (`curriculum_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_curriculum_subject_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `curriculum_subject`
+  ADD CONSTRAINT `fk_curriculum_subject_curriculum_id` FOREIGN KEY (`curriculum_id`) REFERENCES `curriculum` (`curriculum_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_curriculum_subject_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Enrolled_subject`
+-- Constraints for table `enrolled_subject`
 --
-ALTER TABLE `Enrolled_subject`
-  ADD CONSTRAINT `fk_enrolled_subject_enrollment_id` FOREIGN KEY (`enrollment_id`) REFERENCES `Enrollment` (`enrollment_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_enrolled_subject_offering_id` FOREIGN KEY (`offering_id`) REFERENCES `Class_Offering` (`offering_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `enrolled_subject`
+  ADD CONSTRAINT `fk_enrolled_subject_enrollment_id` FOREIGN KEY (`enrollment_id`) REFERENCES `enrollment` (`enrollment_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_enrolled_subject_offering_id` FOREIGN KEY (`offering_id`) REFERENCES `class_offering` (`offering_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Enrollment`
+-- Constraints for table `enrollment`
 --
-ALTER TABLE `Enrollment`
-  ADD CONSTRAINT `fk_enrollment_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_enrollment_curriculum_id` FOREIGN KEY (`curriculum_id`) REFERENCES `Curriculum` (`curriculum_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_enrollment_section_id` FOREIGN KEY (`section_id`) REFERENCES `Section` (`section_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_enrollment_source_shift_request_id` FOREIGN KEY (`source_shift_request_id`) REFERENCES `Program_shift_request` (`request_id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_enrollment_student_id` FOREIGN KEY (`student_id`) REFERENCES `Student` (`student_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_enrollment_term_id` FOREIGN KEY (`term_id`) REFERENCES `School_term` (`term_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `enrollment`
+  ADD CONSTRAINT `fk_enrollment_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_enrollment_curriculum_id` FOREIGN KEY (`curriculum_id`) REFERENCES `curriculum` (`curriculum_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_enrollment_section_id` FOREIGN KEY (`section_id`) REFERENCES `section` (`section_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_enrollment_source_shift_request_id` FOREIGN KEY (`source_shift_request_id`) REFERENCES `program_shift_request` (`request_id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_enrollment_student_id` FOREIGN KEY (`student_id`) REFERENCES `student` (`student_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_enrollment_term_id` FOREIGN KEY (`term_id`) REFERENCES `school_term` (`term_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Enrollment_Document`
+-- Constraints for table `enrollment_document`
 --
-ALTER TABLE `Enrollment_Document`
-  ADD CONSTRAINT `fk_enrollment_document_application_id` FOREIGN KEY (`application_id`) REFERENCES `Admission_Application` (`application_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
+ALTER TABLE `enrollment_document`
+  ADD CONSTRAINT `fk_enrollment_document_application_id` FOREIGN KEY (`application_id`) REFERENCES `admission_application` (`application_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 --
--- Constraints for table `Prerequisite`
+-- Constraints for table `prerequisite`
 --
-ALTER TABLE `Prerequisite`
-  ADD CONSTRAINT `fk_prerequisite_prerequisite_subject_id` FOREIGN KEY (`prerequisite_subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_prerequisite_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `prerequisite`
+  ADD CONSTRAINT `fk_prerequisite_prerequisite_subject_id` FOREIGN KEY (`prerequisite_subject_id`) REFERENCES `subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_prerequisite_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Program`
+-- Constraints for table `program`
 --
-ALTER TABLE `Program`
-  ADD CONSTRAINT `fk_program_department_id` FOREIGN KEY (`department_id`) REFERENCES `Department` (`department_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `program`
+  ADD CONSTRAINT `fk_program_department_id` FOREIGN KEY (`department_id`) REFERENCES `department` (`department_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Program_shift_request`
+-- Constraints for table `program_shift_request`
 --
-ALTER TABLE `Program_shift_request`
-  ADD CONSTRAINT `fk_program_shift_request_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_program_shift_request_effective_term_id` FOREIGN KEY (`effective_term_id`) REFERENCES `School_term` (`term_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_program_shift_request_from_curriculum_id` FOREIGN KEY (`from_curriculum_id`) REFERENCES `Curriculum` (`curriculum_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_program_shift_request_student_id` FOREIGN KEY (`student_id`) REFERENCES `Student` (`student_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_program_shift_request_target_section_id` FOREIGN KEY (`target_section_id`) REFERENCES `Section` (`section_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_program_shift_request_to_curriculum_id` FOREIGN KEY (`to_curriculum_id`) REFERENCES `Curriculum` (`curriculum_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `program_shift_request`
+  ADD CONSTRAINT `fk_program_shift_request_approved_by` FOREIGN KEY (`approved_by`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_program_shift_request_effective_term_id` FOREIGN KEY (`effective_term_id`) REFERENCES `school_term` (`term_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_program_shift_request_from_curriculum_id` FOREIGN KEY (`from_curriculum_id`) REFERENCES `curriculum` (`curriculum_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_program_shift_request_student_id` FOREIGN KEY (`student_id`) REFERENCES `student` (`student_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_program_shift_request_target_section_id` FOREIGN KEY (`target_section_id`) REFERENCES `section` (`section_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_program_shift_request_to_curriculum_id` FOREIGN KEY (`to_curriculum_id`) REFERENCES `curriculum` (`curriculum_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Registrar`
+-- Constraints for table `registrar`
 --
-ALTER TABLE `Registrar`
-  ADD CONSTRAINT `fk_registrar_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_registrar_created_by` FOREIGN KEY (`created_by`) REFERENCES `Accounts` (`account_id`) ON DELETE SET NULL ON UPDATE NO ACTION,
-  ADD CONSTRAINT `fk_registrar_department_id` FOREIGN KEY (`department_id`) REFERENCES `Department` (`department_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `registrar`
+  ADD CONSTRAINT `fk_registrar_account_id` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_registrar_created_by` FOREIGN KEY (`created_by`) REFERENCES `accounts` (`account_id`) ON DELETE SET NULL ON UPDATE NO ACTION,
+  ADD CONSTRAINT `fk_registrar_department_id` FOREIGN KEY (`department_id`) REFERENCES `department` (`department_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `School_term`
+-- Constraints for table `school_term`
 --
-ALTER TABLE `School_term`
-  ADD CONSTRAINT `fk_school_term_closed_by` FOREIGN KEY (`closed_by`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `school_term`
+  ADD CONSTRAINT `fk_school_term_closed_by` FOREIGN KEY (`closed_by`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Section`
+-- Constraints for table `section`
 --
-ALTER TABLE `Section`
-  ADD CONSTRAINT `fk_section_program_id` FOREIGN KEY (`program_id`) REFERENCES `Program` (`program_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `section`
+  ADD CONSTRAINT `fk_section_program_id` FOREIGN KEY (`program_id`) REFERENCES `program` (`program_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Shift_credit`
+-- Constraints for table `shift_credit`
 --
-ALTER TABLE `Shift_credit`
-  ADD CONSTRAINT `fk_shift_credit_credited_subject_id` FOREIGN KEY (`credited_subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_shift_credit_enrolled_subject_id` FOREIGN KEY (`enrolled_subject_id`) REFERENCES `Enrolled_subject` (`enrolled_subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_shift_credit_evaluated_by` FOREIGN KEY (`evaluated_by`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_shift_credit_request_id` FOREIGN KEY (`request_id`) REFERENCES `Program_shift_request` (`request_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `shift_credit`
+  ADD CONSTRAINT `fk_shift_credit_credited_subject_id` FOREIGN KEY (`credited_subject_id`) REFERENCES `subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_shift_credit_enrolled_subject_id` FOREIGN KEY (`enrolled_subject_id`) REFERENCES `enrolled_subject` (`enrolled_subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_shift_credit_evaluated_by` FOREIGN KEY (`evaluated_by`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_shift_credit_request_id` FOREIGN KEY (`request_id`) REFERENCES `program_shift_request` (`request_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Student`
+-- Constraints for table `student`
 --
-ALTER TABLE `Student`
-  ADD CONSTRAINT `fk_student_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_student_application_id` FOREIGN KEY (`application_id`) REFERENCES `Admission_Application` (`application_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `student`
+  ADD CONSTRAINT `fk_student_account_id` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_student_application_id` FOREIGN KEY (`application_id`) REFERENCES `admission_application` (`application_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Teacher`
+-- Constraints for table `teacher`
 --
-ALTER TABLE `Teacher`
-  ADD CONSTRAINT `fk_teacher_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_teacher_department_id` FOREIGN KEY (`department_id`) REFERENCES `Department` (`department_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `teacher`
+  ADD CONSTRAINT `fk_teacher_account_id` FOREIGN KEY (`account_id`) REFERENCES `accounts` (`account_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_teacher_department_id` FOREIGN KEY (`department_id`) REFERENCES `department` (`department_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 
 --
--- Constraints for table `Transferee_credit`
+-- Constraints for table `transferee_credit`
 --
-ALTER TABLE `Transferee_credit`
-  ADD CONSTRAINT `fk_transferee_credit_credited_subject_id` FOREIGN KEY (`credited_subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_transferee_credit_student_id` FOREIGN KEY (`student_id`) REFERENCES `Student` (`student_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
+ALTER TABLE `transferee_credit`
+  ADD CONSTRAINT `fk_transferee_credit_credited_subject_id` FOREIGN KEY (`credited_subject_id`) REFERENCES `subject` (`subject_id`) ON DELETE NO ACTION ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_transferee_credit_student_id` FOREIGN KEY (`student_id`) REFERENCES `student` (`student_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
 COMMIT;
-
-SET FOREIGN_KEY_CHECKS = 1;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
