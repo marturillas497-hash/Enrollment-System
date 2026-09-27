@@ -71,7 +71,8 @@ CREATE TABLE `Section` (
   `program_id` INT NOT NULL,
   `max_slots` INT NOT NULL,
   PRIMARY KEY (`section_id`),
-  KEY `program_id_idx` (`program_id`)
+  KEY `program_id_idx` (`program_id`),
+  UNIQUE KEY `uq_section_program_year_name` (`program_id`, `year_level`, `section_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE `Teacher` (

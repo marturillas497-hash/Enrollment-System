@@ -64,20 +64,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if ($error === '') {
-            if ($id) {
-                $stmt = $pdo->prepare(
-                    'UPDATE Section SET section_name=:name, year_level=:yl, program_id=:pid, max_slots=:slots
-                     WHERE section_id=:id'
-                );
-                $stmt->execute(['name' => $name, 'yl' => $yearLevel, 'pid' => $programId, 'slots' => $maxSlots, 'id' => $id]);
-                $message = "Section #$id updated.";
-            } else {
-                $stmt = $pdo->prepare(
-                    'INSERT INTO Section (section_name, year_level, program_id, max_slots)
-                     VALUES (:name, :yl, :pid, :slots)'
-                );
-                $stmt->execute(['name' => $name, 'yl' => $yearLevel, 'pid' => $programId, 'slots' => $maxSlots]);
-                $message = 'Section added.';
+            try {
+                if ($id) {
+                    $stmt = $pdo->prepare(
+                        'UPDATE Section SET section_name=:name, year_level=:yl, program_id=:pid, max_slots=:slots
+                         WHERE section_id=:id'
+                    );
+                    $stmt->execute(['name' => $name, 'yl' => $yearLevel, 'pid' => $programId, 'slots' => $maxSlots, 'id' => $id]);
+                    $message = "Section #$id updated.";
+                } else {
+                    $stmt = $pdo->prepare(
+                        'INSERT INTO Section (section_name, year_level, program_id, max_slots)
+                         VALUES (:name, :yl, :pid, :slots)'
+                    );
+                    $stmt->execute(['name' => $name, 'yl' => $yearLevel, 'pid' => $programId, 'slots' => $maxSlots]);
+                    $message = 'Section added.';
+                }
+            } catch (Exception $e) {
+                // Backstop for the DB-level uq_section_program_year_name constraint — the
+                // dupCheck above catches this in the normal case, this catches a race
+                // between two simultaneous saves, or a duplicate created by a direct DB edit.
+                $error = "A section named \"$name\" already exists at Year $yearLevel for this program.";
+                $editId = $id ?: null;
             }
             }
         }
