@@ -165,6 +165,32 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     $offeringIds = $_POST['offerings'] ?? []; // array of selected offering_id
     $docStatuses = $_POST['doc_status'] ?? []; // [document_type => 'verified'|'missing']
 
+    /*
+     * Never trust offerings[] directly — re-derive which offering_ids are actually
+     * valid for this curriculum/year/semester/section/term and intersect against
+     * that, same principle as the ownership check in grade-entry.php.
+     */
+    $termRow = $pdo->prepare('SELECT semester FROM School_term WHERE term_id = :id');
+    $termRow->execute(['id' => $termId]);
+    $termRow = $termRow->fetch();
+
+    $validStmt = $pdo->prepare(
+        'SELECT co.offering_id
+         FROM Curriculum_subject cs
+         JOIN Class_Offering co ON co.subject_id = cs.subject_id
+            AND co.section_id = :section_id AND co.term_id = :term_id
+         WHERE cs.curriculum_id = :curriculum_id
+           AND cs.year_level = :year_level
+           AND cs.semester = :semester'
+    );
+    $validStmt->execute([
+        'section_id' => $sectionId, 'term_id' => $termId,
+        'curriculum_id' => $curriculumId, 'year_level' => $yearLevel,
+        'semester' => $termRow['semester'] ?? null,
+    ]);
+    $validOfferingIds = array_map('intval', array_column($validStmt->fetchAll(), 'offering_id'));
+    $offeringIds = array_values(array_intersect(array_map('intval', $offeringIds), $validOfferingIds));
+
     try {
         $pdo->beginTransaction();
 

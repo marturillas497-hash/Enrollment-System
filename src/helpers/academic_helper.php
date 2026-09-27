@@ -97,3 +97,33 @@ function hasCompletedSubject(PDO $pdo, int $studentId, int $subjectId): bool
     ]);
     return $stmt->fetch() !== false;
 }
+
+/**
+ * True if $subjectId already (directly or transitively) requires $prereqId as
+ * a prerequisite — meaning adding "subjectId requires prereqId" would close a
+ * loop. Walks the full Prerequisite graph (BFS), not just the direct pair, so
+ * it catches chains of any length, not only A<->B.
+ */
+function prerequisiteWouldCreateCycle(PDO $pdo, int $subjectId, int $prereqId): bool
+{
+    $stmt = $pdo->prepare('SELECT prerequisite_subject_id FROM Prerequisite WHERE subject_id = :id');
+
+    $visited = [];
+    $queue = [$prereqId];
+    while ($queue) {
+        $current = array_shift($queue);
+        if ($current === $subjectId) {
+            return true;
+        }
+        if (isset($visited[$current])) {
+            continue;
+        }
+        $visited[$current] = true;
+
+        $stmt->execute(['id' => $current]);
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $next) {
+            $queue[] = (int)$next;
+        }
+    }
+    return false;
+}

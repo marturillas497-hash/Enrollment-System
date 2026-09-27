@@ -36,6 +36,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $pdo->beginTransaction();
 
+                /*
+                 * The clone_from dropdown only ever lists this department's own
+                 * curricula, but never trust a raw ID — re-check server-side, same
+                 * principle as the ownCheck used by add_subject/remove_subject below.
+                 */
+                if ($cloneFrom !== '') {
+                    $cloneCheck = $pdo->prepare(
+                        'SELECT 1 FROM Curriculum c JOIN Program p ON p.program_id = c.program_id
+                         WHERE c.curriculum_id = :id AND p.department_id = :dept'
+                    );
+                    $cloneCheck->execute(['id' => $cloneFrom, 'dept' => $myDepartmentId]);
+                    if ($cloneCheck->fetch() === false) {
+                        throw new Exception('The curriculum to clone from is not in your department.');
+                    }
+                }
+
                 // New curriculum becomes the active one; retire any other active curriculum for this program.
                 $pdo->prepare('UPDATE Curriculum SET is_active = 0 WHERE program_id = :pid')
                     ->execute(['pid' => $programId]);

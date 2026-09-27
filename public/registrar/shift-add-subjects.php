@@ -38,14 +38,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_s
     if ($offeringId === '') {
         $error = 'Select a subject to add.';
     } else {
-        // Re-check prerequisites server-side — the disabled option in the dropdown
-        // below is a UI convenience, not the actual enforcement.
-        $subjectStmt = $pdo->prepare('SELECT subject_id FROM Class_Offering WHERE offering_id = :id');
-        $subjectStmt->execute(['id' => $offeringId]);
+        /*
+         * Confirm the offering actually belongs to THIS enrollment's own term/section
+         * before anything else — never trust the raw offering_id, same as the
+         * ownership check in grade-entry.php. Only then re-check prerequisites
+         * server-side (the disabled dropdown option is a UI convenience, not the
+         * actual enforcement).
+         */
+        $subjectStmt = $pdo->prepare(
+            'SELECT subject_id FROM Class_Offering
+             WHERE offering_id = :id AND term_id = :term_id AND section_id = :section_id'
+        );
+        $subjectStmt->execute([
+            'id' => $offeringId, 'term_id' => $enrollment['term_id'], 'section_id' => $enrollment['section_id'],
+        ]);
         $offeringSubjectId = $subjectStmt->fetchColumn();
 
-        $missingPrereqs = [];
-        if ($offeringSubjectId) {
+        if (!$offeringSubjectId) {
+            $error = 'That offering is not scheduled for this student\'s term/section.';
+        } else {
+            $missingPrereqs = [];
             $prereqStmt = $pdo->prepare(
                 'SELECT r.subject_id, r.subject_code
                  FROM Prerequisite p JOIN Subject r ON r.subject_id = p.prerequisite_subject_id
@@ -57,17 +69,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_s
                     $missingPrereqs[] = $req['subject_code'];
                 }
             }
-        }
 
-        if ($missingPrereqs) {
-            $error = 'Missing prerequisite(s): ' . implode(', ', $missingPrereqs) . '.';
-        } else {
-            try {
-                $pdo->prepare('INSERT INTO Enrolled_subject (enrollment_id, offering_id) VALUES (:eid, :oid)')
-                    ->execute(['eid' => $enrollmentId, 'oid' => $offeringId]);
-                $message = 'Subject added.';
-            } catch (Exception $e) {
-                $error = 'Could not add — this subject may already be on the roster.';
+            if ($missingPrereqs) {
+                $error = 'Missing prerequisite(s): ' . implode(', ', $missingPrereqs) . '.';
+            } else {
+                try {
+                    $pdo->prepare('INSERT INTO Enrolled_subject (enrollment_id, offering_id) VALUES (:eid, :oid)')
+                        ->execute(['eid' => $enrollmentId, 'oid' => $offeringId]);
+                    $message = 'Subject added.';
+                } catch (Exception $e) {
+                    $error = 'Could not add — this subject may already be on the roster.';
+                }
             }
         }
     }

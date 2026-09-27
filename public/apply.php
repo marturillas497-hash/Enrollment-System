@@ -47,61 +47,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $programId   = $f('program_id');
 
     // Required fields mirror the schema's NOT NULL columns.
+    $validProgramIds = array_column($programs, 'program_id');
     if ($lastName === '' || $firstName === '' || $birthdate === ''
         || !in_array($studentType, ['freshman', 'transferee'], true) || $programId === '') {
         $error = 'Please fill in your name, birthdate, student type, and program.';
+    } elseif (!in_array((int)$programId, $validProgramIds, true)) {
+        // Never trust the raw program_id — the dropdown only ever lists real
+        // programs, but a tampered request could send anything.
+        $error = 'Please select a valid program.';
     } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = 'That email address doesn\'t look valid.';
     } else {
-        $stmt = $pdo->prepare(
-            'INSERT INTO Admission_Application (
-                applicant_last_name, applicant_first_name, applicant_middle_name, applicant_suffix,
-                birthdate, applicant_province, applicant_municipality, applicant_barangay, applicant_purok,
-                father_last_name, father_first_name, father_middle_name, father_suffix, father_occupation,
-                mother_maiden_name, mother_first_name, mother_middle_name, mother_occupation,
-                contact_no, email_address, guardian_name, guardian_relationship, guardian_contact_no,
-                student_type, program_id, application_date, status
-            ) VALUES (
-                :last_name, :first_name, :middle_name, :suffix,
-                :birthdate, :province, :municipality, :barangay, :purok,
-                :father_last_name, :father_first_name, :father_middle_name, :father_suffix, :father_occupation,
-                :mother_maiden_name, :mother_first_name, :mother_middle_name, :mother_occupation,
-                :contact_no, :email_address, :guardian_name, :guardian_relationship, :guardian_contact_no,
-                :student_type, :program_id, CURDATE(), \'pending\'
-            )'
-        );
+        try {
+            $stmt = $pdo->prepare(
+                'INSERT INTO Admission_Application (
+                    applicant_last_name, applicant_first_name, applicant_middle_name, applicant_suffix,
+                    birthdate, applicant_province, applicant_municipality, applicant_barangay, applicant_purok,
+                    father_last_name, father_first_name, father_middle_name, father_suffix, father_occupation,
+                    mother_maiden_name, mother_first_name, mother_middle_name, mother_occupation,
+                    contact_no, email_address, guardian_name, guardian_relationship, guardian_contact_no,
+                    student_type, program_id, application_date, status
+                ) VALUES (
+                    :last_name, :first_name, :middle_name, :suffix,
+                    :birthdate, :province, :municipality, :barangay, :purok,
+                    :father_last_name, :father_first_name, :father_middle_name, :father_suffix, :father_occupation,
+                    :mother_maiden_name, :mother_first_name, :mother_middle_name, :mother_occupation,
+                    :contact_no, :email_address, :guardian_name, :guardian_relationship, :guardian_contact_no,
+                    :student_type, :program_id, CURDATE(), \'pending\'
+                )'
+            );
 
-        $stmt->execute([
-            'last_name' => $lastName, 'first_name' => $firstName,
-            'middle_name' => $middleName !== '' ? $middleName : null,
-            'suffix' => $suffix !== '' ? $suffix : null,
-            'birthdate' => $birthdate,
-            'province' => $province !== '' ? $province : null,
-            'municipality' => $municipality !== '' ? $municipality : null,
-            'barangay' => $barangay !== '' ? $barangay : null,
-            'purok' => $purok !== '' ? $purok : null,
-            'father_last_name' => $fatherLast !== '' ? $fatherLast : null,
-            'father_first_name' => $fatherFirst !== '' ? $fatherFirst : null,
-            'father_middle_name' => $fatherMid !== '' ? $fatherMid : null,
-            'father_suffix' => $fatherSuf !== '' ? $fatherSuf : null,
-            'father_occupation' => $fatherOcc !== '' ? $fatherOcc : null,
-            'mother_maiden_name' => $motherMaiden !== '' ? $motherMaiden : null,
-            'mother_first_name' => $motherFirst !== '' ? $motherFirst : null,
-            'mother_middle_name' => $motherMid !== '' ? $motherMid : null,
-            'mother_occupation' => $motherOcc !== '' ? $motherOcc : null,
-            'contact_no' => $contactNo !== '' ? $contactNo : null,
-            'email_address' => $email !== '' ? $email : null,
-            'guardian_name' => $guardianName !== '' ? $guardianName : null,
-            'guardian_relationship' => $guardianRel !== '' ? $guardianRel : null,
-            'guardian_contact_no' => $guardianContact !== '' ? $guardianContact : null,
-            'student_type' => $studentType,
-            'program_id' => $programId,
-        ]);
+            $stmt->execute([
+                'last_name' => $lastName, 'first_name' => $firstName,
+                'middle_name' => $middleName !== '' ? $middleName : null,
+                'suffix' => $suffix !== '' ? $suffix : null,
+                'birthdate' => $birthdate,
+                'province' => $province !== '' ? $province : null,
+                'municipality' => $municipality !== '' ? $municipality : null,
+                'barangay' => $barangay !== '' ? $barangay : null,
+                'purok' => $purok !== '' ? $purok : null,
+                'father_last_name' => $fatherLast !== '' ? $fatherLast : null,
+                'father_first_name' => $fatherFirst !== '' ? $fatherFirst : null,
+                'father_middle_name' => $fatherMid !== '' ? $fatherMid : null,
+                'father_suffix' => $fatherSuf !== '' ? $fatherSuf : null,
+                'father_occupation' => $fatherOcc !== '' ? $fatherOcc : null,
+                'mother_maiden_name' => $motherMaiden !== '' ? $motherMaiden : null,
+                'mother_first_name' => $motherFirst !== '' ? $motherFirst : null,
+                'mother_middle_name' => $motherMid !== '' ? $motherMid : null,
+                'mother_occupation' => $motherOcc !== '' ? $motherOcc : null,
+                'contact_no' => $contactNo !== '' ? $contactNo : null,
+                'email_address' => $email !== '' ? $email : null,
+                'guardian_name' => $guardianName !== '' ? $guardianName : null,
+                'guardian_relationship' => $guardianRel !== '' ? $guardianRel : null,
+                'guardian_contact_no' => $guardianContact !== '' ? $guardianContact : null,
+                'student_type' => $studentType,
+                'program_id' => $programId,
+            ]);
 
-        $success = [
-            'application_id' => $pdo->lastInsertId(),
-            'name' => "$firstName $lastName",
-        ];
+            $success = [
+                'application_id' => $pdo->lastInsertId(),
+                'name' => "$firstName $lastName",
+            ];
+        } catch (Exception $e) {
+            // Never surface $e->getMessage() here — unlike the logged-in registrar
+            // screens, this page is public with no login, so a raw DB error string
+            // must never reach an anonymous visitor.
+            $error = 'Something went wrong submitting your application. Please check your entries and try again.';
+        }
     }
 }
 ?>

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -19,6 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Both subjects are required.';
         } elseif ($subjectId === $prereqId) {
             $error = 'A subject cannot be its own prerequisite.';
+        } elseif (prerequisiteWouldCreateCycle($pdo, (int)$subjectId, (int)$prereqId)) {
+            $error = 'That would create a circular prerequisite chain.';
         } else {
             try {
                 $pdo->prepare(
