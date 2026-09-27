@@ -1,0 +1,32 @@
+.schedule-grid {
+    display: grid;
+    border: 1px solid #dde6fb;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
+}
+.sg-corner {
+    grid-column: 1; grid-row: 1;
+    border-bottom: 1px solid #dde6fb; border-right: 1px solid #dde6fb;
+    background: #f4f6fb;
+}
+.sg-day-header {
+    grid-row: 1; padding: 10px 6px; text-align: center; font-weight: 700; color: #1e3a8a;
+    background: #f4f6fb; border-bottom: 1px solid #dde6fb; border-right: 1px solid #dde6fb;
+}
+.sg-day-header:last-child { border-right: none; }
+.sg-time-label {
+    grid-column: 1; padding: 2px 6px 0; font-size: 0.72rem; color: #6b7280;
+    border-right: 1px solid #dde6fb; text-align: right; white-space: nowrap;
+}
+.sg-cell {
+    border-right: 1px solid #eef1f8; border-bottom: 1px solid #eef1f8;
+}
+.sg-cell:last-child { border-right: none; }
+.sg-event {
+    margin: 2px; padding: 4px 6px; border-radius: 8px; background: #1e3a8a; color: #fff;
+    font-size: 0.72rem; line-height: 1.3; overflow: hidden;
+    display: flex; flex-direction: column; box-shadow: 2px 2px 6px rgba(0,0,0,0.15); z-index: 1;
+}
+.sg-event strong { font-size: 0.78rem; }
+.sg-event span { opacity: 0.9; }

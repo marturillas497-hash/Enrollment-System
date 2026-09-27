@@ -67,3 +67,33 @@ function sectionOccupancy(PDO $pdo, int $sectionId): int
     $stmt->execute(['sid' => $sectionId]);
     return (int)$stmt->fetchColumn();
 }
+
+/**
+ * True if this student has completed the given subject well enough to satisfy it
+ * as a prerequisite — an actual MIST grade (hasPassedSubject), an internal shift
+ * credit (which only ever references an already-passed subject per the PRD), or a
+ * transferee credit graded 3.00 or better at their previous school. hasPassedSubject
+ * alone misses the latter two, which matters for shift-add-subjects.php and
+ * transferee-credit.php's "add remaining subject" pickers.
+ */
+function hasCompletedSubject(PDO $pdo, int $studentId, int $subjectId): bool
+{
+    if (hasPassedSubject($pdo, $studentId, $subjectId)) {
+        return true;
+    }
+
+    $stmt = $pdo->prepare(
+        "SELECT 1 FROM Shift_credit sc
+         JOIN Program_shift_request psr ON psr.request_id = sc.request_id
+         WHERE psr.student_id = :sid1 AND sc.credited_subject_id = :subid1
+         UNION
+         SELECT 1 FROM Transferee_credit tc
+         WHERE tc.student_id = :sid2 AND tc.credited_subject_id = :subid2 AND tc.previous_grade <= 3.00
+         LIMIT 1"
+    );
+    $stmt->execute([
+        'sid1' => $studentId, 'subid1' => $subjectId,
+        'sid2' => $studentId, 'subid2' => $subjectId,
+    ]);
+    return $stmt->fetch() !== false;
+}

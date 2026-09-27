@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -37,12 +38,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_s
     if ($offeringId === '') {
         $error = 'Select a subject to add.';
     } else {
-        try {
-            $pdo->prepare('INSERT INTO Enrolled_subject (enrollment_id, offering_id) VALUES (:eid, :oid)')
-                ->execute(['eid' => $enrollmentId, 'oid' => $offeringId]);
-            $message = 'Subject added.';
-        } catch (Exception $e) {
-            $error = 'Could not add — this subject may already be on the roster.';
+        // Re-check prerequisites server-side — the disabled option in the dropdown
+        // below is a UI convenience, not the actual enforcement.
+        $subjectStmt = $pdo->prepare('SELECT subject_id FROM Class_Offering WHERE offering_id = :id');
+        $subjectStmt->execute(['id' => $offeringId]);
+        $offeringSubjectId = $subjectStmt->fetchColumn();
+
+        $missingPrereqs = [];
+        if ($offeringSubjectId) {
+            $prereqStmt = $pdo->prepare(
+                'SELECT r.subject_id, r.subject_code
+                 FROM Prerequisite p JOIN Subject r ON r.subject_id = p.prerequisite_subject_id
+                 WHERE p.subject_id = :sid'
+            );
+            $prereqStmt->execute(['sid' => $offeringSubjectId]);
+            foreach ($prereqStmt->fetchAll() as $req) {
+                if (!hasCompletedSubject($pdo, (int)$enrollment['student_id'], (int)$req['subject_id'])) {
+                    $missingPrereqs[] = $req['subject_code'];
+                }
+            }
+        }
+
+        if ($missingPrereqs) {
+            $error = 'Missing prerequisite(s): ' . implode(', ', $missingPrereqs) . '.';
+        } else {
+            try {
+                $pdo->prepare('INSERT INTO Enrolled_subject (enrollment_id, offering_id) VALUES (:eid, :oid)')
+                    ->execute(['eid' => $enrollmentId, 'oid' => $offeringId]);
+                $message = 'Subject added.';
+            } catch (Exception $e) {
+                $error = 'Could not add — this subject may already be on the roster.';
+            }
         }
     }
 }
@@ -69,7 +95,7 @@ if ($enrollment['source_shift_request_id']) {
 }
 
 $stmt = $pdo->prepare(
-    'SELECT co.offering_id, sub.subject_code, sub.subject_name
+    'SELECT co.offering_id, sub.subject_id, sub.subject_code, sub.subject_name
      FROM Class_Offering co
      JOIN Subject sub ON sub.subject_id = co.subject_id
      WHERE co.term_id = :term_id AND co.section_id = :section_id
@@ -79,7 +105,27 @@ $stmt = $pdo->prepare(
      ORDER BY sub.subject_code'
 );
 $stmt->execute(['term_id' => $enrollment['term_id'], 'section_id' => $enrollment['section_id'], 'eid' => $enrollmentId]);
-$availableOfferings = $stmt->fetchAll();
+$candidateOfferings = $stmt->fetchAll();
+
+// Same prerequisite pattern as enroll-irregular.php — attach missing prereqs (if any)
+// to each candidate so the dropdown below can grey it out.
+$prereqStmt = $pdo->prepare(
+    'SELECT r.subject_id, r.subject_code
+     FROM Prerequisite p JOIN Subject r ON r.subject_id = p.prerequisite_subject_id
+     WHERE p.subject_id = :sid'
+);
+$availableOfferings = [];
+foreach ($candidateOfferings as $o) {
+    $prereqStmt->execute(['sid' => $o['subject_id']]);
+    $missing = [];
+    foreach ($prereqStmt->fetchAll() as $req) {
+        if (!hasCompletedSubject($pdo, (int)$enrollment['student_id'], (int)$req['subject_id'])) {
+            $missing[] = $req['subject_code'];
+        }
+    }
+    $o['missing_prereqs'] = $missing;
+    $availableOfferings[] = $o;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -141,14 +187,17 @@ $availableOfferings = $stmt->fetchAll();
                 <select class="form-select" name="offering_id" required>
                     <option value="">Select</option>
                     <?php foreach ($availableOfferings as $o): ?>
-                        <option value="<?= $o['offering_id'] ?>"><?= htmlspecialchars($o['subject_code'] . ' — ' . $o['subject_name']) ?></option>
+                        <option value="<?= $o['offering_id'] ?>" <?= $o['missing_prereqs'] ? 'disabled' : '' ?>>
+                            <?= htmlspecialchars($o['subject_code'] . ' — ' . $o['subject_name']) ?><?php if ($o['missing_prereqs']): ?>
+                                (needs <?= htmlspecialchars(implode(', ', $o['missing_prereqs'])) ?>)
+                            <?php endif; ?>
+                        </option>
                     <?php endforeach; ?>
                 </select>
                 <button type="submit" class="btn btn-primary text-nowrap">Add Subject</button>
             </div>
             <div class="form-text">
-                Prerequisite checking isn't built into this list yet — verify manually against the
-                curriculum until the irregular-enrollment prerequisite filter is in place.
+                Subjects with an unmet prerequisite are greyed out and re-checked server-side on submit.
             </div>
         </div>
     </form>
