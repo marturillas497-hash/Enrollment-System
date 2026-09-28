@@ -91,6 +91,11 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute(['oid' => $offeringId]);
 $roster = $stmt->fetchAll();
+
+$gradedCount = 0;
+foreach ($roster as $r) {
+    if ($r['grade'] !== null) { $gradedCount++; }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -105,6 +110,10 @@ $roster = $stmt->fetchAll();
 <div class="container">
     <h1 class="h4 mb-1"><?= htmlspecialchars($offering['subject_code'] . ' — ' . $offering['subject_name']) ?></h1>
     <p class="text-muted mb-3">Section <?= htmlspecialchars($offering['section_name']) ?></p>
+
+    <?php if (!empty($roster)): ?>
+        <?= progressMeter($gradedCount, count($roster), 'students graded') ?>
+    <?php endif; ?>
 
     <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
@@ -122,8 +131,8 @@ $roster = $stmt->fetchAll();
                     <td><?= htmlspecialchars($r['student_id_number']) ?></td>
                     <td><?= htmlspecialchars($r['first_name'] . ' ' . $r['last_name']) ?></td>
                     <td>
-                        <input type="text" class="form-control form-control-sm" <?= $termLocked ? 'disabled' : '' ?>
-                               name="grade[<?= $r['enrolled_subject_id'] ?>]"
+                        <input type="text" class="form-control form-control-sm grade-input" <?= $termLocked ? 'disabled' : '' ?>
+                               name="grade[<?= $r['enrolled_subject_id'] ?>]" data-original="<?= htmlspecialchars($r['grade'] ?? '') ?>"
                                value="<?= htmlspecialchars($r['grade'] ?? '') ?>" placeholder="1.00–5.00">
                     </td>
                     <td>
@@ -143,9 +152,49 @@ $roster = $stmt->fetchAll();
         </table>
 </div>
         <?php if (!empty($roster) && !$termLocked): ?>
-            <button type="submit" class="btn btn-primary">Save Grades</button>
+            <button type="submit" class="btn btn-primary" id="save-grades-btn">Save Grades</button>
+            <span class="text-muted small ms-2" id="unsaved-note" hidden>You have unsaved changes.</span>
         <?php endif; ?>
     </form>
 </div>
+<script>
+    // Out-of-range check as the teacher types (1.00–5.00), and a heads-up for unsaved edits.
+    // This mirrors, not replaces, the same range check the server already enforces on save.
+    (function () {
+        var form = document.querySelector('form');
+        if (!form) { return; }
+        var unsavedNote = document.getElementById('unsaved-note');
+        var dirty = false;
+
+        function checkRange(input) {
+            var v = input.value.trim();
+            var n = parseFloat(v);
+            var outOfRange = v !== '' && (!/^\d+(\.\d+)?$/.test(v) || n < 1 || n > 5);
+            input.classList.toggle('is-invalid', outOfRange);
+        }
+
+        document.querySelectorAll('.grade-input').forEach(function (input) {
+            checkRange(input);
+            input.addEventListener('input', function () {
+                checkRange(input);
+                if (input.value !== input.dataset.original) {
+                    dirty = true;
+                    if (unsavedNote) { unsavedNote.hidden = false; }
+                }
+            });
+        });
+        document.querySelectorAll('select[name^="remarks"]').forEach(function (select) {
+            select.addEventListener('change', function () {
+                dirty = true;
+                if (unsavedNote) { unsavedNote.hidden = false; }
+            });
+        });
+
+        form.addEventListener('submit', function () { dirty = false; });
+        window.addEventListener('beforeunload', function (e) {
+            if (dirty) { e.preventDefault(); e.returnValue = ''; }
+        });
+    })();
+</script>
 </body>
 </html>

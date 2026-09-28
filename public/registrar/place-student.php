@@ -384,6 +384,8 @@ if (!$application && !$created) {
 
     <?php if ($created): ?>
 
+        <?= stepper(['Review and assign', 'Confirm', 'Done'], 4) ?>
+
         <?php if ($mailWarning): ?>
             <div class="alert alert-warning"><?= htmlspecialchars($mailWarning) ?></div>
         <?php endif; ?>
@@ -419,6 +421,8 @@ if (!$application && !$created) {
         </a>
 
     <?php elseif ($application && $stage === 'confirm'): ?>
+
+        <?= stepper(['Review and assign', 'Confirm', 'Done'], 2) ?>
 
         <h1 class="h4 mb-3">
             Confirm Placement — <?= htmlspecialchars($application['applicant_first_name'] . ' ' . $application['applicant_last_name']) ?>
@@ -506,6 +510,8 @@ if (!$application && !$created) {
         </form>
 
     <?php elseif ($application): ?>
+
+        <?= stepper(['Review and assign', 'Confirm', 'Done'], 1) ?>
 
         <h1 class="h4 mb-3">
             Place — <?= htmlspecialchars($application['applicant_first_name'] . ' ' . $application['applicant_last_name']) ?>
@@ -633,10 +639,15 @@ if (!$application && !$created) {
 
         <h1 class="h4 mb-3">Validated Applications Awaiting Placement</h1>
 
-        <form method="get" class="d-flex mb-3 search-bar">
-            <input type="text" class="form-control me-2" name="q" placeholder="Search by name"
-                   value="<?= htmlspecialchars($search) ?>">
-            <button type="submit" class="btn btn-outline-primary">Search</button>
+        <form method="get" class="toolbar">
+            <div class="toolbar-field toolbar-field-wide">
+                <label for="q">Search</label>
+                <input type="text" class="form-control" id="q" name="q" placeholder="Applicant name"
+                       value="<?= htmlspecialchars($search) ?>">
+            </div>
+            <button type="submit" class="btn btn-primary">Search</button>
+            <?php if ($search !== ''): ?><a href="place-student.php" class="btn btn-outline-secondary">Reset</a><?php endif; ?>
+            <span class="toolbar-count">Showing <?= count($pending) ?> applicant<?= count($pending) === 1 ? '' : 's' ?></span>
         </form>
 
         <div class="table-responsive">
@@ -654,7 +665,7 @@ if (!$application && !$created) {
                 </tr>
             <?php endforeach; ?>
             <?php if (empty($pending)): ?>
-                <tr><td colspan="6" class="text-muted">No validated applications waiting.</td></tr>
+                <tr><td colspan="6" class="text-muted"><?= $search !== '' ? 'No applicants match that name.' : 'No validated applications waiting.' ?></td></tr>
             <?php endif; ?>
             </tbody>
         </table>

@@ -174,6 +174,27 @@ foreach ($curriculumRows as $r) {
     $grouped[$r['year_level']][$r['semester']][] = $r;
 }
 
+// Progress, and one tab per year level (tabs only show when there is more than one year).
+// The page opens on the first year that still has an uncredited subject, since that is
+// where the registrar has work left to do.
+$subjectTotal = count($curriculumRows);
+$creditedTotal = 0;
+$uncreditedByYear = [];
+foreach ($curriculumRows as $r) {
+    $yl = (int) $r['year_level'];
+    $uncreditedByYear[$yl] = $uncreditedByYear[$yl] ?? 0;
+    if ($r['credit_id'] !== null) { $creditedTotal++; } else { $uncreditedByYear[$yl]++; }
+}
+$yearKeys = array_keys($uncreditedByYear);
+sort($yearKeys);
+$selectedYear = $yearKeys[0] ?? null;
+foreach ($yearKeys as $yk) {
+    if ($uncreditedByYear[$yk] > 0) { $selectedYear = $yk; break; }
+}
+if (is_string($_GET['year'] ?? null) && ctype_digit($_GET['year']) && in_array((int) $_GET['year'], $yearKeys, true)) {
+    $selectedYear = (int) $_GET['year'];
+}
+
 // Real, already-enrolled subjects (separate from credits) — kept for context.
 $currentSubjects = $pdo->prepare(
     'SELECT sub.subject_code, sub.subject_name
@@ -261,10 +282,27 @@ foreach ($candidateOfferings as $o) {
         <div class="card-body">
             <h2 class="h5 mb-0"><?= htmlspecialchars($curriculumInfo['curriculum_name']) ?></h2>
             <p class="text-muted mb-0"><?= htmlspecialchars($curriculumInfo['program_code'] . ' — ' . $curriculumInfo['program_name']) ?></p>
+            <div class="mt-3"><?= progressMeter($creditedTotal, $subjectTotal, 'subjects credited') ?></div>
         </div>
     </div>
 
+    <?php if (count($yearKeys) > 1): ?>
+        <?php
+        $yearTabs = [];
+        foreach ($yearKeys as $yk) {
+            $yearTabs[$yk] = [
+                'label' => 'Year ' . $yk,
+                'count' => $uncreditedByYear[$yk],
+                'href'  => '?student_id=' . (int) $studentId . '&year=' . $yk,
+            ];
+        }
+        ?>
+        <?= tabBar($yearTabs, (string) $selectedYear) ?>
+        <p class="text-muted small mb-3">The number on each tab is how many subjects in that year are not credited yet.</p>
+    <?php endif; ?>
+
     <?php foreach ($grouped as $yearLevel => $semesters): ?>
+        <?php if ((int) $yearLevel !== $selectedYear) { continue; } ?>
         <?php foreach ($semesters as $semester => $rows): ?>
             <div class="card mb-3">
                 <div class="card-header fw-bold">Year <?= htmlspecialchars($yearLevel) ?> — Semester <?= htmlspecialchars($semester) ?></div>
@@ -282,7 +320,7 @@ foreach ($candidateOfferings as $o) {
                             <td><?= $hasCredit ? htmlspecialchars($r['previous_grade']) : '<span class="text-muted">—</span>' ?></td>
                             <td>
                                 <?php if ($hasCredit): ?>
-                                    <span class="badge bg-<?= $passed ? 'success' : 'danger' ?>"><?= $passed ? 'Passed' : 'Failed' ?></span>
+                                    <?= statusBadge($passed ? 'passed' : 'failed') ?>
                                 <?php else: ?>
                                     <span class="text-muted">—</span>
                                 <?php endif; ?>

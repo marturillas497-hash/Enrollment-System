@@ -28,6 +28,14 @@ foreach ($rows as $r) {
     $key = $r['school_year'] . ' — Semester ' . $r['semester'];
     $grouped[$key][] = $r;
 }
+
+// Average of the numeric grades posted in each term. Ungraded subjects are left out
+// rather than counted as zero, since a null grade means "not graded yet", not a fail.
+$termAverages = [];
+foreach ($grouped as $termLabel => $termRows) {
+    $numeric = array_filter(array_column($termRows, 'grade'), fn($g) => $g !== null);
+    $termAverages[$termLabel] = count($numeric) > 0 ? array_sum($numeric) / count($numeric) : null;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -44,7 +52,12 @@ foreach ($rows as $r) {
 
     <?php foreach ($grouped as $termLabel => $termRows): ?>
         <div class="card mb-3">
-            <div class="card-header"><?= htmlspecialchars($termLabel) ?></div>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><?= htmlspecialchars($termLabel) ?></span>
+                <?php if ($termAverages[$termLabel] !== null): ?>
+                    <span class="text-muted small">Average: <?= number_format($termAverages[$termLabel], 2) ?></span>
+                <?php endif; ?>
+            </div>
             <div class="table-responsive">
             <table class="table mb-0">
                 <thead><tr><th>Code</th><th>Subject</th><th>Units</th><th>Grade</th><th>Remarks</th></tr></thead>

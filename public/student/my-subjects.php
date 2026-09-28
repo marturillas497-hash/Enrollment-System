@@ -77,7 +77,7 @@ foreach ($subjects as $s) {
             <tr class="table-info">
                 <td colspan="2"><?= htmlspecialchars($c['subject_code'] . ' — ' . $c['subject_name']) ?></td>
                 <td colspan="3" class="text-muted"><?= htmlspecialchars($c['source_note']) ?></td>
-                <td><span class="badge bg-info text-dark">CREDITED</span></td>
+                <td><?= statusBadge('credited') ?></td>
             </tr>
         <?php endforeach; ?>
         <?php foreach ($subjects as $s): ?>

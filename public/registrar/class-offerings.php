@@ -112,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $offerings = $pdo->prepare(
-    "SELECT co.*, s.subject_code, s.subject_name, t.last_name, t.first_name, sec.section_name, st.school_year, st.semester
+    "SELECT co.*, s.subject_code, s.subject_name, t.last_name, t.first_name, sec.section_name, p.program_code, st.school_year, st.semester
      FROM Class_Offering co
      JOIN Subject s ON s.subject_id = co.subject_id
      JOIN Teacher t ON t.teacher_id = co.teacher_id
@@ -120,10 +120,49 @@ $offerings = $pdo->prepare(
      JOIN Program p ON p.program_id = sec.program_id
      JOIN School_term st ON st.term_id = co.term_id
      WHERE p.department_id = :dept
-     ORDER BY st.term_id DESC, co.day_of_week, co.start_time"
+     ORDER BY st.term_id DESC,
+              FIELD(co.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'),
+              co.start_time"
 );
 $offerings->execute(['dept' => $myDepartmentId]);
 $offerings = $offerings->fetchAll();
+
+// Filter options come from the offerings themselves, and a filter only shows when it has
+// more than one choice. The term filter opens on the most recent ongoing term because
+// that is the one being scheduled; "All terms" is one click away.
+$termOptions = [];
+$sectionOptions = [];
+foreach ($offerings as $o) {
+    $termOptions[(int) $o['term_id']] = $o['school_year'] . ' S' . $o['semester'];
+    $sectionOptions[(int) $o['section_id']] = $o['program_code'] . ' ' . $o['section_name'];
+}
+asort($sectionOptions);
+$showTermFilter = count($termOptions) > 1;
+$showSectionFilter = count($sectionOptions) > 1;
+
+$termParam = is_string($_GET['term'] ?? null) ? $_GET['term'] : null;
+$filterTerm = 0; // 0 = all terms
+if ($termParam === 'all') {
+    $filterTerm = 0;
+} elseif ($termParam !== null && ctype_digit($termParam) && isset($termOptions[(int) $termParam])) {
+    $filterTerm = (int) $termParam;
+} elseif ($showTermFilter) {
+    foreach (array_keys($termOptions) as $tid) {
+        if (in_array($tid, array_map('intval', array_column($terms, 'term_id')), true)) { $filterTerm = $tid; break; }
+    }
+}
+$filterSection = 0;
+if (is_string($_GET['section'] ?? null) && ctype_digit($_GET['section']) && isset($sectionOptions[(int) $_GET['section']])) {
+    $filterSection = (int) $_GET['section'];
+}
+$visibleOfferings = array_values(array_filter($offerings, fn($o) =>
+    ($filterTerm === 0 || (int) $o['term_id'] === $filterTerm)
+    && ($filterSection === 0 || (int) $o['section_id'] === $filterSection)
+));
+// Columns that would repeat the same value on every row are left out.
+$showTermCol = $showTermFilter && $filterTerm === 0;
+$showSectionCol = $filterSection === 0;
+$colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -210,22 +249,58 @@ $offerings = $offerings->fetchAll();
     </form>
     <?php endif; ?>
 
+    <?php if ($showTermFilter || $showSectionFilter): ?>
+    <form method="get" class="toolbar">
+        <?php if ($showTermFilter): ?>
+        <div class="toolbar-field">
+            <label for="term">Term</label>
+            <select name="term" id="term" class="form-select" onchange="this.form.submit()">
+                <option value="all" <?= $filterTerm === 0 ? 'selected' : '' ?>>All terms</option>
+                <?php foreach ($termOptions as $tid => $tlabel): ?>
+                    <option value="<?= $tid ?>" <?= $filterTerm === $tid ? 'selected' : '' ?>><?= htmlspecialchars($tlabel) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <?php endif; ?>
+        <?php if ($showSectionFilter): ?>
+        <div class="toolbar-field">
+            <label for="section">Section</label>
+            <select name="section" id="section" class="form-select" onchange="this.form.submit()">
+                <option value="">All sections</option>
+                <?php foreach ($sectionOptions as $sid => $slabel): ?>
+                    <option value="<?= $sid ?>" <?= $filterSection === $sid ? 'selected' : '' ?>><?= htmlspecialchars($slabel) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <?php endif; ?>
+        <noscript><button type="submit" class="btn btn-primary">Apply</button></noscript>
+        <?php if ($termParam !== null || $filterSection !== 0): ?><a href="class-offerings.php" class="btn btn-outline-secondary">Reset</a><?php endif; ?>
+        <span class="toolbar-count">Showing <?= count($visibleOfferings) ?> class<?= count($visibleOfferings) === 1 ? '' : 'es' ?></span>
+    </form>
+    <?php endif; ?>
+
     <div class="table-responsive">
 <table class="table table-hover bg-white">
-        <thead><tr><th>Term</th><th>Subject</th><th>Teacher</th><th>Section</th><th>Day</th><th>Time</th><th>Room</th></tr></thead>
+        <thead><tr><?php if ($showTermCol): ?><th>Term</th><?php endif; ?><th>Subject</th><th>Teacher</th><?php if ($showSectionCol): ?><th>Section</th><?php endif; ?><th>Day</th><th>Time</th><th>Room</th></tr></thead>
         <tbody>
-        <?php foreach ($offerings as $o): ?>
+        <?php foreach ($visibleOfferings as $o): ?>
             <tr>
-                <td><?= htmlspecialchars($o['school_year'] . ' S' . $o['semester']) ?></td>
+                <?php if ($showTermCol): ?><td><?= htmlspecialchars($o['school_year'] . ' S' . $o['semester']) ?></td><?php endif; ?>
                 <td><?= htmlspecialchars($o['subject_code']) ?></td>
                 <td><?= htmlspecialchars($o['last_name'] . ', ' . $o['first_name']) ?></td>
-                <td><?= htmlspecialchars($o['section_name']) ?></td>
+                <?php if ($showSectionCol): ?><td><?= htmlspecialchars($o['section_name']) ?></td><?php endif; ?>
                 <td><?= htmlspecialchars($o['day_of_week']) ?></td>
                 <td><?= htmlspecialchars($o['start_time'] . '–' . $o['end_time']) ?></td>
                 <td><?= htmlspecialchars($o['room'] ?? '') ?></td>
             </tr>
         <?php endforeach; ?>
-        <?php if (empty($offerings)): ?><tr><td colspan="7" class="text-muted">No class offerings yet.</td></tr><?php endif; ?>
+        <?php if (empty($visibleOfferings)): ?>
+            <tr><td colspan="<?= $colCount ?>" class="text-muted">
+                <?php if (empty($offerings)): ?>No class offerings yet.
+                <?php elseif ($filterSection === 0 && $filterTerm !== 0): ?>No classes scheduled for this term yet.
+                <?php else: ?>No classes match this filter.<?php endif; ?>
+            </td></tr>
+        <?php endif; ?>
         </tbody>
     </table>
 </div>

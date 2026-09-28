@@ -54,9 +54,9 @@ $offerings = $stmt->fetchAll();
                 <td><?= $o['enrolled_count'] ?></td>
                 <td>
                     <?php if ($o['ungraded_count'] > 0): ?>
-                        <span class="badge bg-warning text-dark"><?= $o['ungraded_count'] ?> ungraded</span>
+                        <?= statusBadge('pending', $o['ungraded_count'] . ' ungraded') ?>
                     <?php else: ?>
-                        <span class="badge bg-success">Complete</span>
+                        <?= statusBadge('complete') ?>
                     <?php endif; ?>
                 </td>
                 <td><a href="<?= BASE_URL ?>/teacher/grade-entry.php?offering_id=<?= $o['offering_id'] ?>"

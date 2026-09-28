@@ -44,8 +44,8 @@ $history = $stmt->fetchAll();
                 <td><?= htmlspecialchars($h['program_code']) ?></td>
                 <td><?= htmlspecialchars($h['section_name']) ?></td>
                 <td><?= $h['year_level'] ?></td>
-                <td><span class="badge bg-secondary"><?= htmlspecialchars($h['student_standing']) ?></span></td>
-                <td><span class="badge bg-secondary"><?= htmlspecialchars($h['status']) ?></span></td>
+                <td><?= statusBadge($h['student_standing']) ?></td>
+                <td><?= statusBadge($h['status']) ?></td>
             </tr>
         <?php endforeach; ?>
         <?php if (empty($history)): ?><tr><td colspan="6" class="text-muted">No enrollment history yet.</td></tr><?php endif; ?>

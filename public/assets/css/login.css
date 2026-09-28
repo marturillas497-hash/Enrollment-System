@@ -1,12 +1,7 @@
-:root {
-            --neu-bg: #e8edf5;
-            --neu-shadow-dark: #c3cad6;
-            --neu-shadow-light: #ffffff;
-            --royal-blue: #1e3a8a;
-            --royal-blue-light: #2f52b8;
-        }
+/* login.css: layout for the login and forgot-password pages only.
+   Colors, shadows, .neu-input and .btn-neu-primary come from
+   tokens.css and components.css (load those first). */
         body {
-            background: var(--neu-bg);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -17,13 +12,13 @@
             display: flex;
             width: 100%;
             max-width: 920px;
-            background: #fff;
-            border-radius: 24px;
+            background: var(--surface);
+            border-radius: var(--radius-shell);
             overflow: hidden; /* clips both inner panels to the box's rounded corners */
-            box-shadow: 0 20px 50px rgba(30, 58, 138, 0.18);
+            box-shadow: var(--shadow-shell);
         }
         .brand-panel {
-            background: linear-gradient(135deg, var(--royal-blue) 0%, var(--royal-blue-light) 100%);
+            background: var(--brand-gradient);
             position: relative;
             overflow: hidden;
             color: #fff;
@@ -57,27 +52,6 @@
         .signin-panel {
             padding: 3rem 2.5rem;
         }
-        .neu-input, .neu-select {
-            background: var(--neu-bg) !important;
-            border: none !important;
-            border-radius: 14px !important;
-            box-shadow: inset 4px 4px 8px var(--neu-shadow-dark), inset -4px -4px 8px var(--neu-shadow-light);
-            padding: 0.7rem 1rem !important;
-        }
-        .neu-input:focus, .neu-select:focus {
-            box-shadow: inset 4px 4px 8px var(--neu-shadow-dark), inset -4px -4px 8px var(--neu-shadow-light), 0 0 0 2px var(--royal-blue-light);
-        }
-        .btn-neu-primary {
-            background: var(--royal-blue);
-            color: #fff;
-            border: none;
-            border-radius: 14px;
-            padding: 0.7rem 1rem;
-            box-shadow: 6px 6px 14px var(--neu-shadow-dark), -6px -6px 14px var(--neu-shadow-light);
-            transition: transform 0.1s ease;
-        }
-        .btn-neu-primary:hover { background: var(--royal-blue-light); color: #fff; }
-        .btn-neu-primary:active { transform: translateY(1px); }
         .back-link { color: var(--royal-blue); text-decoration: none; }
 
 /* --- Added: replaces the inline styles previously on login.php --- */
@@ -85,12 +59,6 @@
 .welcome-label { letter-spacing: 0.15em; opacity: 0.85; }
 .brand-tagline { opacity: 0.85; max-width: 340px; }
 .signin-form-wrap { max-width: 420px; margin: 0 auto; }
-.password-field-wrap { position: relative; }
-.pw-input { padding-right: 2.75rem !important; }
-.password-toggle-btn {
-    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-    border: none; background: transparent; padding: 0; line-height: 1; color: #6c757d;
-}
 .signup-line { white-space: nowrap; font-size: 0.95rem; }
 
 @media (max-width: 767.98px) {
@@ -103,7 +71,7 @@
         box-shadow: none;
     }
     .mobile-brand-header {
-        background: linear-gradient(135deg, var(--royal-blue) 0%, var(--royal-blue-light) 100%);
+        background: var(--brand-gradient);
         color: #fff;
         padding: 1.5rem;
     }

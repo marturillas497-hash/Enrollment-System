@@ -51,7 +51,7 @@ $offerings = $stmt->fetchAll();
             <tr>
                 <td>
                     <?= htmlspecialchars($o['school_year'] . ' S' . $o['semester']) ?>
-                    <?php if ($o['term_status'] === 'ongoing'): ?><span class="badge bg-success">ongoing</span><?php endif; ?>
+                    <?php if ($o['term_status'] === 'ongoing'): ?><?= statusBadge('ongoing') ?><?php endif; ?>
                 </td>
                 <td><?= htmlspecialchars($o['subject_code'] . ' — ' . $o['subject_name']) ?></td>
                 <td><?= $o['units'] ?></td>

@@ -61,23 +61,9 @@ foreach ($offerings as $o) {
     <h1 class="h4 mb-1"><?= htmlspecialchars($teacher['first_name'] . ' ' . $teacher['last_name']) ?></h1>
     <p class="text-muted mb-4">Your class offerings, all terms</p>
 
-    <div class="row mb-4">
-        <div class="col-md-6 mb-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <div class="display-6"><?= $totalStudentsThisTerm ?></div>
-                    <div class="text-muted">Students This Term</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-6 mb-3">
-            <div class="card text-center">
-                <div class="card-body">
-                    <div class="display-6"><?= $ungradedCount ?></div>
-                    <div class="text-muted">Ungraded This Term</div>
-                </div>
-            </div>
-        </div>
+    <div class="stat-grid">
+        <?= statCard($totalStudentsThisTerm, 'Students This Term', 'people') ?>
+        <?= statCard($ungradedCount, 'Ungraded This Term', 'pencil-square', null, $ungradedCount > 0) ?>
     </div>
 
     <div class="table-responsive">
@@ -88,7 +74,7 @@ foreach ($offerings as $o) {
             <tr>
                 <td>
                     <?= htmlspecialchars($o['school_year'] . ' S' . $o['semester']) ?>
-                    <?php if ($o['term_status'] === 'ongoing'): ?><span class="badge bg-success">ongoing</span><?php endif; ?>
+                    <?php if ($o['term_status'] === 'ongoing'): ?><?= statusBadge('ongoing') ?><?php endif; ?>
                 </td>
                 <td><?= htmlspecialchars($o['subject_code'] . ' — ' . $o['subject_name']) ?></td>
                 <td><?= htmlspecialchars($o['program_code'] . ' ' . $o['section_name']) ?></td>

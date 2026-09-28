@@ -30,36 +30,14 @@ $validatedThisWeek = (int)$pdo->query(
     <div class="container">
         <h1>Admission Staff Dashboard</h1>
 
-        <div class="row mb-4">
-            <div class="col-md-4 mb-3">
-                <a href="<?= BASE_URL ?>/staff/review-application.php" class="text-decoration-none">
-                    <div class="card text-center">
-                        <div class="card-body">
-                            <div class="display-6"><?= $pendingCount ?></div>
-                            <div class="text-muted">Pending Applications</div>
-                        </div>
-                    </div>
-                </a>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <div class="display-6"><?= $validatedThisWeek ?></div>
-                        <div class="text-muted">Validated (Last 7 Days)</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <div class="display-6"><?= $validatedByMe ?></div>
-                        <div class="text-muted">Validated by You (Total)</div>
-                    </div>
-                </div>
-            </div>
+        <?php if ($pendingCount === 0): ?>
+            <p class="text-muted small mb-2">You're all caught up. No applications are waiting for review.</p>
+        <?php endif; ?>
+        <div class="stat-grid">
+            <?= statCard($pendingCount, 'Pending Applications', 'inbox', BASE_URL . '/staff/review-application.php', $pendingCount > 0) ?>
+            <?= statCard($validatedThisWeek, 'Validated (Last 7 Days)', 'calendar-check', BASE_URL . '/staff/review-application.php?tab=validated') ?>
+            <?= statCard($validatedByMe, 'Validated by You (Total)', 'person-check') ?>
         </div>
-
-        <a href="<?= BASE_URL ?>/staff/review-application.php" class="btn btn-primary">Review Applications</a>
     </div>
 </body>
 </html>

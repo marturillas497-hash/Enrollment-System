@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/session.php';
 
-// If already logged in, just send them to their dashboard.
+// If already logged in, just send them to their dashboard
 if (currentUser() !== null) {
     header('Location: ' . DASHBOARD_BY_ROLE[currentUser()['role']]);
     exit;

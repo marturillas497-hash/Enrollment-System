@@ -1,7 +1,13 @@
-    body { margin-left: 270px; padding-top: 32px; background: #f4f6fb; }
+/* ============================================================
+   app.css: the logged-in shell (sidebar, body offset) plus the
+   Bootstrap element overrides used across the logged-in area.
+   Requires tokens.css and components.css to be loaded first.
+   No raw colors or shadows here, use the tokens.
+   ============================================================ */
+    body { margin-left: var(--sidebar-width); padding-top: 32px; }
     .mist-sidebar {
-        position: fixed; top: 0; left: 0; width: 270px; height: 100vh;
-        background: #1B1F8C; color: #fff; display: flex; flex-direction: column;
+        position: fixed; top: 0; left: 0; width: var(--sidebar-width); height: 100vh;
+        background: var(--brand-gradient-vertical); color: #fff; display: flex; flex-direction: column;
         overflow-y: auto; z-index: 1030;
     }
     .mist-sidebar .brand {
@@ -19,14 +25,14 @@
     }
     .mist-sidebar .profile-card:hover { background: rgba(255,255,255,0.06); color: #fff; }
     .mist-sidebar .profile-avatar {
-        width: 54px; height: 54px; border-radius: 50%; background: #fff; color: #1B1F8C;
+        width: 54px; height: 54px; border-radius: 50%; background: #fff; color: var(--royal-blue);
         display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;
     }
     .mist-sidebar .profile-card .welcome-label { font-size: 0.7rem; opacity: 0.75; letter-spacing: 0.05em; }
     .mist-sidebar .profile-card .profile-name { font-weight: 700; font-size: 1.05rem; line-height: 1.2; }
     .mist-sidebar .profile-card .profile-subtitle { font-size: 0.65rem; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.03em; }
     .mist-sidebar .role-badge {
-        display: inline-block; background: #fff; color: #1B1F8C; font-weight: 700; font-size: 0.7rem;
+        display: inline-block; background: #fff; color: var(--royal-blue); font-weight: 700; font-size: 0.7rem;
         padding: 2px 10px; border-radius: 20px; margin-top: 4px;
     }
 
@@ -44,25 +50,17 @@
     .mist-sidebar .nav-item-link i { font-size: 1.1rem; width: 20px; text-align: center; }
 
     .mist-sidebar .logout-link {
-        display: flex; align-items: center; gap: 12px; padding: 16px; color: #FF8A5B;
+        display: flex; align-items: center; gap: 12px; padding: 16px; color: var(--accent-logout);
         text-decoration: none; font-weight: 700; border-top: 1px solid rgba(255,255,255,0.15);
         background: none; border-left: none; border-right: none; border-bottom: none; width: 100%; text-align: left;
     }
-    .mist-sidebar .logout-link:hover { background: rgba(255,255,255,0.08); color: #FF8A5B; }
+    .mist-sidebar .logout-link:hover { background: rgba(255,255,255,0.08); color: var(--accent-logout); }
 
     /* ============================================================
        Global content styling — matches the login/apply pages.
        Applied here (not per-page) so every existing page picks it
        up automatically, the same trick used for the sidebar layout.
        ============================================================ */
-    :root {
-        --royal-blue: #1e3a8a;
-        --royal-blue-light: #2f52b8;
-        --neu-shadow-dark: #c9d0de;
-        --neu-shadow-light: #ffffff;
-        --light-blue-accent: #dde6fb;
-    }
-
     /* Page title as a "tab" heading — underlined in light blue, not a full-width rule */
     h1 {
         display: inline-block;
@@ -75,43 +73,42 @@
 
     /* Form fields — same inset-shadow neumorphic look as the login page */
     .form-control, .form-select {
-        background: #f4f6fb !important;
+        background: var(--page-bg) !important;
         border: 1px solid transparent !important;
-        border-radius: 12px !important;
-        box-shadow: inset 3px 3px 6px var(--neu-shadow-dark), inset -3px -3px 6px var(--neu-shadow-light) !important;
+        border-radius: var(--radius-control) !important;
+        box-shadow: var(--neu-inset-sm) !important;
     }
     .form-control:focus, .form-select:focus {
-        background: #f4f6fb !important;
-        box-shadow: inset 3px 3px 6px var(--neu-shadow-dark), inset -3px -3px 6px var(--neu-shadow-light),
-                    0 0 0 2px var(--royal-blue-light) !important;
+        background: var(--page-bg) !important;
+        box-shadow: var(--neu-inset-sm), 0 0 0 2px var(--royal-blue-light) !important;
     }
 
     /* Buttons */
     .btn-primary {
         background: var(--royal-blue) !important;
         border-color: var(--royal-blue) !important;
-        border-radius: 12px !important;
-        box-shadow: 3px 3px 8px var(--neu-shadow-dark), -3px -3px 8px var(--neu-shadow-light);
+        border-radius: var(--radius-control) !important;
+        box-shadow: var(--neu-raised-sm);
     }
     .btn-primary:hover, .btn-primary:focus { background: var(--royal-blue-light) !important; border-color: var(--royal-blue-light) !important; }
-    .btn-outline-primary { color: var(--royal-blue) !important; border-color: var(--royal-blue) !important; border-radius: 12px !important; }
+    .btn-outline-primary { color: var(--royal-blue) !important; border-color: var(--royal-blue) !important; border-radius: var(--radius-control) !important; }
     .btn-outline-primary:hover { background: var(--royal-blue) !important; border-color: var(--royal-blue) !important; }
     .btn-success, .btn-outline-success, .btn-danger, .btn-outline-danger,
     .btn-warning, .btn-outline-warning, .btn-info, .btn-outline-info,
-    .btn-secondary, .btn-outline-secondary { border-radius: 12px !important; }
+    .btn-secondary, .btn-outline-secondary { border-radius: var(--radius-control) !important; }
 
     /* Cards — soft neumorphic shadow instead of a hard border, light-blue header accent */
-    .card { border: none !important; border-radius: 16px !important; box-shadow: 5px 5px 14px var(--neu-shadow-dark), -5px -5px 14px var(--neu-shadow-light); }
+    .card { border: none !important; border-radius: var(--radius-card) !important; box-shadow: var(--neu-raised-md); }
     .card-header { background: var(--light-blue-accent) !important; color: var(--royal-blue) !important; font-weight: 700; border-bottom: none !important; }
 
     /* Tables — light-blue header row, soft shadow on the wrapper (already present on every table via .table-responsive) */
-    .table-responsive { border-radius: 14px; box-shadow: 3px 3px 10px var(--neu-shadow-dark), -3px -3px 10px var(--neu-shadow-light); overflow: hidden; }
+    .table-responsive { border-radius: var(--radius-control-lg); box-shadow: var(--neu-raised-sm); overflow: hidden; }
     .table thead th { background: var(--light-blue-accent); color: var(--royal-blue); font-weight: 700; border-bottom: 2px solid var(--royal-blue-light) !important; }
 
     /* --- Mobile: sidebar becomes an off-canvas panel instead of taking up permanent space --- */
     .mist-menu-toggle {
         display: none; position: fixed; top: 14px; left: 14px; z-index: 1040;
-        background: #1B1F8C; color: #fff; border: none; border-radius: 10px;
+        background: var(--royal-blue-light); color: #fff; border: none; border-radius: 10px;
         width: 44px; height: 44px; font-size: 1.3rem; align-items: center; justify-content: center;
     }
     .mist-sidebar-backdrop {

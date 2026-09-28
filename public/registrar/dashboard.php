@@ -92,65 +92,20 @@ if ($currentTerm) {
         <?php endif; ?>
 
         <h2 class="h6 text-muted mt-4 mb-2">Needs Your Attention</h2>
-        <div class="row mb-4">
-            <div class="col-md-4 mb-3">
-                <a href="<?= BASE_URL ?>/registrar/place-student.php" class="text-decoration-none">
-                    <div class="card text-center">
-                        <div class="card-body">
-                            <div class="display-6"><?= $pendingPlacements ?></div>
-                            <div class="text-muted">Awaiting Placement</div>
-                        </div>
-                    </div>
-                </a>
-            </div>
-            <div class="col-md-4 mb-3">
-                <a href="<?= BASE_URL ?>/registrar/shift-requests.php" class="text-decoration-none">
-                    <div class="card text-center">
-                        <div class="card-body">
-                            <div class="display-6"><?= $pendingShifts ?></div>
-                            <div class="text-muted">Pending Shift Requests</div>
-                        </div>
-                    </div>
-                </a>
-            </div>
-            <div class="col-md-4 mb-3">
-                <a href="<?= BASE_URL ?>/registrar/irregular-enrollments.php" class="text-decoration-none">
-                    <div class="card text-center">
-                        <div class="card-body">
-                            <div class="display-6"><?= $pendingIrregular ?></div>
-                            <div class="text-muted">Pending Irregular Enrollments</div>
-                        </div>
-                    </div>
-                </a>
-            </div>
+        <?php if ($pendingPlacements + $pendingShifts + $pendingIrregular === 0): ?>
+            <p class="text-muted small mb-2">You're all caught up. Nothing is waiting on you right now.</p>
+        <?php endif; ?>
+        <div class="stat-grid">
+            <?= statCard($pendingPlacements, 'Awaiting Placement', 'person-check', BASE_URL . '/registrar/place-student.php', $pendingPlacements > 0) ?>
+            <?= statCard($pendingShifts, 'Pending Shift Requests', 'arrow-left-right', BASE_URL . '/registrar/shift-requests.php', $pendingShifts > 0) ?>
+            <?= statCard($pendingIrregular, 'Pending Irregular Enrollments', 'person-lines-fill', BASE_URL . '/registrar/irregular-enrollments.php', $pendingIrregular > 0) ?>
         </div>
 
         <h2 class="h6 text-muted mb-2">Department Overview</h2>
-        <div class="row">
-            <div class="col-md-4 mb-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <div class="display-6"><?= $activeStudentCount ?></div>
-                        <div class="text-muted">Active Students</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <div class="display-6"><?= $sectionCount ?></div>
-                        <div class="text-muted">Sections</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <div class="display-6"><?= $offeringCount ?></div>
-                        <div class="text-muted">Class Offerings This Term</div>
-                    </div>
-                </div>
-            </div>
+        <div class="stat-grid">
+            <?= statCard($activeStudentCount, 'Active Students', 'people') ?>
+            <?= statCard($sectionCount, 'Sections', 'diagram-3') ?>
+            <?= statCard($offeringCount, 'Class Offerings This Term', 'journal-text') ?>
         </div>
     </div>
 </body>

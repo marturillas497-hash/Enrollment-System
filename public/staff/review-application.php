@@ -94,29 +94,30 @@ if ($applicationId) {
     $application = $stmt->fetch();
 }
 
-// --- List/search view ---
-$search = trim($_GET['q'] ?? '');
+// --- List view: tabs by status; a search looks across every status ---
+$search = is_string($_GET['q'] ?? null) ? trim($_GET['q']) : '';
+$tabKey = is_string($_GET['tab'] ?? null) ? $_GET['tab'] : 'pending';
+if (!in_array($tabKey, ['pending', 'validated', 'rejected'], true)) { $tabKey = 'pending'; }
 $applications = [];
+$tabCounts = ['pending' => 0, 'validated' => 0, 'rejected' => 0];
 if (!$application) {
+    foreach ($pdo->query('SELECT status, COUNT(*) AS n FROM Admission_Application GROUP BY status')->fetchAll() as $row) {
+        if (isset($tabCounts[$row['status']])) { $tabCounts[$row['status']] = (int) $row['n']; }
+    }
+    $listSql = "SELECT a.application_id, a.applicant_last_name, a.applicant_first_name, a.status, a.application_date,
+                       p.program_code
+                FROM Admission_Application a
+                JOIN Program p ON p.program_id = a.program_id";
     if ($search !== '') {
-        $stmt = $pdo->prepare(
-            "SELECT a.application_id, a.applicant_last_name, a.applicant_first_name, a.status, a.application_date,
-                    p.program_code
-             FROM Admission_Application a
-             JOIN Program p ON p.program_id = a.program_id
-             WHERE a.applicant_last_name LIKE :q1 OR a.applicant_first_name LIKE :q2
-             ORDER BY a.application_date DESC"
-        );
+        $stmt = $pdo->prepare($listSql . ' WHERE a.applicant_last_name LIKE :q1 OR a.applicant_first_name LIKE :q2
+                                           ORDER BY a.application_date DESC, a.application_id DESC');
         $stmt->execute(['q1' => "%$search%", 'q2' => "%$search%"]);
     } else {
-        $stmt = $pdo->query(
-            "SELECT a.application_id, a.applicant_last_name, a.applicant_first_name, a.status, a.application_date,
-                    p.program_code
-             FROM Admission_Application a
-             JOIN Program p ON p.program_id = a.program_id
-             WHERE a.status = 'pending'
-             ORDER BY a.application_date ASC"
-        );
+        $order = $tabKey === 'pending'
+            ? 'a.application_date ASC, a.application_id ASC'
+            : 'COALESCE(a.date_validated, a.date_rejected, a.application_date) DESC, a.application_id DESC';
+        $stmt = $pdo->prepare($listSql . ' WHERE a.status = :status ORDER BY ' . $order);
+        $stmt->execute(['status' => $tabKey]);
     }
     $applications = $stmt->fetchAll();
 }
@@ -145,7 +146,7 @@ if (!$application) {
         <h1 class="h4 mb-3">
             Reviewing #<?= $application['application_id'] ?> —
             <?= htmlspecialchars($application['applicant_first_name'] . ' ' . $application['applicant_last_name']) ?>
-            <span class="badge bg-secondary"><?= htmlspecialchars($application['status']) ?></span>
+            <?= statusBadge($application['status']) ?>
         </h1>
         <p class="text-muted">
             Applying to <?= htmlspecialchars($application['program_code']) ?> as
@@ -160,6 +161,11 @@ if (!$application) {
             </div>
         <?php else: ?>
 
+        <nav class="section-nav">
+            <a href="#sec-applicant">Applicant</a><a href="#sec-address">Address</a><a href="#sec-father">Father</a>
+            <a href="#sec-mother">Mother</a><a href="#sec-contact">Contact &amp; Guardian</a><a href="#sec-placement">Placement</a>
+        </nav>
+
         <form method="post" class="card mb-3">
             <div class="card-body">
                 <input type="hidden" name="action" value="save_and_validate">
@@ -167,7 +173,7 @@ if (!$application) {
 
                 <?php $v = fn(string $key) => htmlspecialchars($application[$key] ?? ''); ?>
 
-                <h2 class="h6">Applicant</h2>
+                <div class="form-section-title" id="sec-applicant">Applicant</div>
                 <div class="row">
                     <div class="col-md-4 mb-3"><label class="form-label">Last Name</label>
                         <input class="form-control" name="applicant_last_name" value="<?= $v('applicant_last_name') ?>" required></div>
@@ -181,7 +187,7 @@ if (!$application) {
                 <div class="mb-3 col-md-3"><label class="form-label">Birthdate</label>
                     <input type="date" class="form-control" name="birthdate" value="<?= $v('birthdate') ?>" required></div>
 
-                <h2 class="h6 mt-3">Address</h2>
+                <div class="form-section-title" id="sec-address">Address</div>
                 <div class="row">
                     <div class="col-md-3 mb-3"><label class="form-label">Province</label>
                         <input class="form-control" name="applicant_province" value="<?= $v('applicant_province') ?>"></div>
@@ -193,7 +199,7 @@ if (!$application) {
                         <input class="form-control" name="applicant_purok" value="<?= $v('applicant_purok') ?>"></div>
                 </div>
 
-                <h2 class="h6 mt-3">Father</h2>
+                <div class="form-section-title" id="sec-father">Father</div>
                 <div class="row">
                     <div class="col-md-3 mb-3"><label class="form-label">Last Name</label>
                         <input class="form-control" name="father_last_name" value="<?= $v('father_last_name') ?>"></div>
@@ -207,7 +213,7 @@ if (!$application) {
                         <input class="form-control" name="father_occupation" value="<?= $v('father_occupation') ?>"></div>
                 </div>
 
-                <h2 class="h6 mt-3">Mother</h2>
+                <div class="form-section-title" id="sec-mother">Mother</div>
                 <div class="row">
                     <div class="col-md-3 mb-3"><label class="form-label">Maiden Name</label>
                         <input class="form-control" name="mother_maiden_name" value="<?= $v('mother_maiden_name') ?>"></div>
@@ -219,7 +225,7 @@ if (!$application) {
                         <input class="form-control" name="mother_occupation" value="<?= $v('mother_occupation') ?>"></div>
                 </div>
 
-                <h2 class="h6 mt-3">Contact &amp; Guardian</h2>
+                <div class="form-section-title" id="sec-contact">Contact &amp; Guardian</div>
                 <div class="row">
                     <div class="col-md-6 mb-3"><label class="form-label">Contact No.</label>
                         <input class="form-control" name="contact_no" value="<?= $v('contact_no') ?>"></div>
@@ -233,7 +239,7 @@ if (!$application) {
                         <input class="form-control" name="guardian_contact_no" value="<?= $v('guardian_contact_no') ?>"></div>
                 </div>
 
-                <h2 class="h6 mt-3">Placement</h2>
+                <div class="form-section-title" id="sec-placement">Placement</div>
                 <div class="mb-3 col-md-3">
                     <label class="form-label">Evaluated Year Level</label>
                     <input type="number" min="1" max="5" class="form-control" name="evaluated_year_level"
@@ -242,47 +248,65 @@ if (!$application) {
                         units once transferee credit evaluation exists — for now, use your best judgment.</div>
                 </div>
 
-                <button type="submit" class="btn btn-success">Save Corrections &amp; Validate</button>
+                <div class="action-bar">
+                    <button type="submit" class="btn btn-success">Save Corrections &amp; Validate</button>
+                    <a href="#reject-panel" id="reject-link" class="btn btn-outline-danger">Reject instead</a>
+                    <a href="<?= BASE_URL ?>/staff/review-application.php" class="btn btn-link ms-auto">Cancel</a>
+                </div>
             </div>
         </form>
 
         <form method="post" class="card border-danger">
-            <div class="card-body">
+            <details id="reject-panel" class="card-body" <?= (($_POST['action'] ?? '') === 'reject') ? 'open' : '' ?>>
+                <summary class="fw-semibold text-danger">Reject this application</summary>
                 <input type="hidden" name="action" value="reject">
                 <input type="hidden" name="application_id" value="<?= $application['application_id'] ?>">
-                <label class="form-label">Reject this application</label>
-                <textarea class="form-control mb-2" name="rejection_reason" rows="2"
+                <textarea class="form-control my-2" name="rejection_reason" rows="2"
                           placeholder="Reason (shown to the applicant)"></textarea>
                 <button type="submit" class="btn btn-outline-danger"
                         onclick="return confirm('Reject this application? This cannot be undone here.')">
                     Reject Application
                 </button>
-            </div>
+            </details>
         </form>
+        <script>
+            document.getElementById('reject-link').addEventListener('click', function () {
+                document.getElementById('reject-panel').open = true;
+            });
+        </script>
 
         <?php endif; ?>
 
-        <a href="<?= BASE_URL ?>/staff/review-application.php" class="d-inline-block mt-3">&larr; Back to list</a>
+        <a href="<?= BASE_URL ?>/staff/review-application.php?tab=<?= htmlspecialchars($application['status']) ?>" class="d-inline-block mt-3">&larr; Back to list</a>
 
     <?php else: ?>
 
         <h1 class="h4 mb-3">Applications</h1>
 
-        <form method="get" class="d-flex mb-3 search-bar">
-            <input type="text" class="form-control me-2" name="q" placeholder="Search by name"
-                   value="<?= htmlspecialchars($search) ?>">
-            <button type="submit" class="btn btn-outline-primary">Search</button>
+        <form method="get" class="toolbar">
+            <div class="toolbar-field toolbar-field-wide">
+                <label for="q">Search all applications</label>
+                <input type="text" class="form-control" id="q" name="q" placeholder="Applicant name"
+                       value="<?= htmlspecialchars($search) ?>">
+            </div>
+            <button type="submit" class="btn btn-primary">Search</button>
+            <?php if ($search !== ''): ?><a href="review-application.php" class="btn btn-outline-secondary">Clear</a><?php endif; ?>
         </form>
 
-        <?php if (!$search): ?>
-            <p class="text-muted">Showing pending applications, oldest first. Search above to find a specific
-                applicant regardless of status.</p>
+        <?php if ($search === ''): ?>
+            <?= tabBar([
+                'pending'   => ['label' => 'Pending',   'count' => $tabCounts['pending'],   'href' => '?tab=pending'],
+                'validated' => ['label' => 'Validated', 'count' => $tabCounts['validated'], 'href' => '?tab=validated'],
+                'rejected'  => ['label' => 'Rejected',  'count' => $tabCounts['rejected'],  'href' => '?tab=rejected'],
+            ], $tabKey) ?>
+        <?php else: ?>
+            <p class="text-muted small">Search results across every status (<?= count($applications) ?> found).</p>
         <?php endif; ?>
 
         <div class="table-responsive">
 <table class="table table-hover bg-white">
             <thead>
-                <tr><th>#</th><th>Name</th><th>Program</th><th>Submitted</th><th>Status</th><th></th></tr>
+                <tr><th>#</th><th>Name</th><th>Program</th><th>Submitted</th><?php if ($search !== ''): ?><th>Status</th><?php endif; ?><th></th></tr>
             </thead>
             <tbody>
                 <?php foreach ($applications as $a): ?>
@@ -290,17 +314,21 @@ if (!$application) {
                         <td><?= $a['application_id'] ?></td>
                         <td><?= htmlspecialchars($a['applicant_first_name'] . ' ' . $a['applicant_last_name']) ?></td>
                         <td><?= htmlspecialchars($a['program_code']) ?></td>
-                        <td><?= htmlspecialchars($a['application_date']) ?></td>
-                        <td><span class="badge bg-secondary"><?= htmlspecialchars($a['status']) ?></span></td>
+                        <td class="text-nowrap"><?= $a['application_date'] ? htmlspecialchars(date('M j, Y', strtotime($a['application_date']))) : '' ?></td>
+                        <?php if ($search !== ''): ?><td><?= statusBadge($a['status']) ?></td><?php endif; ?>
                         <td>
                             <a href="?id=<?= $a['application_id'] ?>" class="btn btn-sm btn-outline-primary">
-                                Review
+                                <?= $a['status'] === 'pending' ? 'Review' : 'View' ?>
                             </a>
                         </td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($applications)): ?>
-                    <tr><td colspan="6" class="text-muted">No applications found.</td></tr>
+                    <tr><td colspan="<?= $search !== '' ? 6 : 5 ?>" class="text-muted">
+                        <?php if ($search !== ''): ?>No applications match that name.
+                        <?php elseif ($tabKey === 'pending'): ?>No pending applications. Nothing to review.
+                        <?php else: ?>No <?= $tabKey ?> applications yet.<?php endif; ?>
+                    </td></tr>
                 <?php endif; ?>
             </tbody>
         </table>

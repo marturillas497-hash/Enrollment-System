@@ -104,9 +104,9 @@ if ($hasPendingShift) {
                     <dt class="col-sm-4">Year Level</dt>
                     <dd class="col-sm-8"><?= $latestEnrollment['year_level'] ?></dd>
                     <dt class="col-sm-4">Standing</dt>
-                    <dd class="col-sm-8"><span class="badge bg-secondary"><?= htmlspecialchars($latestEnrollment['student_standing']) ?></span></dd>
+                    <dd class="col-sm-8"><?= statusBadge($latestEnrollment['student_standing']) ?></dd>
                     <dt class="col-sm-4">Status</dt>
-                    <dd class="col-sm-8"><span class="badge bg-secondary"><?= htmlspecialchars($latestEnrollment['status']) ?></span></dd>
+                    <dd class="col-sm-8"><?= statusBadge($latestEnrollment['status']) ?></dd>
                 </dl>
             </div>
         </div>

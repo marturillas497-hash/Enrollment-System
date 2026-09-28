@@ -1,0 +1,49 @@
+/* ============================================================
+   tokens.css: single source of truth for design values.
+   Variables only. Nothing in here styles an element by itself.
+   Load order on every page: tokens.css, components.css, then
+   app.css (logged-in pages) or the page's own css.
+   To restyle the whole system, change values here.
+   ============================================================ */
+:root {
+    /* Brand */
+    --royal-blue: #1e3a8a;
+    --royal-blue-light: #2f52b8;
+    --light-blue-accent: #dde6fb;
+    --brand-gradient: linear-gradient(135deg, var(--royal-blue) 0%, var(--royal-blue-light) 100%);
+    --brand-gradient-vertical: linear-gradient(160deg, var(--royal-blue-light) 0%, var(--royal-blue) 100%);
+
+    /* Surfaces and text */
+    --page-bg: #e8edf5;
+    --surface: #ffffff;
+    --surface-tint: #f4f6fb;
+    --border-faint: #eef1f8;
+    --text-muted: #6b7280;
+    --accent-logout: #ff8a5b;
+    --attention-accent: #f0ad00;
+
+    /* Status badge colors (used by statusBadge() in src/helpers/ui_helper.php) */
+    --status-success-bg: #d8f3e3;  --status-success-fg: #14683a;
+    --status-warning-bg: #fdf0c9;  --status-warning-fg: #7a5200;
+    --status-danger-bg:  #fbdcdc;  --status-danger-fg:  #9b1c1c;
+    --status-info-bg:    var(--light-blue-accent);  --status-info-fg: var(--royal-blue);
+    --status-neutral-bg: #e2e6ee;  --status-neutral-fg: #4b5563;
+
+    /* Neumorphic shadows: two sizes of inset, two sizes of raised */
+    --neu-shadow-dark: #c3cad6;
+    --neu-shadow-light: #ffffff;
+    --neu-inset-sm: inset 3px 3px 6px var(--neu-shadow-dark), inset -3px -3px 6px var(--neu-shadow-light);
+    --neu-inset-lg: inset 4px 4px 8px var(--neu-shadow-dark), inset -4px -4px 8px var(--neu-shadow-light);
+    --neu-raised-sm: 3px 3px 8px var(--neu-shadow-dark), -3px -3px 8px var(--neu-shadow-light);
+    --neu-raised-md: 6px 6px 14px var(--neu-shadow-dark), -6px -6px 14px var(--neu-shadow-light);
+    --shadow-shell: 0 20px 50px rgba(30, 58, 138, 0.18);
+
+    /* Shape */
+    --radius-control: 12px;
+    --radius-control-lg: 14px;
+    --radius-card: 16px;
+    --radius-shell: 24px;
+
+    /* Layout */
+    --sidebar-width: 270px;
+}

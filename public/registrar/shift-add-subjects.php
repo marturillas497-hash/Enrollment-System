@@ -172,7 +172,7 @@ foreach ($candidateOfferings as $o) {
                 <?php foreach ($credited as $c): ?>
                     <tr class="table-info">
                         <td><?= htmlspecialchars($c['subject_code'] . ' — ' . $c['subject_name']) ?></td>
-                        <td><span class="badge bg-info text-dark">CREDITED</span></td>
+                        <td><?= statusBadge('credited') ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php foreach ($currentSubjects as $s): ?>

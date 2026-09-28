@@ -38,39 +38,17 @@ $recentAccounts = $pdo->query(
     <div class="container">
         <h1>Admin Dashboard</h1>
 
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <div class="display-6"><?= (int)($roleCounts['registrar'] ?? 0) ?></div>
-                        <div class="text-muted">Registrars</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <div class="display-6"><?= (int)($roleCounts['teacher'] ?? 0) ?></div>
-                        <div class="text-muted">Teachers</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <div class="display-6"><?= (int)($roleCounts['admission_staff'] ?? 0) ?></div>
-                        <div class="text-muted">Admission Staff</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card text-center">
-                    <div class="card-body">
-                        <div class="display-6"><?= $departmentCount ?> / <?= $programCount ?></div>
-                        <div class="text-muted">Departments / Programs</div>
-                    </div>
-                </div>
-            </div>
+        <div class="stat-grid">
+            <?= statCard((int)($roleCounts['registrar'] ?? 0), 'Registrars', 'person-badge', BASE_URL . '/admin/staff.php?role=registrar') ?>
+            <?= statCard((int)($roleCounts['teacher'] ?? 0), 'Teachers', 'person-workspace', BASE_URL . '/admin/staff.php?role=teacher') ?>
+            <?= statCard((int)($roleCounts['admission_staff'] ?? 0), 'Admission Staff', 'person-check', BASE_URL . '/admin/staff.php?role=admission_staff') ?>
+            <?= statCard($departmentCount . ' / ' . $programCount, 'Departments / Programs', 'building') ?>
+        </div>
+
+        <div class="toolbar mb-4">
+            <a href="<?= BASE_URL ?>/admin/register-registrar.php" class="btn btn-outline-primary">+ Registrar</a>
+            <a href="<?= BASE_URL ?>/admin/register-teacher.php" class="btn btn-outline-primary">+ Teacher</a>
+            <a href="<?= BASE_URL ?>/admin/register-admission-staff.php" class="btn btn-outline-primary">+ Admission Staff</a>
         </div>
 
         <div class="card">
@@ -82,7 +60,7 @@ $recentAccounts = $pdo->query(
                 <?php foreach ($recentAccounts as $a): ?>
                     <tr>
                         <td><?= htmlspecialchars($a['first_name'] . ' ' . $a['last_name']) ?></td>
-                        <td><span class="badge bg-secondary"><?= htmlspecialchars(ucwords(str_replace('_', ' ', $a['role']))) ?></span></td>
+                        <td><?= statusBadge($a['role']) ?></td>
                         <td><?= htmlspecialchars($a['username']) ?></td>
                         <td><?= htmlspecialchars($a['created_at']) ?></td>
                     </tr>

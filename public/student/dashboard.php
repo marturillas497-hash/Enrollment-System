@@ -157,7 +157,7 @@ foreach ($subjects as $s) {
             <div class="card-header">
                 <?= htmlspecialchars($latestEnrollment['school_year'] . ' — Semester ' . $latestEnrollment['semester']) ?>
                 — Section <?= htmlspecialchars($latestEnrollment['section_name']) ?>, Year <?= $latestEnrollment['year_level'] ?>
-                <span class="badge bg-secondary"><?= htmlspecialchars($latestEnrollment['student_standing']) ?></span>
+                <?= statusBadge($latestEnrollment['student_standing']) ?>
                 <span class="badge bg-light text-dark"><?= rtrim(rtrim(number_format($totalUnits, 2), '0'), '.') ?> units</span>
             </div>
             <div class="card-body">
@@ -169,7 +169,7 @@ foreach ($subjects as $s) {
                         <tr class="table-info">
                             <td colspan="2"><?= htmlspecialchars($c['subject_code'] . ' — ' . $c['subject_name']) ?></td>
                             <td colspan="3" class="text-muted"><?= htmlspecialchars($c['source_note']) ?></td>
-                            <td><span class="badge bg-info text-dark">CREDITED</span></td>
+                            <td><?= statusBadge('credited') ?></td>
                         </tr>
                     <?php endforeach; ?>
                     <?php foreach ($subjects as $s): ?>

@@ -198,6 +198,16 @@ if (!$request) {
     );
     $stmt->execute(['dept' => $myDepartmentId]);
     $requests = $stmt->fetchAll();
+
+    // Tabs: the registrar acts on Pending, the other two are history.
+    $tabKey = is_string($_GET['tab'] ?? null) ? $_GET['tab'] : 'pending';
+    if (!in_array($tabKey, ['pending', 'approved', 'rejected'], true)) { $tabKey = 'pending'; }
+    $tabCounts = ['pending' => 0, 'approved' => 0, 'rejected' => 0];
+    foreach ($requests as $r) {
+        if (isset($tabCounts[$r['status']])) { $tabCounts[$r['status']]++; }
+    }
+    $visibleRequests = array_values(array_filter($requests, fn($r) => $r['status'] === $tabKey));
+    if ($tabKey !== 'pending') { $visibleRequests = array_reverse($visibleRequests); } // newest decisions first
 }
 ?>
 <!DOCTYPE html>
@@ -222,7 +232,7 @@ if (!$request) {
         </h1>
         <p class="text-muted mb-3">
             Shifting <?= htmlspecialchars($request['from_program']) ?> &rarr; <strong><?= htmlspecialchars($request['to_program'] . ' — ' . $request['to_name']) ?></strong>
-            <span class="badge bg-secondary"><?= htmlspecialchars($request['status']) ?></span>
+            <?= statusBadge($request['status']) ?>
         </p>
 
         <?php if ($request['status'] !== 'pending'): ?>
@@ -282,9 +292,7 @@ if (!$request) {
                     </div>
                 </div>
                 <button type="submit" class="btn btn-outline-primary">Save Credit Evaluation</button>
-                <span class="badge bg-<?= $request['credit_evaluation_status'] === 'completed' ? 'success' : 'secondary' ?> align-middle">
-                    <?= htmlspecialchars($request['credit_evaluation_status']) ?>
-                </span>
+                <?= statusBadge($request['credit_evaluation_status']) ?>
             </div>
         </form>
 
@@ -309,26 +317,34 @@ if (!$request) {
         </form>
 
         <?php endif; ?>
-        <div class="mt-3"><a href="<?= BASE_URL ?>/registrar/shift-requests.php">&larr; Back to list</a></div>
+        <div class="mt-3"><a href="<?= BASE_URL ?>/registrar/shift-requests.php?tab=<?= htmlspecialchars($request['status']) ?>">&larr; Back to list</a></div>
 
     <?php else: ?>
 
         <h1 class="h4 mb-3">Program Shift Requests</h1>
+        <?= tabBar([
+            'pending'  => ['label' => 'Pending',  'count' => $tabCounts['pending'],  'href' => '?tab=pending'],
+            'approved' => ['label' => 'Approved', 'count' => $tabCounts['approved'], 'href' => '?tab=approved'],
+            'rejected' => ['label' => 'Rejected', 'count' => $tabCounts['rejected'], 'href' => '?tab=rejected'],
+        ], $tabKey) ?>
         <div class="table-responsive">
 <table class="table table-hover bg-white">
-            <thead><tr><th>Student</th><th>Target Program</th><th>Requested</th><th>Credit Eval</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Student</th><th>Target Program</th><th>Requested</th><?php if ($tabKey === 'pending'): ?><th>Credit Eval</th><?php endif; ?><th></th></tr></thead>
             <tbody>
-            <?php foreach ($requests as $r): ?>
+            <?php foreach ($visibleRequests as $r): ?>
                 <tr>
                     <td><?= htmlspecialchars($r['first_name'] . ' ' . $r['last_name']) ?> (<?= htmlspecialchars($r['student_id_number']) ?>)</td>
                     <td><?= htmlspecialchars($r['to_program']) ?></td>
-                    <td><?= htmlspecialchars($r['request_date']) ?></td>
-                    <td><?= htmlspecialchars($r['credit_evaluation_status']) ?></td>
-                    <td><span class="badge bg-secondary"><?= htmlspecialchars($r['status']) ?></span></td>
-                    <td><a href="?id=<?= $r['request_id'] ?>" class="btn btn-sm btn-outline-primary">Review</a></td>
+                    <td class="text-nowrap"><?= $r['request_date'] ? htmlspecialchars(date('M j, Y', strtotime($r['request_date']))) : '' ?></td>
+                    <?php if ($tabKey === 'pending'): ?><td><?= statusBadge($r['credit_evaluation_status']) ?></td><?php endif; ?>
+                    <td><a href="?id=<?= $r['request_id'] ?>" class="btn btn-sm btn-outline-primary"><?= $tabKey === 'pending' ? 'Review' : 'View' ?></a></td>
                 </tr>
             <?php endforeach; ?>
-            <?php if (empty($requests)): ?><tr><td colspan="6" class="text-muted">No shift requests.</td></tr><?php endif; ?>
+            <?php if (empty($visibleRequests)): ?>
+                <tr><td colspan="<?= $tabKey === 'pending' ? 5 : 4 ?>" class="text-muted">
+                    <?= $tabKey === 'pending' ? 'No pending shift requests. Nothing to review.' : 'No ' . $tabKey . ' requests yet.' ?>
+                </td></tr>
+            <?php endif; ?>
             </tbody>
         </table>
 </div>

@@ -171,9 +171,15 @@ $curricula = $curricula->fetchAll();
         <h2 class="h5">
             <?= htmlspecialchars($expanded['curriculum_name']) ?>
             (<?= htmlspecialchars($expanded['program_code']) ?>, <?= $expanded['effective_year'] ?>)
-            <?php if ($expanded['is_active']): ?><span class="badge bg-success">Active</span><?php endif; ?>
+            <?php if ($expanded['is_active']): ?><?= statusBadge('active') ?><?php endif; ?>
         </h2>
 
+        <?php
+        // Year tabs: only worth showing when the curriculum spans more than one year level.
+        $yearKeys = array_values(array_unique(array_map('intval', array_column($curriculumSubjects, 'year_level'))));
+        $selectedYear = (is_string($_GET['year'] ?? null) && ctype_digit($_GET['year']) && in_array((int) $_GET['year'], $yearKeys, true))
+            ? (int) $_GET['year'] : ($yearKeys[0] ?? null);
+        ?>
         <form method="post" class="card mb-3">
             <div class="card-body row align-items-end">
                 <input type="hidden" name="action" value="add_subject">
@@ -189,7 +195,7 @@ $curricula = $curricula->fetchAll();
                 </div>
                 <div class="col-md-3 mb-2">
                     <label class="form-label">Year Level</label>
-                    <input type="number" min="1" max="5" class="form-control" name="year_level" required>
+                    <input type="number" min="1" max="5" class="form-control" name="year_level" value="<?= $selectedYear ?? '' ?>" required>
                 </div>
                 <div class="col-md-2 mb-2">
                     <label class="form-label">Semester</label>
@@ -215,7 +221,22 @@ $curricula = $curricula->fetchAll();
             <div class="alert alert-secondary">No subjects assigned yet.</div>
         <?php endif; ?>
 
+        <?php if (count($yearKeys) > 1): ?>
+            <?php
+            $yearTabs = [];
+            foreach ($yearKeys as $yk) {
+                $yearTabs[$yk] = [
+                    'label' => 'Year ' . $yk,
+                    'count' => count(array_filter($curriculumSubjects, fn($cs) => (int) $cs['year_level'] === $yk)),
+                    'href'  => '?curriculum_id=' . (int) $expanded['curriculum_id'] . '&year=' . $yk,
+                ];
+            }
+            ?>
+            <?= tabBar($yearTabs, (string) $selectedYear) ?>
+        <?php endif; ?>
+
         <?php foreach ($grouped as $yearLevel => $semesters): ?>
+            <?php if ((int) $yearLevel !== $selectedYear) { continue; } ?>
             <?php foreach ($semesters as $semester => $rows): ?>
                 <div class="card mb-3">
                     <div class="card-header fw-bold">
@@ -310,7 +331,7 @@ $curricula = $curricula->fetchAll();
                     <td><?= htmlspecialchars($c['program_code']) ?></td>
                     <td><?= htmlspecialchars($c['curriculum_name']) ?></td>
                     <td><?= $c['effective_year'] ?></td>
-                    <td><?= $c['is_active'] ? '<span class="badge bg-success">Active</span>' : '<span class="badge bg-secondary">Retired</span>' ?></td>
+                    <td><?= statusBadge($c['is_active'] ? 'active' : 'retired') ?></td>
                     <td>
                         <a href="?curriculum_id=<?= $c['curriculum_id'] ?>" class="btn btn-sm btn-outline-primary">Manage Subjects</a>
                     </td>

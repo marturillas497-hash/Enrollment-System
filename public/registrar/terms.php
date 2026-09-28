@@ -108,6 +108,7 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
 <div class="container">
     <h1 class="h4 mb-3">School Terms</h1>
+    <?= termBanner(array_values(array_filter($terms, fn($t) => $t['status'] === 'ongoing'))) ?>
 
     <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
@@ -148,9 +149,7 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
                 <td><?= htmlspecialchars($t['school_year']) ?></td>
                 <td><?= $t['semester'] ?></td>
                 <td>
-                    <?= $t['status'] === 'ongoing'
-                        ? '<span class="badge bg-success">Ongoing</span>'
-                        : '<span class="badge bg-secondary">Closed</span>' ?>
+                    <?= statusBadge($t['status']) ?>
                 </td>
                 <td><?= htmlspecialchars($t['date_closed'] ?? '') ?></td>
                 <td>

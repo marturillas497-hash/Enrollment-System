@@ -220,9 +220,73 @@ if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
             </table>
             </div>
             <?php if (!empty($subjectRows)): ?>
+                <p class="mb-2">
+                    Total units selected: <strong><span id="unit-total">0</span></strong>
+                </p>
+                <div id="conflict-warning" class="alert alert-warning" hidden>
+                    Two selected classes overlap in time:
+                    <span id="conflict-text"></span>
+                    You can still submit, but check with the registrar before doing so.
+                </div>
                 <button type="submit" class="btn btn-primary">Submit for Approval</button>
             <?php endif; ?>
         </form>
+
+        <script>
+            // Purely a heads-up for the student before they submit — the server does not
+            // enforce a unit cap or a conflict rule, so this never blocks the submit button.
+            (function () {
+                var offeringData = <?= json_encode(array_reduce($subjectRows, function ($carry, $row) {
+                    foreach ($row['offerings'] as $o) {
+                        $carry[(int) $o['offering_id']] = [
+                            'units' => (float) $row['units'],
+                            'day' => $o['day_of_week'],
+                            'start' => $o['start_time'],
+                            'end' => $o['end_time'],
+                            'label' => $row['subject_code'],
+                        ];
+                    }
+                    return $carry;
+                }, []), JSON_HEX_TAG) ?>;
+
+                function toMinutes(t) {
+                    var parts = t.split(':');
+                    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+                }
+
+                function recalc() {
+                    var selected = [];
+                    document.querySelectorAll('select[name^="offering"]').forEach(function (sel) {
+                        if (sel.value !== '' && offeringData[sel.value]) { selected.push(offeringData[sel.value]); }
+                    });
+
+                    var total = 0;
+                    selected.forEach(function (o) { total += o.units; });
+                    document.getElementById('unit-total').textContent = total % 1 === 0 ? total : total.toFixed(2);
+
+                    var conflicts = [];
+                    for (var i = 0; i < selected.length; i++) {
+                        for (var j = i + 1; j < selected.length; j++) {
+                            var a = selected[i], b = selected[j];
+                            if (a.day !== b.day) { continue; }
+                            if (toMinutes(a.start) < toMinutes(b.end) && toMinutes(b.start) < toMinutes(a.end)) {
+                                conflicts.push(a.label + ' and ' + b.label + ' (' + a.day + ')');
+                            }
+                        }
+                    }
+                    var warning = document.getElementById('conflict-warning');
+                    if (warning) {
+                        document.getElementById('conflict-text').textContent = conflicts.join(', ');
+                        warning.hidden = conflicts.length === 0;
+                    }
+                }
+
+                document.querySelectorAll('select[name^="offering"]').forEach(function (sel) {
+                    sel.addEventListener('change', recalc);
+                });
+                recalc();
+            })();
+        </script>
     <?php else: ?>
         <a href="<?= BASE_URL ?>/student/dashboard.php" class="btn btn-outline-secondary">Back to Dashboard</a>
     <?php endif; ?>

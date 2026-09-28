@@ -4,6 +4,7 @@
 // calls getDbConnection() itself — require_once is safe to call again even if the
 // including page already loaded it.
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../src/helpers/ui_helper.php';
 
 $currentUserData = currentUser();
 $role = $currentUserData['role'] ?? null;
@@ -72,6 +73,8 @@ function navActive(string $href): string
 }
 ?>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/tokens.css">
+<link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/components.css">
 <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/app.css">
 
 <button type="button" class="mist-menu-toggle" id="mistMenuToggle" aria-label="Open menu">

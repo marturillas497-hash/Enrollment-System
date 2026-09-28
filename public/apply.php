@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../src/helpers/ui_helper.php';
 require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
 
@@ -124,6 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Admission Application — MIST Enrollment System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/tokens.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/components.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/apply.css">
 </head>
 <body>
@@ -160,8 +163,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         <?php else: ?>
 
-        <form method="post" novalidate>
+        <form method="post" novalidate id="apply-form" data-steps="<?= $error ? 'off' : 'on' ?>">
             <?php $v = fn(string $key) => htmlspecialchars($_POST[$key] ?? ''); ?>
+
+            <?= stepper(['Applicant', 'Family', 'Contact', 'Program'], 1) ?>
+
+            <div class="apply-step active" data-step="1">
 
             <div class="section-title">Applicant Information</div>
             <div class="row">
@@ -209,6 +216,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
 
+            </div>
+            <div class="apply-step" data-step="2">
             <div class="section-title">Father's Information</div>
             <div class="row">
                 <div class="col-md-3 mb-3">
@@ -253,6 +262,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
 
+            </div>
+            <div class="apply-step" data-step="3">
             <div class="section-title">Contact &amp; Guardian</div>
             <div class="row">
                 <div class="col-md-6 mb-3">
@@ -277,6 +288,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
 
+            </div>
+            <div class="apply-step" data-step="4">
             <div class="section-title">Program</div>
             <div class="row">
                 <div class="col-md-6 mb-3">
@@ -300,8 +313,75 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-neu-primary w-100 mt-3">Submit Application</button>
+            </div>
+
+            <div class="apply-nav">
+                <button type="button" class="btn btn-outline-secondary" id="apply-back" hidden>Back</button>
+                <button type="button" class="btn btn-neu-primary ms-auto" id="apply-next" hidden>Next</button>
+                <button type="submit" class="btn btn-neu-primary w-100 mt-3" id="apply-submit">Submit Application</button>
+            </div>
         </form>
+
+        <script>
+        (function () {
+            var form = document.getElementById('apply-form');
+            // After a server-side error the whole form stays visible, so the error and the
+            // values the applicant typed are easy to find. Steps only run on a fresh form.
+            if (!form || form.dataset.steps !== 'on') { return; }
+
+            var steps = form.querySelectorAll('.apply-step');
+            var dots = form.querySelectorAll('.stepper-step');
+            var back = document.getElementById('apply-back');
+            var next = document.getElementById('apply-next');
+            var submit = document.getElementById('apply-submit');
+            var total = steps.length;
+            var current = 1;
+
+            form.classList.add('apply-steps-on');
+            submit.classList.remove('w-100', 'mt-3');
+
+            function show(n) {
+                current = n;
+                steps.forEach(function (el) { el.classList.toggle('active', Number(el.dataset.step) === n); });
+                dots.forEach(function (el, i) {
+                    var num = i + 1;
+                    el.classList.toggle('current', num === n);
+                    el.classList.toggle('done', num < n);
+                    el.querySelector('.stepper-dot').innerHTML = num < n ? '&#10003;' : String(num);
+                });
+                back.hidden = n === 1;
+                next.hidden = n === total;
+                submit.hidden = n !== total;
+                document.querySelector('.apply-box').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+
+            function stepIsValid() {
+                var fields = steps[current - 1].querySelectorAll('input, select');
+                for (var i = 0; i < fields.length; i++) {
+                    var el = fields[i];
+                    if (el.required && el.value.trim() === '') {
+                        el.setCustomValidity('Please fill out this field.');
+                        el.reportValidity();
+                        el.setCustomValidity('');
+                        return false;
+                    }
+                    if (!el.checkValidity()) { el.reportValidity(); return false; }
+                }
+                return true;
+            }
+
+            next.addEventListener('click', function () { if (stepIsValid()) { show(current + 1); } });
+            back.addEventListener('click', function () { show(current - 1); });
+            // Enter in a text box should go to the next step, not submit a half-filled form.
+            form.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && e.target.tagName === 'INPUT' && current < total) {
+                    e.preventDefault();
+                    next.click();
+                }
+            });
+            show(1);
+        })();
+        </script>
         <?php endif; ?>
     <?php endif; ?>
 
