@@ -62,6 +62,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Login — MIST Enrollment System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/tokens.css">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/components.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/login.css">
 </head>
 <body>
@@ -131,6 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </button>
                         </div>
                     </div>
+                    <p class="mb-3"><a href="<?= BASE_URL ?>/forgot-password.php" class="small">Forgot password?</a></p>
                     <button type="submit" class="btn btn-neu-primary w-100">Sign In</button>
                 </form>
 
