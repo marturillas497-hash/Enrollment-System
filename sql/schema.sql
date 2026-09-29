@@ -13,6 +13,7 @@ CREATE TABLE `Accounts` (
   `password_hash` VARCHAR(255) NOT NULL,
   `role` ENUM('student', 'teacher', 'registrar', 'admission_staff', 'admin') NOT NULL,
   `must_change_password` TINYINT(1) NOT NULL DEFAULT 1,
+  `session_version` INT NOT NULL DEFAULT 0,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`account_id`),
   UNIQUE KEY `username_UNIQUE` (`username`)
@@ -321,6 +322,18 @@ CREATE TABLE `Shift_credit` (
   KEY `evaluated_by_idx` (`evaluated_by`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE `Password_reset` (
+  `reset_id` INT NOT NULL AUTO_INCREMENT,
+  `account_id` INT NOT NULL,
+  `token_hash` CHAR(64) NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `used_at` DATETIME NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`reset_id`),
+  UNIQUE KEY `token_hash_UNIQUE` (`token_hash`),
+  KEY `account_id_created_at_idx` (`account_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Foreign keys
 
 ALTER TABLE `Program` ADD CONSTRAINT `fk_program_department_id` FOREIGN KEY (`department_id`) REFERENCES `Department` (`department_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -367,6 +380,7 @@ ALTER TABLE `Shift_credit` ADD CONSTRAINT `fk_shift_credit_request_id` FOREIGN K
 ALTER TABLE `Shift_credit` ADD CONSTRAINT `fk_shift_credit_enrolled_subject_id` FOREIGN KEY (`enrolled_subject_id`) REFERENCES `Enrolled_subject` (`enrolled_subject_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Shift_credit` ADD CONSTRAINT `fk_shift_credit_credited_subject_id` FOREIGN KEY (`credited_subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Shift_credit` ADD CONSTRAINT `fk_shift_credit_evaluated_by` FOREIGN KEY (`evaluated_by`) REFERENCES `Accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Password_reset` ADD CONSTRAINT `fk_password_reset_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 SET FOREIGN_KEY_CHECKS=1;
 

@@ -9,6 +9,13 @@ if (currentUser() !== null) {
 }
 
 $error = '';
+$notice = '';
+
+if (isset($_GET['reset'])) {
+    $notice = 'Your password has been updated. Please log in with your new password.';
+} elseif (isset($_GET['ended'])) {
+    $notice = 'You were signed out because your password changed. Please log in again.';
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -22,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $pdo = getDbConnection();
         $stmt = $pdo->prepare(
-            'SELECT account_id, username, password_hash, role, must_change_password
+            'SELECT account_id, username, password_hash, role, must_change_password, session_version
              FROM Accounts WHERE username = :username'
         );
         $stmt->execute(['username' => $username]);
@@ -42,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'account_id' => $account['account_id'],
                 'username'   => $account['username'],
                 'role'       => $account['role'],
+                'session_version' => (int)$account['session_version'],
             ];
 
             if ((int)$account['must_change_password'] === 1) {
@@ -92,6 +100,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="signin-panel flex-grow-1 d-flex flex-column justify-content-center">
             <div class="w-100 signin-form-wrap">
                 <h2 class="h3 mb-4">Sign In</h2>
+
+                <?php if ($notice): ?>
+                    <div class="alert alert-success"><?= htmlspecialchars($notice) ?></div>
+                <?php endif; ?>
 
                 <?php if ($error): ?>
                     <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>

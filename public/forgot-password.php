@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/session.php';
-require_once __DIR__ . '/../src/helpers/password_helper.php';
+require_once __DIR__ . '/../src/helpers/reset_token_helper.php';
 require_once __DIR__ . '/../src/helpers/mail_helper.php';
 
 if (currentUser() !== null) {
@@ -33,25 +33,22 @@ $submitted = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
-    $email = trim($_POST['email'] ?? '');
 
-    if ($username !== '' && $email !== '') {
+    if ($username !== '') {
         $pdo = getDbConnection();
-        $stmt = $pdo->prepare('SELECT account_id, role, email FROM Accounts WHERE username = :u');
+        $stmt = $pdo->prepare('SELECT account_id, username, role, email FROM Accounts WHERE username = :u');
         $stmt->execute(['u' => $username]);
         $account = $stmt->fetch();
 
-        // Both fields have to match the same account — and the response below is
-        // identical either way — so this form can't be used to check whether a
-        // given username or email exists.
-        if ($account && $account['email'] !== null && strcasecmp(trim($account['email']), $email) === 0) {
-            $name = accountDisplayName($pdo, (int)$account['account_id'], $account['role']);
-            $newPassword = generateTempPassword();
+        // Response is identical whether the username exists, has no email, or is throttled.
+        if ($account && $account['email'] !== null && trim($account['email']) !== '') {
+            $token = createPasswordResetToken($pdo, (int)$account['account_id']);
 
-            $pdo->prepare('UPDATE Accounts SET password_hash = :hash, must_change_password = 1 WHERE account_id = :id')
-                ->execute(['hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $account['account_id']]);
-
-            sendPasswordResetEmail($account['email'], $name, $username, $newPassword);
+            if ($token !== null) {
+                $name = accountDisplayName($pdo, (int)$account['account_id'], $account['role']);
+                $resetUrl = SITE_URL . '/reset-password.php?token=' . $token;
+                sendPasswordResetLinkEmail(trim($account['email']), $name, $account['username'], $resetUrl, PASSWORD_RESET_TTL_MINUTES);
+            }
         }
     }
 
@@ -99,15 +96,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <?php if ($submitted): ?>
                     <div class="alert alert-success">
-                        If that username and email match an account on file, a new password has
-                        been sent to the email on file. Didn't get it? Double-check your entries,
-                        or contact your registrar/admin.
+                        If that username has an email on file, a password reset link has been sent
+                        to it. The link expires in <?= (int)PASSWORD_RESET_TTL_MINUTES ?> minutes.
+                        Didn't get it? Check your spam folder, or contact your registrar/admin.
                     </div>
                     <a href="<?= BASE_URL ?>/login.php" class="btn btn-neu-primary w-100">Back to Login</a>
                 <?php else: ?>
                     <p class="text-muted mb-4">
-                        Enter your username and the email on file. If they match, we'll email you a
-                        new temporary password.
+                        Enter your username. If it has an email on file, we'll send a link to
+                        that email so you can choose a new password.
                     </p>
 
                     <form method="post" novalidate>
@@ -116,12 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <input type="text" class="form-control neu-input" id="username" name="username"
                                    value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" required autofocus>
                         </div>
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" class="form-control neu-input" id="email" name="email"
-                                   value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
-                        </div>
-                        <button type="submit" class="btn btn-neu-primary w-100">Send New Password</button>
+                        <button type="submit" class="btn btn-neu-primary w-100">Send Reset Link</button>
                     </form>
                 <?php endif; ?>
             </div>

@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regen
         $error = 'Staff account not found.';
     } else {
         $newPassword = generateTempPassword();
-        $pdo->prepare('UPDATE Accounts SET password_hash = :hash, must_change_password = 1 WHERE account_id = :id')
+        $pdo->prepare('UPDATE Accounts SET password_hash = :hash, must_change_password = 1, session_version = session_version + 1 WHERE account_id = :id')
             ->execute(['hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $accountId]);
         $regenerated = ['username' => $account['username'], 'password' => $newPassword, 'email' => $account['email']];
 

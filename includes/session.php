@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/../config/app.php';
+require_once __DIR__ . '/../config/database.php';
 
 // A session cookie with no explicit lifetime is a "session cookie" in the strict
 // sense — some browsers drop it the moment the window fully closes, others don't
@@ -39,12 +40,27 @@ function currentUser(): ?array
     return $_SESSION['user'] ?? null;
 }
 
+/** True if the account's session_version still matches the one stored at login. */
+function sessionIsCurrent(array $user): bool
+{
+    $stmt = getDbConnection()->prepare('SELECT session_version FROM Accounts WHERE account_id = :id');
+    $stmt->execute(['id' => $user['account_id']]);
+    $version = $stmt->fetchColumn();
+
+    return $version !== false && (int)$version === (int)($user['session_version'] ?? 0);
+}
+
 /** Redirects to login.php if nobody's logged in. Call at the top of every protected page. */
 function requireLogin(): array
 {
     $user = currentUser();
     if ($user === null) {
         header('Location: ' . BASE_URL . '/login.php');
+        exit;
+    }
+    if (!sessionIsCurrent($user)) {
+        logoutUser();
+        header('Location: ' . BASE_URL . '/login.php?ended=1');
         exit;
     }
     return $user;
