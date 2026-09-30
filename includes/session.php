@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../src/helpers/ui_helper.php';
 
 // A session cookie with no explicit lifetime is a "session cookie" in the strict
 // sense — some browsers drop it the moment the window fully closes, others don't
