@@ -163,7 +163,7 @@ $curricula = $curricula->fetchAll();
 <div class="container">
     <h1 class="h4 mb-3">Manage Curriculum</h1>
 
-    <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <?php if ($expanded): ?>
@@ -254,11 +254,12 @@ $curricula = $curricula->fetchAll();
                                 <td><?= htmlspecialchars($cs['subject_name']) ?></td>
                                 <td><?= $cs['units'] ?></td>
                                 <td>
-                                    <form method="post" onsubmit="return confirm('Remove this subject from the curriculum?')">
+                                    <form method="post">
                                         <input type="hidden" name="action" value="remove_subject">
                                         <input type="hidden" name="curriculum_id" value="<?= $expanded['curriculum_id'] ?>">
                                         <input type="hidden" name="subject_id" value="<?= $cs['subject_id'] ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                data-confirm="Remove this subject from the curriculum?" data-confirm-label="Remove" data-confirm-tone="danger">Remove</button>
                                     </form>
                                 </td>
                             </tr>

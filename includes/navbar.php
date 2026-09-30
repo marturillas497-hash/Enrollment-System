@@ -110,16 +110,47 @@ function navActive(string $href): string
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/staff.php') ?>" href="<?= BASE_URL ?>/admin/staff.php"><i class="bi bi-people"></i> Staff Accounts</a>
         <?php elseif ($role === 'registrar'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/dashboard.php') ?>" href="<?= BASE_URL ?>/registrar/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/place-student.php') ?>" href="<?= BASE_URL ?>/registrar/place-student.php"><i class="bi bi-person-check"></i> Place Student</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/students.php') ?>" href="<?= BASE_URL ?>/registrar/students.php"><i class="bi bi-people"></i> Students</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/subjects.php') ?>" href="<?= BASE_URL ?>/registrar/subjects.php"><i class="bi bi-journal-bookmark"></i> Subjects</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/prerequisites.php') ?>" href="<?= BASE_URL ?>/registrar/prerequisites.php"><i class="bi bi-diagram-2"></i> Prerequisites</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/curriculum.php') ?>" href="<?= BASE_URL ?>/registrar/curriculum.php"><i class="bi bi-file-earmark-text"></i> Curriculum</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/sections.php') ?>" href="<?= BASE_URL ?>/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/terms.php') ?>" href="<?= BASE_URL ?>/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/class-offerings.php') ?>" href="<?= BASE_URL ?>/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/shift-requests.php') ?>" href="<?= BASE_URL ?>/registrar/shift-requests.php"><i class="bi bi-box-arrow-in-right"></i> Shift Requests</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/irregular-enrollments.php') ?>" href="<?= BASE_URL ?>/registrar/irregular-enrollments.php"><i class="bi bi-list-check"></i> Irregular Enrollments</a>
+
+            <?php
+            // The registrar's list is long enough (11 links) to be worth grouping — every other
+            // role's list is short enough that this would just be extra clicks, so this pattern
+            // only appears here. Each group defaults open (data-bs-toggle="collapse" plus a plain
+            // Bootstrap .collapse.show — no page reload keeps a group's open/closed state, that
+            // wasn't judged worth the extra complexity for a first pass).
+            $navActiveInGroup = fn(array $paths) => array_reduce($paths, fn($c, $p) => $c || navActive(BASE_URL . $p) !== '', false);
+            $enrollmentGroupOpen = $navActiveInGroup(['/registrar/place-student.php', '/registrar/students.php', '/registrar/shift-requests.php', '/registrar/irregular-enrollments.php']);
+            $catalogGroupOpen = $navActiveInGroup(['/registrar/subjects.php', '/registrar/prerequisites.php', '/registrar/curriculum.php', '/registrar/sections.php', '/registrar/terms.php', '/registrar/class-offerings.php']);
+            ?>
+
+            <div class="sidebar-group">
+                <button type="button" class="sidebar-group-toggle<?= $enrollmentGroupOpen ? '' : ' collapsed' ?>"
+                        data-bs-toggle="collapse" data-bs-target="#sidebarGroupEnrollment"
+                        aria-expanded="<?= $enrollmentGroupOpen ? 'true' : 'false' ?>">
+                    <span>Enrollment</span><i class="bi bi-chevron-down"></i>
+                </button>
+                <div class="collapse<?= $enrollmentGroupOpen ? ' show' : '' ?>" id="sidebarGroupEnrollment">
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/place-student.php') ?>" href="<?= BASE_URL ?>/registrar/place-student.php"><i class="bi bi-person-check"></i> Place Student</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/students.php') ?>" href="<?= BASE_URL ?>/registrar/students.php"><i class="bi bi-people"></i> Students</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/shift-requests.php') ?>" href="<?= BASE_URL ?>/registrar/shift-requests.php"><i class="bi bi-box-arrow-in-right"></i> Shift Requests</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/irregular-enrollments.php') ?>" href="<?= BASE_URL ?>/registrar/irregular-enrollments.php"><i class="bi bi-list-check"></i> Irregular Enrollments</a>
+                </div>
+            </div>
+
+            <div class="sidebar-group">
+                <button type="button" class="sidebar-group-toggle<?= $catalogGroupOpen ? '' : ' collapsed' ?>"
+                        data-bs-toggle="collapse" data-bs-target="#sidebarGroupCatalog"
+                        aria-expanded="<?= $catalogGroupOpen ? 'true' : 'false' ?>">
+                    <span>Academic Setup</span><i class="bi bi-chevron-down"></i>
+                </button>
+                <div class="collapse<?= $catalogGroupOpen ? ' show' : '' ?>" id="sidebarGroupCatalog">
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/subjects.php') ?>" href="<?= BASE_URL ?>/registrar/subjects.php"><i class="bi bi-journal-bookmark"></i> Subjects</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/prerequisites.php') ?>" href="<?= BASE_URL ?>/registrar/prerequisites.php"><i class="bi bi-diagram-2"></i> Prerequisites</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/curriculum.php') ?>" href="<?= BASE_URL ?>/registrar/curriculum.php"><i class="bi bi-file-earmark-text"></i> Curriculum</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/sections.php') ?>" href="<?= BASE_URL ?>/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/terms.php') ?>" href="<?= BASE_URL ?>/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/class-offerings.php') ?>" href="<?= BASE_URL ?>/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
+                </div>
+            </div>
         <?php elseif ($role === 'admission_staff'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/staff/dashboard.php') ?>" href="<?= BASE_URL ?>/staff/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/staff/review-application.php') ?>" href="<?= BASE_URL ?>/staff/review-application.php"><i class="bi bi-clipboard-check"></i> Review Applications</a>
@@ -164,6 +195,25 @@ function navActive(string $href): string
   </div>
 </div>
 
+<!-- Shared confirm dialog: any element anywhere with data-confirm="message" opens this instead of
+     the browser's native confirm(). See public/assets/css/components.css for .btn tones used here
+     and CLAUDE-UI-REDESIGN.md for the full data-confirm-* attribute list. -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmModalTitle">Please Confirm</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="confirmModalMessage"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmModalOk">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     (function () {
@@ -191,4 +241,91 @@ function navActive(string $href): string
             });
         });
     })();
+
+    // Shared confirm dialog. A button or link with data-confirm="message" gets this modal
+    // instead of a native confirm() popup. Optional: data-confirm-title, data-confirm-label
+    // (the OK button's text), data-confirm-tone (primary/success/warning/danger — picks the OK
+    // button's color). Works on a <button type="submit"> inside a <form> (submits that form on
+    // confirm) or a plain <a href="..."> (navigates on confirm).
+    //
+    // This listens on `document` and checks e.target.closest('[data-confirm]') on every click,
+    // rather than looping over document.querySelectorAll('[data-confirm]') once up front. This
+    // script tag runs as part of navbar.php's own output, which is included near the TOP of each
+    // page — before that page's own buttons, forms, and alerts (the elements this needs to find)
+    // have even been parsed into the DOM yet. Binding to each element up front would silently
+    // find nothing. Listening on `document` works regardless of when the target element shows up,
+    // the same reason Bootstrap's own data-bs-* attributes (data-bs-dismiss, data-bs-toggle) work
+    // correctly from this same script block without this problem.
+    (function () {
+        var modalEl = document.getElementById('confirmModal');
+        if (!modalEl || !window.bootstrap) { return; }
+        var modal = new bootstrap.Modal(modalEl);
+        var titleEl = document.getElementById('confirmModalTitle');
+        var messageEl = document.getElementById('confirmModalMessage');
+        var okBtn = document.getElementById('confirmModalOk');
+        var pending = null;
+
+        document.addEventListener('click', function (e) {
+            var el = e.target.closest('[data-confirm]');
+            if (!el) { return; }
+            e.preventDefault();
+            pending = el;
+            titleEl.textContent = el.getAttribute('data-confirm-title') || 'Please Confirm';
+            messageEl.textContent = el.getAttribute('data-confirm');
+            okBtn.textContent = el.getAttribute('data-confirm-label') || 'Confirm';
+            okBtn.className = 'btn btn-' + (el.getAttribute('data-confirm-tone') || 'primary');
+            modal.show();
+        });
+
+        okBtn.addEventListener('click', function () {
+            modal.hide();
+            if (!pending) { return; }
+            var form = pending.closest('form');
+            if (form) {
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit(pending.tagName === 'BUTTON' ? pending : undefined);
+                } else {
+                    form.submit();
+                }
+            } else if (pending.tagName === 'A' && pending.href) {
+                window.location.href = pending.href;
+            }
+            pending = null;
+        });
+    })();
+
+    // Everything below actually needs the page's own content (alerts, tables) to exist in the DOM
+    // first, so — same reason as the comment above — it waits for DOMContentLoaded rather than
+    // running immediately, since this script block is emitted before that content in the HTML.
+    document.addEventListener('DOMContentLoaded', function () {
+        // Alerts marked data-auto-dismiss="<ms>" fade themselves out after that many milliseconds —
+        // used only for one-off "your action just succeeded" messages, never for errors or a message
+        // that shows a password/credential the person still needs to copy. Bootstrap's own dismiss
+        // button (data-bs-dismiss="alert") still lets the person close any alert manually at any time.
+        document.querySelectorAll('[data-auto-dismiss]').forEach(function (el) {
+            var ms = parseInt(el.getAttribute('data-auto-dismiss'), 10) || 4000;
+            setTimeout(function () {
+                var instance = bootstrap.Alert.getOrCreateInstance(el);
+                if (instance) { instance.close(); }
+            }, ms);
+        });
+
+        // On a narrow screen, every table below restacks each row into a small card (see
+        // .table-responsive in components.css for the breakpoint and the card styling). That CSS
+        // alone can't show which value is which column, so each cell gets its column's header
+        // text as a data-label here, read fresh from that same table's own <thead> — no page has
+        // to hand-write labels on every <td>, and a table that changes its columns never drifts
+        // out of sync with hand-written labels either.
+        document.querySelectorAll('.table-responsive table').forEach(function (table) {
+            var headers = Array.prototype.map.call(table.querySelectorAll('thead th'), function (th) {
+                return th.textContent.trim();
+            });
+            if (!headers.length) { return; }
+            table.querySelectorAll('tbody tr').forEach(function (row) {
+                Array.prototype.forEach.call(row.children, function (cell, i) {
+                    if (headers[i]) { cell.setAttribute('data-label', headers[i]); }
+                });
+            });
+        });
+    });
 </script>

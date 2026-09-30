@@ -49,6 +49,18 @@
     }
     .mist-sidebar .nav-item-link i { font-size: 1.1rem; width: 20px; text-align: center; }
 
+    /* Collapsible sidebar section headings — only the registrar's nav is long enough to use these */
+    .mist-sidebar .sidebar-group-toggle {
+        display: flex; align-items: center; justify-content: space-between; width: 100%;
+        padding: 0.6rem 1.25rem 0.35rem; margin-top: 0.4rem;
+        background: none; border: none; color: rgba(255,255,255,0.6);
+        font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .mist-sidebar .sidebar-group-toggle:hover { color: #fff; }
+    .mist-sidebar .sidebar-group-toggle i { font-size: 0.8rem; width: auto; transition: transform 0.15s ease; }
+    /* Bootstrap's collapse JS toggles .collapsed on this button itself, no extra JS needed here */
+    .mist-sidebar .sidebar-group-toggle.collapsed i { transform: rotate(-90deg); }
+
     .mist-sidebar .logout-link {
         display: flex; align-items: center; gap: 12px; padding: 16px; color: var(--accent-logout);
         text-decoration: none; font-weight: 700; border-top: 1px solid rgba(255,255,255,0.15);
@@ -92,7 +104,11 @@
     }
     .btn-primary:hover, .btn-primary:focus { background: var(--royal-blue-light) !important; border-color: var(--royal-blue-light) !important; }
     .btn-outline-primary { color: var(--royal-blue) !important; border-color: var(--royal-blue) !important; border-radius: var(--radius-control) !important; }
-    .btn-outline-primary:hover { background: var(--royal-blue) !important; border-color: var(--royal-blue) !important; }
+    .btn-outline-primary:hover { background: var(--royal-blue) !important; border-color: var(--royal-blue) !important; color: #fff !important; }
+    /* The brief instant a button is clicked (:active) hits the same root cause as :hover above:
+       the base rule's color is !important and otherwise outlives any state change. Bootstrap
+       already fills the background for :active on its own, so only color needs forcing here. */
+    .btn-outline-primary:active { color: #fff !important; }
     .btn-success, .btn-outline-success, .btn-danger, .btn-outline-danger,
     .btn-warning, .btn-outline-warning, .btn-info, .btn-outline-info,
     .btn-secondary, .btn-outline-secondary { border-radius: var(--radius-control) !important; }
@@ -101,9 +117,42 @@
     .card { border: none !important; border-radius: var(--radius-card) !important; box-shadow: var(--neu-raised-md); }
     .card-header { background: var(--light-blue-accent) !important; color: var(--royal-blue) !important; font-weight: 700; border-bottom: none !important; }
 
-    /* Tables — light-blue header row, soft shadow on the wrapper (already present on every table via .table-responsive) */
-    .table-responsive { border-radius: var(--radius-control-lg); box-shadow: var(--neu-raised-sm); overflow: hidden; }
-    .table thead th { background: var(--light-blue-accent); color: var(--royal-blue); font-weight: 700; border-bottom: 2px solid var(--royal-blue-light) !important; }
+    /* Tables — light-blue header row, soft shadow on the wrapper (already present on every table via .table-responsive).
+       max-height + overflow: auto (not overflow: hidden) is what actually makes the sticky header below
+       work: a sticky descendant only sticks within the nearest ancestor that has real internal scroll, and
+       overflow: hidden here would still count as that ancestor without ever letting one scroll. This also
+       means a long table now scrolls inside its own box, with the page around it staying put. */
+    .table-responsive { max-height: 65vh; overflow: auto; border-radius: var(--radius-control-lg); box-shadow: var(--neu-raised-sm); }
+    .table thead th { background: var(--light-blue-accent); color: var(--royal-blue); font-weight: 700; border-bottom: 2px solid var(--royal-blue-light) !important; position: sticky; top: 0; z-index: 2; }
+
+    /* Below the breakpoint, every table restacks into a list of small cards instead of just
+       scrolling sideways. Each cell's column label is filled in by the script in navbar.php,
+       which reads it straight from that table's own <thead> — nothing here needs a page to
+       hand-write a label on every cell, and it can't drift out of sync with the real columns. */
+    @media (max-width: 767.98px) {
+        .table-responsive { max-height: none; overflow: visible; box-shadow: none; }
+        .table-responsive table, .table-responsive thead, .table-responsive tbody,
+        .table-responsive tr, .table-responsive th, .table-responsive td { display: block; }
+        .table-responsive thead { position: absolute; top: -9999px; left: -9999px; }
+        .table-responsive tbody tr {
+            margin-bottom: 0.75rem; padding: 0.5rem 0.9rem;
+            background: var(--surface); border-radius: var(--radius-card); box-shadow: var(--neu-raised-sm);
+        }
+        .table-responsive tbody tr:hover { background: var(--surface); } /* .table-hover would otherwise tint the whole card on tap */
+        .table-responsive td {
+            display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+            padding: 0.45rem 0; border: none !important; border-bottom: 1px solid var(--border-faint) !important;
+            text-align: right; white-space: normal;
+        }
+        .table-responsive td:last-child { border-bottom: none !important; }
+        .table-responsive td[data-label]::before {
+            content: attr(data-label); flex-shrink: 0; text-align: left;
+            font-weight: 700; font-size: 0.78rem; color: var(--royal-blue);
+        }
+        /* A cell with no header text (the row of action buttons, usually) gets no label prefix
+           and just right-aligns its buttons instead of splitting the row awkwardly. */
+        .table-responsive td:not([data-label]) { justify-content: flex-end; }
+    }
 
     /* --- Mobile: sidebar becomes an off-canvas panel instead of taking up permanent space --- */
     .mist-menu-toggle {

@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regen
     } else {
         $newPassword = generateTempPassword();
         $stmt = $pdo->prepare(
-            'UPDATE Accounts SET password_hash = :hash, must_change_password = 1, session_version = session_version + 1 WHERE account_id = :id'
+            'UPDATE Accounts SET password_hash = :hash, must_change_password = 1 WHERE account_id = :id'
         );
         $stmt->execute(['hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $accountId]);
 
@@ -112,35 +112,61 @@ if (!isset($statusOptions[$filterStatus])) { $filterStatus = ''; }
 $sortKey = is_string($_GET['sort'] ?? null) ? $_GET['sort'] : 'name_az';
 if (!isset($sortOptions[$sortKey])) { $sortKey = 'name_az'; }
 
-$sql = "SELECT s.student_id, s.student_id_number, s.last_name, s.first_name, s.overall_status, s.account_id,
-               s.student_type,
-               p.program_code, e.year_level, sec.section_name, term.school_year, term.semester
-        FROM Student s
-        JOIN Enrollment e ON e.enrollment_id = (
-            SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
-            ORDER BY e2.enrollment_id DESC LIMIT 1
-        )
-        JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
-        JOIN Program p ON p.program_id = c.program_id
-        LEFT JOIN Section sec ON sec.section_id = e.section_id
-        LEFT JOIN School_term term ON term.term_id = e.term_id
-        WHERE p.department_id = :dept";
+// FROM/JOIN/WHERE is built once and shared by the count query and the page query below, so
+// the two can never drift out of sync with each other.
+$fromWhere = "FROM Student s
+              JOIN Enrollment e ON e.enrollment_id = (
+                  SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
+                  ORDER BY e2.enrollment_id DESC LIMIT 1
+              )
+              JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
+              JOIN Program p ON p.program_id = c.program_id
+              LEFT JOIN Section sec ON sec.section_id = e.section_id
+              LEFT JOIN School_term term ON term.term_id = e.term_id
+              WHERE p.department_id = :dept";
 $params = ['dept' => $myDepartmentId];
 if ($search !== '') {
-    $sql .= ' AND (s.last_name LIKE :q1 OR s.first_name LIKE :q2 OR s.student_id_number LIKE :q3)';
+    $fromWhere .= ' AND (s.last_name LIKE :q1 OR s.first_name LIKE :q2 OR s.student_id_number LIKE :q3)';
     $params['q1'] = "%$search%";
     $params['q2'] = "%$search%";
     $params['q3'] = "%$search%";
 }
-if ($filterProgram) { $sql .= ' AND p.program_id = :program'; $params['program'] = $filterProgram; }
-if ($filterYear)    { $sql .= ' AND e.year_level = :year';    $params['year'] = $filterYear; }
-if ($filterStatus !== '') { $sql .= ' AND s.overall_status = :status'; $params['status'] = $filterStatus; }
-$sql .= ' ORDER BY ' . $sortOptions[$sortKey]['sql'];
+if ($filterProgram) { $fromWhere .= ' AND p.program_id = :program'; $params['program'] = $filterProgram; }
+if ($filterYear)    { $fromWhere .= ' AND e.year_level = :year';    $params['year'] = $filterYear; }
+if ($filterStatus !== '') { $fromWhere .= ' AND s.overall_status = :status'; $params['status'] = $filterStatus; }
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) $fromWhere");
+$countStmt->execute($params);
+$totalStudents = (int) $countStmt->fetchColumn();
+$pageInfo = paginationInfo($totalStudents, 15);
+
+$sql = "SELECT s.student_id, s.student_id_number, s.last_name, s.first_name, s.overall_status, s.account_id,
+               s.student_type,
+               p.program_code, e.year_level, sec.section_name, term.school_year, term.semester
+        $fromWhere
+        ORDER BY " . $sortOptions[$sortKey]['sql'] . '
+        LIMIT :limit OFFSET :offset';
 
 $stmt = $pdo->prepare($sql);
-$stmt->execute($params);
+foreach ($params as $key => $value) {
+    $stmt->bindValue(':' . $key, $value);
+}
+// LIMIT/OFFSET must be bound as real integers, not the string PDO's execute($array) shorthand
+// would use — MySQL rejects a string there under real (non-emulated) prepared statements.
+$stmt->bindValue(':limit', $pageInfo['perPage'], PDO::PARAM_INT);
+$stmt->bindValue(':offset', $pageInfo['offset'], PDO::PARAM_INT);
+$stmt->execute();
 $students = $stmt->fetchAll();
 $isFiltered = ($search !== '' || $filterProgram || $filterYear || $filterStatus !== '' || $sortKey !== 'name_az');
+
+// Same filter/search/sort values as the query above, reused so pagination links don't drop them.
+$pageQueryParams = array_filter([
+    'q' => $search !== '' ? $search : null,
+    'program' => $filterProgram ?: null,
+    'year' => $filterYear ?: null,
+    'status' => $filterStatus !== '' ? $filterStatus : null,
+    'sort' => $sortKey !== 'name_az' ? $sortKey : null,
+], fn($v) => $v !== null);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -162,7 +188,8 @@ $isFiltered = ($search !== '' || $filterProgram || $filterYear || $filterStatus 
     <?php endif; ?>
 
     <?php if ($regenerated): ?>
-        <div class="alert alert-success">
+        <div class="alert alert-success alert-dismissible fade show">
+            <!-- No data-auto-dismiss here on purpose: this box shows a one-time plaintext password the person still needs to copy. See CLAUDE-UI-REDESIGN.md. -->
             <strong>New temporary password generated.</strong>
             <?php if (!$mailWarning): ?>
                 Email has been sent to <strong><?= htmlspecialchars($regenerated['email']) ?></strong>.
@@ -174,6 +201,7 @@ $isFiltered = ($search !== '' || $filterProgram || $filterYear || $filterStatus 
                 <dt class="col-sm-2">New Password</dt>
                 <dd class="col-sm-10"><code><?= htmlspecialchars($regenerated['password']) ?></code></dd>
             </dl>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     <?php endif; ?>
 
@@ -226,7 +254,7 @@ $isFiltered = ($search !== '' || $filterProgram || $filterYear || $filterStatus 
         </div>
         <button type="submit" class="btn btn-primary">Search</button>
         <?php if ($isFiltered): ?><a href="students.php" class="btn btn-outline-secondary">Reset</a><?php endif; ?>
-        <span class="toolbar-count">Showing <?= count($students) ?> student<?= count($students) === 1 ? '' : 's' ?></span>
+        <span class="toolbar-count">Showing <?= count($students) ?> of <?= $totalStudents ?> student<?= $totalStudents === 1 ? '' : 's' ?></span>
     </form>
 
     <div class="table-responsive">
@@ -244,10 +272,12 @@ $isFiltered = ($search !== '' || $filterProgram || $filterYear || $filterStatus 
                 <td><?= $s['school_year'] ? htmlspecialchars($s['school_year'] . ' S' . $s['semester']) : '<span class="text-muted">—</span>' ?></td>
                 <td><?= statusBadge($s['overall_status']) ?></td>
                 <td>
-                    <form method="post" class="d-inline" onsubmit="return confirm('Generate a new temporary password for this student? Their current password will stop working immediately.')">
+                    <form method="post" class="d-inline">
                         <input type="hidden" name="action" value="regenerate_password">
                         <input type="hidden" name="account_id" value="<?= $s['account_id'] ?>">
-                        <button type="submit" class="btn btn-sm btn-outline-warning">Regenerate Password</button>
+                        <button type="submit" class="btn btn-sm btn-outline-warning"
+                                data-confirm="Generate a new temporary password for this student? Their current password will stop working immediately."
+                                data-confirm-label="Regenerate" data-confirm-tone="warning">Regenerate Password</button>
                     </form>
                     <?php if ($s['student_type'] === 'transferee'): ?>
                         <a href="<?= BASE_URL ?>/registrar/transferee-credit.php?student_id=<?= $s['student_id'] ?>"
@@ -260,6 +290,8 @@ $isFiltered = ($search !== '' || $filterProgram || $filterYear || $filterStatus 
         </tbody>
     </table>
 </div>
+
+<?= paginationNav($pageInfo['page'], $pageInfo['totalPages'], $pageQueryParams) ?>
 </div>
 </body>
 </html>

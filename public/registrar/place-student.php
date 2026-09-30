@@ -504,7 +504,8 @@ if (!$application && !$created) {
             </div>
 
             <button type="submit" class="btn btn-success w-100"
-                    onclick="return confirm('Create this student\'s account and enrollment? This cannot be undone here.')">
+                    data-confirm="Create this student&#039;s account and enrollment? This cannot be undone here."
+                    data-confirm-label="Confirm Placement" data-confirm-tone="success">
                 Confirm Placement
             </button>
         </form>

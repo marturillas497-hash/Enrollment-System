@@ -275,7 +275,7 @@ foreach ($candidateOfferings as $o) {
         Transferee — <?= htmlspecialchars($student['school_year'] . ' — Semester ' . $student['semester']) ?>
     </p>
 
-    <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <div class="card mb-4">

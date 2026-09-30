@@ -136,3 +136,43 @@ if (!function_exists('progressMeter')) {
              . $pct . '%"></div></div></div>';
     }
 }
+
+if (!function_exists('paginationInfo')) {
+    /**
+     * Work out the current page number, LIMIT/OFFSET, and page count from $_GET['page'] and a
+     * known total row count. Call this AFTER running a COUNT(*) query with the same WHERE clause
+     * as the main query, and use the 'perPage'/'offset' it returns to LIMIT/OFFSET that main query.
+     */
+    function paginationInfo(int $totalRows, int $perPage = 15): array
+    {
+        $totalPages = max(1, (int) ceil($totalRows / $perPage));
+        $page = filter_var($_GET['page'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['default' => 1, 'min_range' => 1]]);
+        $page = min($page, $totalPages);
+        return ['page' => $page, 'perPage' => $perPage, 'offset' => ($page - 1) * $perPage, 'totalPages' => $totalPages];
+    }
+}
+
+if (!function_exists('paginationNav')) {
+    /**
+     * Render Prev / Page X of Y / Next links. $extraParams should be every filter/search/sort
+     * value already active on the page (NOT raw $_GET — pass the same sanitized values the page
+     * already validated for its own query), so paging forward or back doesn't silently drop them.
+     * Returns '' when there's only one page, so it's safe to always echo the result.
+     */
+    function paginationNav(int $page, int $totalPages, array $extraParams = []): string
+    {
+        if ($totalPages <= 1) { return ''; }
+        $build = function (int $p) use ($extraParams): string {
+            return '?' . http_build_query(array_merge($extraParams, ['page' => $p]));
+        };
+        $html = '<nav class="pagination-nav" aria-label="Table pages">';
+        $html .= $page > 1
+            ? '<a href="' . htmlspecialchars($build($page - 1)) . '" class="btn btn-outline-secondary btn-sm">&larr; Prev</a>'
+            : '<span class="btn btn-outline-secondary btn-sm disabled" aria-disabled="true">&larr; Prev</span>';
+        $html .= '<span class="pagination-status">Page ' . $page . ' of ' . $totalPages . '</span>';
+        $html .= $page < $totalPages
+            ? '<a href="' . htmlspecialchars($build($page + 1)) . '" class="btn btn-outline-secondary btn-sm">Next &rarr;</a>'
+            : '<span class="btn btn-outline-secondary btn-sm disabled" aria-disabled="true">Next &rarr;</span>';
+        return $html . '</nav>';
+    }
+}

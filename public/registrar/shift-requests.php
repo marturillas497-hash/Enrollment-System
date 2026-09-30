@@ -222,7 +222,7 @@ if (!$request) {
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
 <div class="container">
 
-    <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <?php if ($request): ?>
@@ -304,7 +304,7 @@ if (!$request) {
             <input type="hidden" name="action" value="approve">
             <input type="hidden" name="request_id" value="<?= $requestId ?>">
             <button type="submit" class="btn btn-success" <?= $request['credit_evaluation_status'] !== 'completed' ? 'disabled' : '' ?>
-                    onclick="return confirm('Approve this shift and create the new enrollment?')">
+                    data-confirm="Approve this shift and create the new enrollment?" data-confirm-label="Approve" data-confirm-tone="success">
                 Approve Shift
             </button>
         </form>
@@ -313,7 +313,7 @@ if (!$request) {
             <input type="hidden" name="action" value="reject">
             <input type="hidden" name="request_id" value="<?= $requestId ?>">
             <input type="text" name="reason" placeholder="Rejection reason" class="form-control d-inline-block input-w-240">
-            <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Reject this shift request?')">Reject</button>
+            <button type="submit" class="btn btn-outline-danger" data-confirm="Reject this shift request?" data-confirm-label="Reject" data-confirm-tone="danger">Reject</button>
         </form>
 
         <?php endif; ?>

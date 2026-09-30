@@ -100,25 +100,42 @@ $tabKey = is_string($_GET['tab'] ?? null) ? $_GET['tab'] : 'pending';
 if (!in_array($tabKey, ['pending', 'validated', 'rejected'], true)) { $tabKey = 'pending'; }
 $applications = [];
 $tabCounts = ['pending' => 0, 'validated' => 0, 'rejected' => 0];
+$pageInfo = ['page' => 1, 'perPage' => 15, 'offset' => 0, 'totalPages' => 1];
+$pageQueryParams = [];
 if (!$application) {
     foreach ($pdo->query('SELECT status, COUNT(*) AS n FROM Admission_Application GROUP BY status')->fetchAll() as $row) {
         if (isset($tabCounts[$row['status']])) { $tabCounts[$row['status']] = (int) $row['n']; }
     }
+    $fromSql = ' FROM Admission_Application a JOIN Program p ON p.program_id = a.program_id';
     $listSql = "SELECT a.application_id, a.applicant_last_name, a.applicant_first_name, a.status, a.application_date,
                        p.program_code
-                FROM Admission_Application a
-                JOIN Program p ON p.program_id = a.program_id";
+                $fromSql";
     if ($search !== '') {
-        $stmt = $pdo->prepare($listSql . ' WHERE a.applicant_last_name LIKE :q1 OR a.applicant_first_name LIKE :q2
-                                           ORDER BY a.application_date DESC, a.application_id DESC');
-        $stmt->execute(['q1' => "%$search%", 'q2' => "%$search%"]);
+        $whereSql = ' WHERE a.applicant_last_name LIKE :q1 OR a.applicant_first_name LIKE :q2';
+        $listParams = ['q1' => "%$search%", 'q2' => "%$search%"];
+        $order = 'a.application_date DESC, a.application_id DESC';
+        $pageQueryParams = ['q' => $search];
     } else {
+        $whereSql = ' WHERE a.status = :status';
+        $listParams = ['status' => $tabKey];
         $order = $tabKey === 'pending'
             ? 'a.application_date ASC, a.application_id ASC'
             : 'COALESCE(a.date_validated, a.date_rejected, a.application_date) DESC, a.application_id DESC';
-        $stmt = $pdo->prepare($listSql . ' WHERE a.status = :status ORDER BY ' . $order);
-        $stmt->execute(['status' => $tabKey]);
+        $pageQueryParams = ['tab' => $tabKey];
     }
+
+    $countStmt = $pdo->prepare("SELECT COUNT(*)$fromSql$whereSql");
+    $countStmt->execute($listParams);
+    $totalApplications = (int) $countStmt->fetchColumn();
+    $pageInfo = paginationInfo($totalApplications, 15);
+
+    $stmt = $pdo->prepare($listSql . $whereSql . ' ORDER BY ' . $order . ' LIMIT :limit OFFSET :offset');
+    foreach ($listParams as $key => $value) {
+        $stmt->bindValue(':' . $key, $value);
+    }
+    $stmt->bindValue(':limit', $pageInfo['perPage'], PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $pageInfo['offset'], PDO::PARAM_INT);
+    $stmt->execute();
     $applications = $stmt->fetchAll();
 }
 ?>
@@ -135,7 +152,7 @@ if (!$application) {
 <div class="container">
 
     <?php if ($message): ?>
-        <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
+        <div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>
     <?php endif; ?>
     <?php if ($error): ?>
         <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
@@ -264,7 +281,8 @@ if (!$application) {
                 <textarea class="form-control my-2" name="rejection_reason" rows="2"
                           placeholder="Reason (shown to the applicant)"></textarea>
                 <button type="submit" class="btn btn-outline-danger"
-                        onclick="return confirm('Reject this application? This cannot be undone here.')">
+                        data-confirm="Reject this application? This cannot be undone here."
+                        data-confirm-label="Reject" data-confirm-tone="danger">
                     Reject Application
                 </button>
             </details>
@@ -300,7 +318,7 @@ if (!$application) {
                 'rejected'  => ['label' => 'Rejected',  'count' => $tabCounts['rejected'],  'href' => '?tab=rejected'],
             ], $tabKey) ?>
         <?php else: ?>
-            <p class="text-muted small">Search results across every status (<?= count($applications) ?> found).</p>
+            <p class="text-muted small">Search results across every status (<?= $totalApplications ?> found).</p>
         <?php endif; ?>
 
         <div class="table-responsive">
@@ -333,6 +351,8 @@ if (!$application) {
             </tbody>
         </table>
 </div>
+
+<?= paginationNav($pageInfo['page'], $pageInfo['totalPages'], $pageQueryParams) ?>
 
     <?php endif; ?>
 </div>

@@ -91,7 +91,7 @@ if (!$enrollment) {
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
 <div class="container">
 
-    <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <?php if ($enrollment): ?>
@@ -128,12 +128,12 @@ if (!$enrollment) {
         <form method="post" class="d-inline">
             <input type="hidden" name="action" value="approve">
             <input type="hidden" name="enrollment_id" value="<?= $enrollmentId ?>">
-            <button type="submit" class="btn btn-success" onclick="return confirm('Approve this enrollment?')">Approve</button>
+            <button type="submit" class="btn btn-success" data-confirm="Approve this enrollment?" data-confirm-label="Approve" data-confirm-tone="success">Approve</button>
         </form>
         <form method="post" class="d-inline">
             <input type="hidden" name="action" value="reject">
             <input type="hidden" name="enrollment_id" value="<?= $enrollmentId ?>">
-            <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Reject this enrollment?')">Reject</button>
+            <button type="submit" class="btn btn-outline-danger" data-confirm="Reject this enrollment?" data-confirm-label="Reject" data-confirm-tone="danger">Reject</button>
         </form>
 
         <div class="mt-3"><a href="<?= BASE_URL ?>/registrar/irregular-enrollments.php">&larr; Back to list</a></div>

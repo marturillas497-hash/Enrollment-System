@@ -242,3 +242,8 @@ a.stat-card:hover { transform: translateY(-2px); color: inherit; }
     font-weight: 600;
     text-decoration: none;
 }
+
+/* Pagination row (see paginationNav() in ui_helper.php) */
+.pagination-nav { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1rem; }
+.pagination-nav .disabled { opacity: 0.5; pointer-events: none; }
+.pagination-status { font-size: 0.85rem; color: var(--text-muted); }

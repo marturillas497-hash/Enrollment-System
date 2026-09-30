@@ -110,7 +110,7 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
     <h1 class="h4 mb-3">School Terms</h1>
     <?= termBanner(array_values(array_filter($terms, fn($t) => $t['status'] === 'ongoing'))) ?>
 
-    <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <form method="post" class="card mb-4">
@@ -154,10 +154,12 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
                 <td><?= htmlspecialchars($t['date_closed'] ?? '') ?></td>
                 <td>
                     <?php if ($t['status'] === 'ongoing'): ?>
-                        <form method="post" onsubmit="return confirm('Close this term? Students will no longer be able to enroll in it.')">
+                        <form method="post">
                             <input type="hidden" name="action" value="close_term">
                             <input type="hidden" name="term_id" value="<?= $t['term_id'] ?>">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">Close Term</button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    data-confirm="Close this term? Students will no longer be able to enroll in it."
+                                    data-confirm-label="Close Term" data-confirm-tone="warning">Close Term</button>
                         </form>
                     <?php endif; ?>
                 </td>

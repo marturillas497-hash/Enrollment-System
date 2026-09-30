@@ -83,7 +83,7 @@ if ($search !== '') {
 <div class="container">
     <h1 class="h4 mb-3">Manage Subjects</h1>
 
-    <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <form method="post" class="card mb-4">
@@ -137,10 +137,11 @@ if ($search !== '') {
                 <td><?= $s['units'] ?></td>
                 <td>
                     <a href="?edit=<?= $s['subject_id'] ?>" class="btn btn-sm btn-outline-primary">Edit</a>
-                    <form method="post" class="d-inline" onsubmit="return confirm('Delete this subject?')">
+                    <form method="post" class="d-inline">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="subject_id" value="<?= $s['subject_id'] ?>">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                data-confirm="Delete this subject?" data-confirm-label="Delete" data-confirm-tone="danger">Delete</button>
                     </form>
                 </td>
             </tr>

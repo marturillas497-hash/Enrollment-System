@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regen
         $error = 'Staff account not found.';
     } else {
         $newPassword = generateTempPassword();
-        $pdo->prepare('UPDATE Accounts SET password_hash = :hash, must_change_password = 1, session_version = session_version + 1 WHERE account_id = :id')
+        $pdo->prepare('UPDATE Accounts SET password_hash = :hash, must_change_password = 1 WHERE account_id = :id')
             ->execute(['hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $accountId]);
         $regenerated = ['username' => $account['username'], 'password' => $newPassword, 'email' => $account['email']];
 
@@ -71,12 +71,9 @@ if (!isset($roleOptions[$filterRole])) { $filterRole = ''; }
 $sortKey = is_string($_GET['sort'] ?? null) ? $_GET['sort'] : 'role';
 if (!isset($sortOptions[$sortKey])) { $sortKey = 'role'; }
 
-$staffSql =
-    "SELECT a.account_id, a.role, a.username, a.created_at,
-            COALESCE(r.last_name, t.last_name, sa.last_name) AS last_name,
-            COALESCE(r.first_name, t.first_name, sa.first_name) AS first_name,
-            d.department_name
-     FROM Accounts a
+// FROM/JOIN/WHERE shared by the count query and the page query, so they can't drift apart.
+$fromWhere =
+    "FROM Accounts a
      LEFT JOIN Registrar r ON r.account_id = a.account_id AND a.role = 'registrar'
      LEFT JOIN Teacher t ON t.account_id = a.account_id AND a.role = 'teacher'
      LEFT JOIN Admission_Staff sa ON sa.account_id = a.account_id AND a.role = 'admission_staff'
@@ -86,7 +83,7 @@ $staffParams = [];
 if ($search !== '') {
     // Matches on name or username. Department isn't searched here since it's shown as a
     // plain label, not something an admin is likely to search staff by.
-    $staffSql .= " AND (COALESCE(r.first_name, t.first_name, sa.first_name) LIKE :q1
+    $fromWhere .= " AND (COALESCE(r.first_name, t.first_name, sa.first_name) LIKE :q1
                     OR COALESCE(r.last_name, t.last_name, sa.last_name) LIKE :q2
                     OR a.username LIKE :q3)";
     $staffParams['q1'] = "%$search%";
@@ -94,15 +91,39 @@ if ($search !== '') {
     $staffParams['q3'] = "%$search%";
 }
 if ($filterRole !== '') {
-    $staffSql .= " AND a.role = :role";
+    $fromWhere .= " AND a.role = :role";
     $staffParams['role'] = $filterRole;
 }
-$staffSql .= " ORDER BY " . $sortOptions[$sortKey]['sql'];
+
+$countStmt = $pdo->prepare("SELECT COUNT(*) $fromWhere");
+$countStmt->execute($staffParams);
+$totalStaff = (int) $countStmt->fetchColumn();
+$pageInfo = paginationInfo($totalStaff, 15);
+
+$staffSql =
+    "SELECT a.account_id, a.role, a.username, a.created_at,
+            COALESCE(r.last_name, t.last_name, sa.last_name) AS last_name,
+            COALESCE(r.first_name, t.first_name, sa.first_name) AS first_name,
+            d.department_name
+     $fromWhere
+     ORDER BY " . $sortOptions[$sortKey]['sql'] . '
+     LIMIT :limit OFFSET :offset';
 
 $staffStmt = $pdo->prepare($staffSql);
-$staffStmt->execute($staffParams);
+foreach ($staffParams as $key => $value) {
+    $staffStmt->bindValue(':' . $key, $value);
+}
+$staffStmt->bindValue(':limit', $pageInfo['perPage'], PDO::PARAM_INT);
+$staffStmt->bindValue(':offset', $pageInfo['offset'], PDO::PARAM_INT);
+$staffStmt->execute();
 $staff = $staffStmt->fetchAll();
 $isFiltered = ($search !== '' || $filterRole !== '' || $sortKey !== 'role');
+
+$pageQueryParams = array_filter([
+    'q' => $search !== '' ? $search : null,
+    'role' => $filterRole !== '' ? $filterRole : null,
+    'sort' => $sortKey !== 'role' ? $sortKey : null,
+], fn($v) => $v !== null);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -124,7 +145,8 @@ $isFiltered = ($search !== '' || $filterRole !== '' || $sortKey !== 'role');
     <?php endif; ?>
 
     <?php if ($regenerated): ?>
-        <div class="alert alert-success">
+        <div class="alert alert-success alert-dismissible fade show">
+            <!-- No data-auto-dismiss here on purpose: this box shows a one-time plaintext password the person still needs to copy. See CLAUDE-UI-REDESIGN.md. -->
             <strong>New temporary password generated.</strong>
             <?php if (!$mailWarning): ?>
                 Email has been sent to <strong><?= htmlspecialchars($regenerated['email']) ?></strong>.
@@ -136,6 +158,7 @@ $isFiltered = ($search !== '' || $filterRole !== '' || $sortKey !== 'role');
                 <dt class="col-sm-2">New Password</dt>
                 <dd class="col-sm-10"><code><?= htmlspecialchars($regenerated['password']) ?></code></dd>
             </dl>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     <?php endif; ?>
 
@@ -164,7 +187,7 @@ $isFiltered = ($search !== '' || $filterRole !== '' || $sortKey !== 'role');
         </div>
         <button type="submit" class="btn btn-primary">Search</button>
         <?php if ($isFiltered): ?><a href="staff.php" class="btn btn-outline-secondary">Reset</a><?php endif; ?>
-        <span class="toolbar-count">Showing <?= count($staff) ?> account<?= count($staff) === 1 ? '' : 's' ?></span>
+        <span class="toolbar-count">Showing <?= count($staff) ?> of <?= $totalStaff ?> account<?= $totalStaff === 1 ? '' : 's' ?></span>
     </form>
 
     <div class="table-responsive">
@@ -179,10 +202,12 @@ $isFiltered = ($search !== '' || $filterRole !== '' || $sortKey !== 'role');
                 <td><?= htmlspecialchars($s['username']) ?></td>
                 <td class="text-nowrap"><?= $s['created_at'] ? htmlspecialchars(date('M j, Y', strtotime($s['created_at']))) : '<span class="text-muted">-</span>' ?></td>
                 <td>
-                    <form method="post" onsubmit="return confirm('Generate a new temporary password for this account? Their current password will stop working immediately.')">
+                    <form method="post">
                         <input type="hidden" name="action" value="regenerate_password">
                         <input type="hidden" name="account_id" value="<?= $s['account_id'] ?>">
-                        <button type="submit" class="btn btn-sm btn-outline-warning">Regenerate Password</button>
+                        <button type="submit" class="btn btn-sm btn-outline-warning"
+                                data-confirm="Generate a new temporary password for this account? Their current password will stop working immediately."
+                                data-confirm-label="Regenerate" data-confirm-tone="warning">Regenerate Password</button>
                     </form>
                 </td>
             </tr>
@@ -191,6 +216,8 @@ $isFiltered = ($search !== '' || $filterRole !== '' || $sortKey !== 'role');
         </tbody>
     </table>
 </div>
+
+<?= paginationNav($pageInfo['page'], $pageInfo['totalPages'], $pageQueryParams) ?>
 </div>
 </body>
 </html>

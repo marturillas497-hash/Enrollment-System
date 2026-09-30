@@ -177,7 +177,7 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
 <div class="container">
     <h1 class="h4 mb-3">Class Offerings</h1>
 
-    <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <?php if (empty($terms)): ?>

@@ -66,7 +66,7 @@ $prerequisites = $pdo->query(
 <div class="container">
     <h1 class="h4 mb-3">Subject Prerequisites</h1>
 
-    <?php if ($message): ?><div class="alert alert-success"><?= htmlspecialchars($message) ?></div><?php endif; ?>
+    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <form method="post" class="card mb-4">
@@ -105,11 +105,12 @@ $prerequisites = $pdo->query(
                 <td><?= htmlspecialchars($p['subject_code'] . ' — ' . $p['subject_name']) ?></td>
                 <td><?= htmlspecialchars($p['req_code'] . ' — ' . $p['req_name']) ?></td>
                 <td>
-                    <form method="post" onsubmit="return confirm('Remove this prerequisite requirement?')">
+                    <form method="post">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="subject_id" value="<?= $p['subject_id'] ?>">
                         <input type="hidden" name="prerequisite_subject_id" value="<?= $p['prerequisite_subject_id'] ?>">
-                        <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                data-confirm="Remove this prerequisite requirement?" data-confirm-label="Remove" data-confirm-tone="danger">Remove</button>
                     </form>
                 </td>
             </tr>
