@@ -1,10 +1,7 @@
 -- Auto-generated from REVISED_MODEL_WITH_REGISTAR.mwb
 -- BSIS Enrollment System schema (PRD v7)
 
-SET FOREIGN_KEY_CHECKS=0;
-
-CREATE DATABASE IF NOT EXISTS `bsis_enrollment_system` DEFAULT CHARACTER SET utf8mb4;
-USE `bsis_enrollment_system`;
+-- Import into an existing empty database. FOREIGN_KEY_CHECKS stays on so a bad FK fails the import.
 
 CREATE TABLE `Accounts` (
   `account_id` INT NOT NULL AUTO_INCREMENT,
@@ -17,14 +14,14 @@ CREATE TABLE `Accounts` (
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`account_id`),
   UNIQUE KEY `username_UNIQUE` (`username`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Department` (
   `department_id` INT NOT NULL AUTO_INCREMENT,
   `department_name` VARCHAR(255) NOT NULL,
   `max_units_per_term` INT NULL DEFAULT NULL,
   PRIMARY KEY (`department_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Subject` (
   `subject_id` INT NOT NULL AUTO_INCREMENT,
@@ -33,7 +30,7 @@ CREATE TABLE `Subject` (
   `subject_description` VARCHAR(255) NULL DEFAULT NULL,
   `units` INT NOT NULL,
   PRIMARY KEY (`subject_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Program` (
   `program_id` INT NOT NULL AUTO_INCREMENT,
@@ -42,7 +39,7 @@ CREATE TABLE `Program` (
   `program_name` VARCHAR(255) NOT NULL,
   PRIMARY KEY (`program_id`),
   KEY `department_id_idx` (`department_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Curriculum` (
   `curriculum_id` INT NOT NULL AUTO_INCREMENT,
@@ -52,7 +49,7 @@ CREATE TABLE `Curriculum` (
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`curriculum_id`),
   KEY `program_id_idx` (`program_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `School_term` (
   `term_id` INT NOT NULL AUTO_INCREMENT,
@@ -63,7 +60,7 @@ CREATE TABLE `School_term` (
   `date_closed` DATETIME NULL DEFAULT NULL,
   PRIMARY KEY (`term_id`),
   KEY `closed_by_idx` (`closed_by`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Section` (
   `section_id` INT NOT NULL AUTO_INCREMENT,
@@ -74,7 +71,7 @@ CREATE TABLE `Section` (
   PRIMARY KEY (`section_id`),
   KEY `program_id_idx` (`program_id`),
   UNIQUE KEY `uq_section_program_year_name` (`program_id`, `year_level`, `section_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Teacher` (
   `teacher_id` INT NOT NULL AUTO_INCREMENT,
@@ -88,7 +85,7 @@ CREATE TABLE `Teacher` (
   UNIQUE KEY `account_id_UNIQUE` (`account_id`),
   KEY `account_id_idx` (`account_id`),
   KEY `department_id_idx` (`department_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Registrar` (
   `registrar_id` INT NOT NULL AUTO_INCREMENT,
@@ -103,7 +100,7 @@ CREATE TABLE `Registrar` (
   UNIQUE KEY `account_id_UNIQUE` (`account_id`),
   KEY `department_id_idx` (`department_id`),
   KEY `created_by_fk_idx` (`created_by`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Curriculum_subject` (
   `curriculum_id` INT NOT NULL,
@@ -112,14 +109,14 @@ CREATE TABLE `Curriculum_subject` (
   `semester` INT NOT NULL,
   PRIMARY KEY (`curriculum_id`,`subject_id`),
   KEY `subject_id_idx` (`subject_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Prerequisite` (
   `subject_id` INT NOT NULL,
   `prerequisite_subject_id` INT NOT NULL,
   PRIMARY KEY (`subject_id`,`prerequisite_subject_id`),
   KEY `prerequisite_subject_id_idx` (`prerequisite_subject_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Admission_Application` (
   `application_id` INT NOT NULL AUTO_INCREMENT,
@@ -160,7 +157,7 @@ CREATE TABLE `Admission_Application` (
   KEY `program_id_idx` (`program_id`),
   KEY `validated_by_idx` (`validated_by`),
   KEY `rejected_by_idx` (`rejected_by`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Student` (
   `student_id` INT NOT NULL AUTO_INCREMENT,
@@ -198,7 +195,7 @@ CREATE TABLE `Student` (
   UNIQUE KEY `student_id_number_UNIQUE` (`student_id_number`),
   KEY `account_id_idx` (`account_id`),
   KEY `application_id_idx` (`application_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Admission_Staff` (
   `staff_id` INT NOT NULL AUTO_INCREMENT,
@@ -209,7 +206,7 @@ CREATE TABLE `Admission_Staff` (
   `suffix` VARCHAR(45) NULL DEFAULT NULL,
   PRIMARY KEY (`staff_id`),
   KEY `account_id_fk_idx` (`account_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Class_Offering` (
   `offering_id` INT NOT NULL AUTO_INCREMENT,
@@ -226,7 +223,7 @@ CREATE TABLE `Class_Offering` (
   KEY `teacher_id_idx` (`teacher_id`),
   KEY `section_id_idx` (`section_id`),
   KEY `term_id_idx` (`term_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Enrollment_Document` (
   `document_id` INT NOT NULL AUTO_INCREMENT,
@@ -236,7 +233,7 @@ CREATE TABLE `Enrollment_Document` (
   `application_id` INT NOT NULL,
   PRIMARY KEY (`document_id`),
   KEY `application_id_fk_idx` (`application_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Program_shift_request` (
   `request_id` INT NOT NULL AUTO_INCREMENT,
@@ -259,7 +256,7 @@ CREATE TABLE `Program_shift_request` (
   KEY `effective_term_id_idx` (`effective_term_id`),
   KEY `approved_by_idx` (`approved_by`),
   KEY `target_section_id_idx` (`target_section_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Enrollment` (
   `enrollment_id` INT NOT NULL AUTO_INCREMENT,
@@ -282,7 +279,7 @@ CREATE TABLE `Enrollment` (
   KEY `section_id_idx` (`section_id`),
   KEY `approved_by_idx` (`approved_by`),
   KEY `enrollment_shift_request_fk_idx` (`source_shift_request_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Enrolled_subject` (
   `enrolled_subject_id` INT NOT NULL AUTO_INCREMENT,
@@ -294,7 +291,7 @@ CREATE TABLE `Enrolled_subject` (
   UNIQUE KEY `enrollment_offering_UNIQUE` (`offering_id`,`enrollment_id`),
   KEY `enrollment_id_idx` (`enrollment_id`),
   KEY `offering_id_idx` (`offering_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Transferee_credit` (
   `credit_id` INT NOT NULL AUTO_INCREMENT,
@@ -306,7 +303,7 @@ CREATE TABLE `Transferee_credit` (
   PRIMARY KEY (`credit_id`),
   KEY `student_id_idx` (`student_id`),
   KEY `credited_subject_id_idx` (`credited_subject_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Shift_credit` (
   `shift_credit_id` INT NOT NULL AUTO_INCREMENT,
@@ -320,7 +317,7 @@ CREATE TABLE `Shift_credit` (
   KEY `enrolled_subject_id_idx` (`enrolled_subject_id`),
   KEY `credited_subject_id_idx` (`credited_subject_id`),
   KEY `evaluated_by_idx` (`evaluated_by`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Password_reset` (
   `reset_id` INT NOT NULL AUTO_INCREMENT,
@@ -332,7 +329,7 @@ CREATE TABLE `Password_reset` (
   PRIMARY KEY (`reset_id`),
   UNIQUE KEY `token_hash_UNIQUE` (`token_hash`),
   KEY `account_id_created_at_idx` (`account_id`, `created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- Foreign keys
 
@@ -381,8 +378,6 @@ ALTER TABLE `Shift_credit` ADD CONSTRAINT `fk_shift_credit_enrolled_subject_id` 
 ALTER TABLE `Shift_credit` ADD CONSTRAINT `fk_shift_credit_credited_subject_id` FOREIGN KEY (`credited_subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Shift_credit` ADD CONSTRAINT `fk_shift_credit_evaluated_by` FOREIGN KEY (`evaluated_by`) REFERENCES `Accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Password_reset` ADD CONSTRAINT `fk_password_reset_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
-SET FOREIGN_KEY_CHECKS=1;
 
 -- Manual hardening: MySQL Workbench's reverse-engineer process does not carry
 -- CHECK constraints through automatically (see PRD Section 8, Known Open Items).
