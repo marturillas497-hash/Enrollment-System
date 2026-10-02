@@ -50,8 +50,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
          WHERE enrolled_subject_id = :id AND offering_id = :oid'
     );
 
-    $failedRows = [];
+    $current = $pdo->prepare("SELECT es.enrolled_subject_id, es.grade, es.remarks FROM Enrolled_subject es JOIN Enrollment e ON e.enrollment_id = es.enrollment_id WHERE es.offering_id = :oid AND e.status = 'approved'");
+    $current->execute(['oid' => $offeringId]);
+    $currentRows = [];
+    foreach ($current->fetchAll() as $row) {
+        $currentRows[(int)$row['enrolled_subject_id']] = $row;
+    }
+
+    $rangeRows = [];
+    $ruleRows = [];
     foreach ($grades as $enrolledSubjectId => $gradeValue) {
+        if (!isset($currentRows[(int)$enrolledSubjectId])) {
+            continue;
+        }
         $gradeValue = trim($gradeValue);
         $remarkValue = trim($remarks[$enrolledSubjectId] ?? '');
 
@@ -61,7 +72,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         } elseif (is_numeric($gradeValue) && $gradeValue >= 1.00 && $gradeValue <= 5.00) {
             $gradeToSave = number_format((float)$gradeValue, 2, '.', '');
         } else {
-            $failedRows[] = $enrolledSubjectId;
+            $rangeRows[] = $enrolledSubjectId;
+            continue;
+        }
+
+        // Rows the teacher didn't touch are left alone, so older records aren't re-validated.
+        $old = $currentRows[(int)$enrolledSubjectId];
+        $oldGrade = $old['grade'] === null ? null : number_format((float)$old['grade'], 2, '.', '');
+        if ($oldGrade === $gradeToSave && (string)($old['remarks'] ?? '') === $remarkValue) {
+            continue;
+        }
+
+        // 3.00 or better is Passed, anything above is Failed. Dropped and Incomplete are manual.
+        if ($gradeToSave !== null && in_array($remarkValue, ['', 'Passed', 'Failed'], true)) {
+            $derived = (float)$gradeToSave <= 3.00 ? 'Passed' : 'Failed';
+            if ($remarkValue !== '' && $remarkValue !== $derived) {
+                $ruleRows[] = $enrolledSubjectId;
+                continue;
+            }
+            $remarkValue = $derived;
+        } elseif ($gradeToSave === null && in_array($remarkValue, ['Passed', 'Failed'], true)) {
+            $ruleRows[] = $enrolledSubjectId;
             continue;
         }
 
@@ -73,8 +104,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         ]);
     }
 
-    if (!empty($failedRows)) {
-        $error = 'Some grades were out of range (must be 1.00–5.00) and were not saved. Fix and resubmit those rows.';
+    $problems = [];
+    if ($rangeRows) {
+        $problems[] = 'Some grades were out of range (must be 1.00–5.00).';
+    }
+    if ($ruleRows) {
+        $problems[] = 'Some remarks did not match the grade: 3.00 or better is Passed, above 3.00 is Failed, and Passed or Failed needs a grade.';
+    }
+    if ($problems) {
+        $error = implode(' ', $problems) . ' Those rows were not saved. Fix and resubmit them.';
     } else {
         $message = 'Grades saved.';
     }
@@ -86,7 +124,7 @@ $stmt = $pdo->prepare(
      FROM Enrolled_subject es
      JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
      JOIN Student s ON s.student_id = e.student_id
-     WHERE es.offering_id = :oid
+     WHERE es.offering_id = :oid AND e.status = \'approved\'
      ORDER BY s.last_name, s.first_name'
 );
 $stmt->execute(['oid' => $offeringId]);
@@ -118,6 +156,10 @@ foreach ($roster as $r) {
     <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
     <?php if ($termLocked): ?><div class="alert alert-secondary">This term is closed. Grades are locked and shown read-only.</div><?php endif; ?>
+
+    <?php if (!$termLocked): ?>
+        <p class="text-muted small">Remarks fill in from the grade: 3.00 or better is Passed, above 3.00 is Failed. Set Dropped or Incomplete by hand.</p>
+    <?php endif; ?>
 
     <form method="post">
         <input type="hidden" name="action" value="save_grades">
@@ -173,10 +215,24 @@ foreach ($roster as $r) {
             input.classList.toggle('is-invalid', outOfRange);
         }
 
+        function remarkSelect(input) {
+            return input.closest('tr').querySelector('select[name^="remarks"]');
+        }
+
+        function syncRemark(input) {
+            var select = remarkSelect(input);
+            if (!select || ['', 'Passed', 'Failed'].indexOf(select.value) === -1) { return; }
+            var v = input.value.trim();
+            var n = parseFloat(v);
+            var valid = /^\d+(\.\d+)?$/.test(v) && n >= 1 && n <= 5;
+            select.value = valid ? (n <= 3 ? 'Passed' : 'Failed') : '';
+        }
+
         document.querySelectorAll('.grade-input').forEach(function (input) {
             checkRange(input);
             input.addEventListener('input', function () {
                 checkRange(input);
+                syncRemark(input);
                 if (input.value !== input.dataset.original) {
                     dirty = true;
                     if (unsavedNote) { unsavedNote.hidden = false; }
@@ -185,6 +241,8 @@ foreach ($roster as $r) {
         });
         document.querySelectorAll('select[name^="remarks"]').forEach(function (select) {
             select.addEventListener('change', function () {
+                var input = select.closest('tr').querySelector('.grade-input');
+                if (input && ['Passed', 'Failed'].indexOf(select.value) !== -1) { syncRemark(input); }
                 dirty = true;
                 if (unsavedNote) { unsavedNote.hidden = false; }
             });

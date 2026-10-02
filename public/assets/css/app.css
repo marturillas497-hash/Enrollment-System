@@ -192,3 +192,8 @@
 
 /* One-off narrow inline input (rejection-reason field next to a button) */
 .input-w-240 { width: 240px; }
+
+/* Sidebar link that exists but isn't usable right now (e.g. Shift Request) */
+.mist-sidebar .nav-item-link.nav-item-locked { opacity: 0.6; }
+.col-w-50 { width: 50px; }
+.ts-dropdown { z-index: 2000; }

@@ -7,7 +7,6 @@ $pdo = getDbConnection();
 
 $error = '';
 $message = '';
-$editId = $_GET['edit'] ?? null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -21,7 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($code === '' || $name === '' || $units === '' || !ctype_digit($units)) {
             $error = 'Subject code, name, and a numeric unit count are required.';
-            $editId = $id ?: null;
         } else {
             if ($id) {
                 $stmt = $pdo->prepare(
@@ -50,11 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$editing = null;
-if ($editId) {
-    $stmt = $pdo->prepare('SELECT * FROM Subject WHERE subject_id = :id');
-    $stmt->execute(['id' => $editId]);
-    $editing = $stmt->fetch();
+$reopenForm = $error !== '' && ($_POST['action'] ?? '') === 'save';
+$form = ['subject_id' => '', 'subject_code' => '', 'subject_name' => '', 'subject_description' => '', 'units' => ''];
+if ($reopenForm) {
+    foreach ($form as $k => $_) { $form[$k] = (string)($_POST[$k] ?? ''); }
 }
 
 $search = trim($_GET['q'] ?? '');
@@ -84,37 +81,11 @@ if ($search !== '') {
     <h1 class="h4 mb-3">Manage Subjects</h1>
 
     <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+    <?php if ($error && !$reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
-    <form method="post" class="card mb-4">
-        <div class="card-body">
-            <input type="hidden" name="action" value="save">
-            <input type="hidden" name="subject_id" value="<?= htmlspecialchars($editing['subject_id'] ?? '') ?>">
-            <h2 class="h6"><?= $editing ? 'Edit Subject #' . $editing['subject_id'] : 'Add a Subject' ?></h2>
-            <div class="row">
-                <div class="col-md-2 mb-3">
-                    <label class="form-label">Code</label>
-                    <input class="form-control" name="subject_code" value="<?= htmlspecialchars($editing['subject_code'] ?? '') ?>" required>
-                </div>
-                <div class="col-md-4 mb-3">
-                    <label class="form-label">Name</label>
-                    <input class="form-control" name="subject_name" value="<?= htmlspecialchars($editing['subject_name'] ?? '') ?>" required>
-                </div>
-                <div class="col-md-4 mb-3">
-                    <label class="form-label">Description</label>
-                    <textarea class="form-control" name="subject_description" rows="3"><?= htmlspecialchars($editing['subject_description'] ?? '') ?></textarea>
-                </div>
-                <div class="col-md-2 mb-3">
-                    <label class="form-label">Units</label>
-                    <input type="number" min="1" class="form-control" name="units" value="<?= htmlspecialchars($editing['units'] ?? '') ?>" required>
-                </div>
-            </div>
-            <button type="submit" class="btn btn-primary"><?= $editing ? 'Save Changes' : 'Add Subject' ?></button>
-            <?php if ($editing): ?>
-                <a href="<?= BASE_URL ?>/registrar/subjects.php" class="btn btn-outline-secondary">Cancel</a>
-            <?php endif; ?>
-        </div>
-    </form>
+    <div class="mb-3">
+        <button type="button" class="btn btn-primary" onclick="openSubjectModal({})"><i class="bi bi-plus-lg"></i> Add Subject</button>
+    </div>
 
     <form method="get" class="d-flex mb-3 search-bar">
         <input type="text" class="form-control me-2" name="q" placeholder="Search by code, name, or description"
@@ -136,7 +107,9 @@ if ($search !== '') {
                 <td class="text-muted"><?= htmlspecialchars($s['subject_description'] ?? '') ?></td>
                 <td><?= $s['units'] ?></td>
                 <td>
-                    <a href="?edit=<?= $s['subject_id'] ?>" class="btn btn-sm btn-outline-primary">Edit</a>
+                    <button type="button" class="btn btn-sm btn-outline-primary"
+                            data-subject="<?= htmlspecialchars(json_encode(['subject_id' => $s['subject_id'], 'subject_code' => $s['subject_code'], 'subject_name' => $s['subject_name'], 'subject_description' => $s['subject_description'] ?? '', 'units' => $s['units']]), ENT_QUOTES) ?>"
+                            onclick="openSubjectModal(JSON.parse(this.dataset.subject))">Edit</button>
                     <form method="post" class="d-inline">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="subject_id" value="<?= $s['subject_id'] ?>">
@@ -153,5 +126,60 @@ if ($search !== '') {
     </table>
 </div>
 </div>
+
+<div class="modal fade" id="subjectModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" class="modal-content">
+      <input type="hidden" name="action" value="save">
+      <input type="hidden" name="subject_id" id="subjectId">
+      <div class="modal-header">
+        <h5 class="modal-title" id="subjectModalTitle">Add Subject</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <?php if ($reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+        <div class="row">
+            <div class="col-8 mb-3">
+                <label class="form-label">Code</label>
+                <input class="form-control" name="subject_code" id="subjectCode" required>
+            </div>
+            <div class="col-4 mb-3">
+                <label class="form-label">Units</label>
+                <input type="number" min="1" class="form-control" name="units" id="subjectUnits" required>
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Name</label>
+            <input class="form-control" name="subject_name" id="subjectName" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" name="subject_description" id="subjectDescription" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="subjectSave">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openSubjectModal(d) {
+    var editing = !!d.subject_id;
+    document.getElementById('subjectId').value = d.subject_id || '';
+    document.getElementById('subjectCode').value = d.subject_code || '';
+    document.getElementById('subjectName').value = d.subject_name || '';
+    document.getElementById('subjectDescription').value = d.subject_description || '';
+    document.getElementById('subjectUnits').value = d.units || '';
+    document.getElementById('subjectModalTitle').textContent = editing ? 'Edit Subject' : 'Add Subject';
+    document.getElementById('subjectSave').textContent = editing ? 'Save Changes' : 'Add Subject';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('subjectModal')).show();
+}
+<?php if ($reopenForm): ?>
+document.addEventListener('DOMContentLoaded', function () { openSubjectModal(<?= json_encode($form, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>); });
+<?php endif; ?>
+</script>
 </body>
 </html>

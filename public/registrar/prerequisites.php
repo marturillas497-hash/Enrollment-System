@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$subjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_code')->fetchAll();
+$subjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_id DESC')->fetchAll();
 
 $prerequisites = $pdo->query(
     'SELECT p.subject_id, p.prerequisite_subject_id,
@@ -74,7 +74,7 @@ $prerequisites = $pdo->query(
             <input type="hidden" name="action" value="add">
             <div class="col-md-5 mb-2">
                 <label class="form-label">Subject</label>
-                <select class="form-select" name="subject_id" required>
+                <select class="form-select js-search" name="subject_id" data-placeholder="Search subjects">
                     <option value="">Select</option>
                     <?php foreach ($subjects as $s): ?>
                         <option value="<?= $s['subject_id'] ?>"><?= htmlspecialchars($s['subject_code'] . ' — ' . $s['subject_name']) ?></option>
@@ -83,7 +83,7 @@ $prerequisites = $pdo->query(
             </div>
             <div class="col-md-5 mb-2">
                 <label class="form-label">Requires (must be passed first)</label>
-                <select class="form-select" name="prerequisite_subject_id" required>
+                <select class="form-select js-search" name="prerequisite_subject_id" data-placeholder="Search subjects">
                     <option value="">Select</option>
                     <?php foreach ($subjects as $s): ?>
                         <option value="<?= $s['subject_id'] ?>"><?= htmlspecialchars($s['subject_code'] . ' — ' . $s['subject_name']) ?></option>

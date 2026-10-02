@@ -11,6 +11,13 @@ $pdo = getDbConnection();
 $error = '';
 $created = null; // ['username' => ..., 'password' => ...] shown exactly once
 $mailWarning = '';
+$duplicates = [];
+
+$flash = flashGet('staff_created');
+if ($flash) {
+    $created = $flash['created'];
+    $mailWarning = $flash['mailWarning'];
+}
 
 $departments = $pdo->query('SELECT department_id, department_name FROM Department ORDER BY department_name')->fetchAll();
 
@@ -24,6 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($lastName === '' || $firstName === '' || $departmentId === '' || $email === '') {
         $error = 'Last name, first name, department, and email are required.';
+    } elseif (!isset($_POST['confirm_duplicate']) && ($duplicates = findDuplicateStaff($pdo, $firstName, $lastName, $email))) {
+        // form re-renders below with the warning
     } else {
         try {
             $pdo->beginTransaction();
@@ -65,9 +74,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$mailSent) {
                 $mailWarning = 'The account was created, but the credentials email could not be sent. Share the credentials below manually.';
             }
+
+            flashSet('staff_created', ['created' => $created, 'mailWarning' => $mailWarning]);
+            header('Location: ' . BASE_URL . '/admin/register-teacher.php');
+            exit;
         } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = 'Could not create the teacher account. ' . $e->getMessage();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $error = errorMessage($e, 'Could not create the teacher account.');
         }
     }
 }
@@ -127,6 +142,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <?php else: ?>
             <form method="post" novalidate>
+                <?php if ($duplicates): ?>
+                    <div class="alert alert-warning">
+                        <strong>Possible duplicate.</strong> A staff account with the same name or email already exists:
+                        <ul class="mb-2">
+                            <?php foreach ($duplicates as $d): ?>
+                                <li><code><?= htmlspecialchars($d['username']) ?></code> (<?= htmlspecialchars(str_replace('_', ' ', $d['role'])) ?>, <?= htmlspecialchars($d['email'] ?? 'no email') ?>)</li>
+                            <?php endforeach; ?>
+                        </ul>
+                        If this is a different person, press the button again to create the account anyway.
+                    </div>
+                    <input type="hidden" name="confirm_duplicate" value="1">
+                <?php endif; ?>
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Last Name</label>
@@ -167,7 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <button type="submit" class="btn btn-primary w-100">Create Teacher Account</button>
+                <button type="submit" class="btn btn-primary w-100"><?= $duplicates ? 'Create Anyway' : 'Create Teacher Account' ?></button>
             </form>
         <?php endif; ?>
 

@@ -74,7 +74,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = 'Curriculum created' . ($cloneFrom !== '' ? ', cloned from the previous version.' : '.');
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $error = 'Could not create curriculum. ' . $e->getMessage();
+                $error = errorMessage($e, 'Could not create curriculum.');
+            }
+        }
+    } elseif ($action === 'reactivate') {
+        $curriculumId = $_POST['curriculum_id'] ?? '';
+        $ownCheck = $pdo->prepare(
+            'SELECT c.program_id, c.is_active FROM Curriculum c JOIN Program p ON p.program_id = c.program_id
+             WHERE c.curriculum_id = :id AND p.department_id = :dept'
+        );
+        $ownCheck->execute(['id' => $curriculumId, 'dept' => $myDepartmentId]);
+        $target = $ownCheck->fetch();
+        if ($target === false) {
+            $error = 'That curriculum is not in your department.';
+        } elseif ((int)$target['is_active'] === 1) {
+            $error = 'That curriculum is already active.';
+        } else {
+            try {
+                $pdo->beginTransaction();
+                $pdo->prepare('UPDATE Curriculum SET is_active = 0 WHERE program_id = :pid')->execute(['pid' => $target['program_id']]);
+                $pdo->prepare('UPDATE Curriculum SET is_active = 1 WHERE curriculum_id = :id')->execute(['id' => $curriculumId]);
+                $pdo->commit();
+                $message = 'Curriculum reactivated. The previously active one is now retired.';
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                $error = errorMessage($e, 'Could not reactivate the curriculum.');
             }
         }
     } elseif ($action === 'remove_subject') {
@@ -138,7 +162,7 @@ if ($expandId) {
         $stmt->execute(['id' => $expandId]);
         $curriculumSubjects = $stmt->fetchAll();
 
-        $allSubjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_code')->fetchAll();
+        $allSubjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_id DESC')->fetchAll();
     }
 }
 
@@ -164,7 +188,8 @@ $curricula = $curricula->fetchAll();
     <h1 class="h4 mb-3">Manage Curriculum</h1>
 
     <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+    <?php $reopenSubject = $error !== '' && ($_POST['action'] ?? '') === 'add_subject'; ?>
+    <?php if ($error && !$reopenSubject): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <?php if ($expanded): ?>
 
@@ -180,32 +205,47 @@ $curricula = $curricula->fetchAll();
         $selectedYear = (is_string($_GET['year'] ?? null) && ctype_digit($_GET['year']) && in_array((int) $_GET['year'], $yearKeys, true))
             ? (int) $_GET['year'] : ($yearKeys[0] ?? null);
         ?>
-        <form method="post" class="card mb-3">
-            <div class="card-body row align-items-end">
-                <input type="hidden" name="action" value="add_subject">
-                <input type="hidden" name="curriculum_id" value="<?= $expanded['curriculum_id'] ?>">
-                <div class="col-md-5 mb-2">
+        <div class="mb-3">
+            <button type="button" class="btn btn-primary" onclick="openCurriculumSubjectModal({ year_level: '<?= $selectedYear ?? '' ?>' })"><i class="bi bi-plus-lg"></i> Add Subject</button>
+        </div>
+        <div class="modal fade" id="curriculumSubjectModal" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog">
+            <form method="post" class="modal-content" id="curriculumSubjectForm">
+              <input type="hidden" name="action" value="add_subject">
+              <input type="hidden" name="curriculum_id" value="<?= $expanded['curriculum_id'] ?>">
+              <div class="modal-header">
+                <h5 class="modal-title">Add Subject to Curriculum</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <?php if ($reopenSubject): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+                <div class="mb-3">
                     <label class="form-label">Subject</label>
-                    <select class="form-select" name="subject_id" required>
+                    <select class="form-select js-search" name="subject_id" data-placeholder="Search subjects">
                         <option value="">Select a subject</option>
                         <?php foreach ($allSubjects as $s): ?>
                             <option value="<?= $s['subject_id'] ?>"><?= htmlspecialchars($s['subject_code'] . ' — ' . $s['subject_name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-3 mb-2">
-                    <label class="form-label">Year Level</label>
-                    <input type="number" min="1" max="5" class="form-control" name="year_level" value="<?= $selectedYear ?? '' ?>" required>
+                <div class="row">
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Year Level</label>
+                        <input type="number" min="1" max="5" class="form-control" name="year_level" required>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <label class="form-label">Semester</label>
+                        <input type="number" min="1" max="3" class="form-control" name="semester" required>
+                    </div>
                 </div>
-                <div class="col-md-2 mb-2">
-                    <label class="form-label">Semester</label>
-                    <input type="number" min="1" max="3" class="form-control" name="semester" required>
-                </div>
-                <div class="col-md-2 mb-2">
-                    <button type="submit" class="btn btn-primary w-100">Add</button>
-                </div>
-            </div>
-        </form>
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add</button>
+              </div>
+            </form>
+          </div>
+        </div>
 
         <?php
         // Group into [year_level][semester] => rows, so the display can show a
@@ -308,18 +348,24 @@ $curricula = $curricula->fetchAll();
                     </div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Starting Point</label>
+                    <label class="form-label">Create from</label>
                     <select class="form-select" name="clone_from">
-                        <option value="">Start blank</option>
+                        <option value="">Blank (empty curriculum)</option>
                         <?php foreach ($curricula as $c): ?>
                             <option value="<?= $c['curriculum_id'] ?>">
-                                Clone from: <?= htmlspecialchars($c['program_code'] . ' — ' . $c['curriculum_name'] . ' (' . $c['effective_year'] . ')') ?>
+                                Copy of: <?= htmlspecialchars($c['program_code'] . ' — ' . $c['curriculum_name'] . ' (' . $c['effective_year'] . ')') ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <div class="form-text">Copies that curriculum's subject list into the new one — you can still add/remove after.</div>
+                    <div class="form-text">
+                        <strong>Blank</strong> creates an empty curriculum that you fill in yourself.
+                        <strong>Copy of</strong> brings over every subject, with its year and semester, so you only edit the differences.
+                        Either way, the new curriculum becomes the active one and retires the current one for this program.
+                    </div>
                 </div>
-                <button type="submit" class="btn btn-primary">Create Curriculum</button>
+                <button type="submit" class="btn btn-primary"
+                        data-confirm="The new curriculum becomes the active one for this program and the current one is retired. New students are placed into the active curriculum only, and a retired one can be reactivated from the list below. Continue?"
+                        data-confirm-label="Create" data-confirm-tone="warning">Create Curriculum</button>
             </div>
         </form>
 
@@ -335,6 +381,15 @@ $curricula = $curricula->fetchAll();
                     <td><?= statusBadge($c['is_active'] ? 'active' : 'retired') ?></td>
                     <td>
                         <a href="?curriculum_id=<?= $c['curriculum_id'] ?>" class="btn btn-sm btn-outline-primary">Manage Subjects</a>
+                        <?php if (!$c['is_active']): ?>
+                            <form method="post" class="d-inline">
+                                <input type="hidden" name="action" value="reactivate">
+                                <input type="hidden" name="curriculum_id" value="<?= $c['curriculum_id'] ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        data-confirm="Make this the active curriculum for its program? The current active one will be retired, and new placements will use this one."
+                                        data-confirm-label="Reactivate" data-confirm-tone="warning">Reactivate</button>
+                            </form>
+                        <?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
@@ -344,5 +399,25 @@ $curricula = $curricula->fetchAll();
 
     <?php endif; ?>
 </div>
+<script>
+function fillModalForm(form, values) {
+    Object.keys(values).forEach(function (name) {
+        var el = form.elements[name];
+        if (!el || el.type === 'hidden') { return; }
+        if (el.tomselect) { el.tomselect.setValue(values[name]); } else { el.value = values[name]; }
+    });
+}
+function openCurriculumSubjectModal(values) {
+    var form = document.getElementById('curriculumSubjectForm');
+    if (!form) { return; }
+    fillModalForm(form, values);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('curriculumSubjectModal')).show();
+}
+<?php if ($reopenSubject && $expanded): ?>
+document.addEventListener('DOMContentLoaded', function () {
+    openCurriculumSubjectModal(<?= json_encode(array_intersect_key($_POST, array_flip(['subject_id', 'year_level', 'semester'])), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
+});
+<?php endif; ?>
+</script>
 </body>
 </html>

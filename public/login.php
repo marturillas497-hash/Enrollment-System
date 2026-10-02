@@ -50,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'username'   => $account['username'],
                 'role'       => $account['role'],
                 'session_version' => (int)$account['session_version'],
+                'must_change' => (int)$account['must_change_password'] === 1,
             ];
 
             if ((int)$account['must_change_password'] === 1) {

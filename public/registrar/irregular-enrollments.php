@@ -116,7 +116,7 @@ if (!$enrollment) {
                         <td><?= htmlspecialchars($s['subject_name']) ?></td>
                         <td><?= $s['units'] ?></td>
                         <td><?= htmlspecialchars($s['section_name']) ?></td>
-                        <td><?= htmlspecialchars($s['day_of_week'] . ' ' . $s['start_time'] . '–' . $s['end_time']) ?></td>
+                        <td><?= htmlspecialchars(formatSchedule($s['day_of_week'], $s['start_time'], $s['end_time'])) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($chosenSubjects)): ?><tr><td colspan="5" class="text-muted">No subjects selected.</td></tr><?php endif; ?>

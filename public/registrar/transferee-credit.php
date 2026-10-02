@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
+require_once __DIR__ . '/../../src/helpers/picker_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -12,7 +13,8 @@ $myDepartmentId = $stmt->fetchColumn();
 
 $studentId = $_GET['student_id'] ?? ($_POST['student_id'] ?? null);
 $error = '';
-$message = '';
+$message = flashGet('tc_msg') ?? '';
+$view = ($_GET['view'] ?? '') === 'add' ? 'add' : 'credits';
 
 // Scoped to MY department via the student's current program (latest enrollment's curriculum) —
 // same pattern as students.php / irregular-enrollments.php.
@@ -94,55 +96,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->prepare('DELETE FROM Transferee_credit WHERE credit_id = :id AND student_id = :sid')
             ->execute(['id' => $creditId, 'sid' => $studentId]);
         $message = 'Credit removed.';
-    } elseif ($action === 'add_subject') {
-        $offeringId = $_POST['offering_id'] ?? '';
-        if ($offeringId === '') {
-            $error = 'Select a subject to add.';
+    } elseif ($action === 'add_subjects') {
+        $pickRows = buildPickerRows($pdo, (int)$studentId, (int)$student['curriculum_id'], (int)$student['term_id'], null, (int)$student['enrollment_id']);
+        $toInsert = pickerSelectedOfferings($pickRows, $_POST);
+        if (empty($toInsert)) {
+            $error = 'Tick at least one subject that is available to add.';
         } else {
-            /*
-             * Confirm the offering actually belongs to THIS student's own term/section
-             * before anything else — never trust the raw offering_id. Only then
-             * re-check prerequisites server-side (the disabled dropdown option is a
-             * UI convenience, not the actual enforcement).
-             */
-            $subjectStmt = $pdo->prepare(
-                'SELECT subject_id FROM Class_Offering
-                 WHERE offering_id = :id AND term_id = :term_id AND section_id = :section_id'
-            );
-            $subjectStmt->execute([
-                'id' => $offeringId, 'term_id' => $student['term_id'], 'section_id' => $student['section_id'],
-            ]);
-            $offeringSubjectId = $subjectStmt->fetchColumn();
-
-            if (!$offeringSubjectId) {
-                $error = 'That offering is not scheduled for this student\'s term/section.';
-            } else {
-                $missingPrereqs = [];
-                $prereqStmt = $pdo->prepare(
-                    'SELECT r.subject_id, r.subject_code
-                     FROM Prerequisite p JOIN Subject r ON r.subject_id = p.prerequisite_subject_id
-                     WHERE p.subject_id = :sid'
-                );
-                $prereqStmt->execute(['sid' => $offeringSubjectId]);
-                foreach ($prereqStmt->fetchAll() as $req) {
-                    if (!hasCompletedSubject($pdo, (int)$studentId, (int)$req['subject_id'])) {
-                        $missingPrereqs[] = $req['subject_code'];
-                    }
+            try {
+                $pdo->beginTransaction();
+                $insert = $pdo->prepare('INSERT INTO Enrolled_subject (enrollment_id, offering_id) VALUES (:eid, :oid)');
+                foreach ($toInsert as $oid) {
+                    $insert->execute(['eid' => $student['enrollment_id'], 'oid' => $oid]);
                 }
-
-                if ($missingPrereqs) {
-                    $error = 'Missing prerequisite(s): ' . implode(', ', $missingPrereqs) . '.';
-                } else {
-                    try {
-                        $pdo->prepare('INSERT INTO Enrolled_subject (enrollment_id, offering_id) VALUES (:eid, :oid)')
-                            ->execute(['eid' => $student['enrollment_id'], 'oid' => $offeringId]);
-                        $message = 'Subject added.';
-                    } catch (Exception $e) {
-                        $error = 'Could not add — this subject may already be on the roster.';
-                    }
-                }
+                $pdo->commit();
+                flashSet('tc_msg', count($toInsert) . ' subject' . (count($toInsert) === 1 ? '' : 's') . ' added to the roster.');
+                header('Location: ' . BASE_URL . '/registrar/transferee-credit.php?student_id=' . (int)$studentId . '&view=add');
+                exit;
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                $error = errorMessage($e, 'Could not add the subjects.');
             }
         }
+        $view = 'add';
     }
 }
 
@@ -206,54 +181,9 @@ $currentSubjects = $pdo->prepare(
 $currentSubjects->execute(['eid' => $student['enrollment_id']]);
 $currentSubjects = $currentSubjects->fetchAll();
 
-// Credited subject IDs, so they're excluded from the "still needs to be taken" list below.
-$creditedSubjectIds = [];
-foreach ($curriculumRows as $r) {
-    if ($r['credit_id'] !== null) {
-        $creditedSubjectIds[] = $r['subject_id'];
-    }
-}
-
-$sql = 'SELECT co.offering_id, sub.subject_id, sub.subject_code, sub.subject_name
-        FROM Class_Offering co
-        JOIN Subject sub ON sub.subject_id = co.subject_id
-        WHERE co.term_id = :term_id AND co.section_id = :section_id
-          AND co.offering_id NOT IN (SELECT offering_id FROM Enrolled_subject WHERE enrollment_id = :eid)';
-$params = ['term_id' => $student['term_id'], 'section_id' => $student['section_id'], 'eid' => $student['enrollment_id']];
-if (!empty($creditedSubjectIds)) {
-    $placeholders = [];
-    foreach ($creditedSubjectIds as $i => $subjectId) {
-        $key = "credited$i";
-        $placeholders[] = ":$key";
-        $params[$key] = $subjectId;
-    }
-    $sql .= ' AND sub.subject_id NOT IN (' . implode(',', $placeholders) . ')';
-}
-$sql .= ' ORDER BY sub.subject_code';
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$candidateOfferings = $stmt->fetchAll();
-
-// Same prerequisite pattern as enroll-irregular.php / shift-add-subjects.php —
-// attach missing prereqs (if any) so the dropdown below can grey it out.
-$prereqStmt = $pdo->prepare(
-    'SELECT r.subject_id, r.subject_code
-     FROM Prerequisite p JOIN Subject r ON r.subject_id = p.prerequisite_subject_id
-     WHERE p.subject_id = :sid'
-);
-$availableOfferings = [];
-foreach ($candidateOfferings as $o) {
-    $prereqStmt->execute(['sid' => $o['subject_id']]);
-    $missing = [];
-    foreach ($prereqStmt->fetchAll() as $req) {
-        if (!hasCompletedSubject($pdo, (int)$studentId, (int)$req['subject_id'])) {
-            $missing[] = $req['subject_code'];
-        }
-    }
-    $o['missing_prereqs'] = $missing;
-    $availableOfferings[] = $o;
-}
+$pickerRows = $view === 'add'
+    ? buildPickerRows($pdo, (int)$studentId, (int)$student['curriculum_id'], (int)$student['term_id'], null, (int)$student['enrollment_id'])
+    : [];
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -285,6 +215,25 @@ foreach ($candidateOfferings as $o) {
             <div class="mt-3"><?= progressMeter($creditedTotal, $subjectTotal, 'subjects credited') ?></div>
         </div>
     </div>
+
+    <?= tabBar([
+        'credits' => ['label' => 'Credits', 'href' => '?student_id=' . (int)$studentId . '&view=credits'],
+        'add' => ['label' => 'Add Subjects', 'href' => '?student_id=' . (int)$studentId . '&view=add'],
+    ], $view) ?>
+
+    <?php if ($view === 'add'): ?>
+        <p class="text-muted">
+            Tick the subjects this student still needs to take, and pick the class for each. Classes from any section are offered. Credited subjects and subjects already on the roster
+            are not listed. Subjects with an unmet prerequisite (checked against MIST grades, shift credit and transferee credit)
+            are greyed out and re-checked when you save.
+        </p>
+        <form method="post">
+            <input type="hidden" name="action" value="add_subjects">
+            <input type="hidden" name="student_id" value="<?= (int)$studentId ?>">
+            <?php require __DIR__ . '/../../includes/subject_picker.php'; ?>
+            <?php if (!empty($pickerRows)): ?><button type="submit" class="btn btn-primary">Add Selected Subjects</button><?php endif; ?>
+        </form>
+    <?php else: ?>
 
     <?php if (count($yearKeys) > 1): ?>
         <?php
@@ -373,31 +322,7 @@ foreach ($candidateOfferings as $o) {
         </div>
     </div>
 
-    <form method="post" class="card">
-        <div class="card-body">
-            <input type="hidden" name="action" value="add_subject">
-            <input type="hidden" name="student_id" value="<?= $studentId ?>">
-            <label class="form-label">Add a Remaining Subject (not credited, still needs to be taken)</label>
-            <div class="d-flex gap-2">
-                <select class="form-select" name="offering_id" required>
-                    <option value="">Select</option>
-                    <?php foreach ($availableOfferings as $o): ?>
-                        <option value="<?= $o['offering_id'] ?>" <?= $o['missing_prereqs'] ? 'disabled' : '' ?>>
-                            <?= htmlspecialchars($o['subject_code'] . ' — ' . $o['subject_name']) ?><?php if ($o['missing_prereqs']): ?>
-                                (needs <?= htmlspecialchars(implode(', ', $o['missing_prereqs'])) ?>)
-                            <?php endif; ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                <button type="submit" class="btn btn-primary text-nowrap">Add Subject</button>
-            </div>
-            <div class="form-text">
-                This list already excludes anything credited above, and anything already on the roster.
-                Subjects with an unmet prerequisite (checked against MIST grades, shift credit, and
-                transferee credit) are greyed out and re-checked server-side on submit.
-            </div>
-        </div>
-    </form>
+    <?php endif; ?>
 </div>
 
 <!-- Shared modal for crediting/viewing a single curriculum subject -->

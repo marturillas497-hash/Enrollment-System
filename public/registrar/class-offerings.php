@@ -13,21 +13,22 @@ $error = '';
 $message = '';
 
 // Subjects are shared across every department (e.g. GE1 is taken by multiple programs) — not scoped.
-$subjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_code')->fetchAll();
+$subjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_id DESC')->fetchAll();
 
-$teachers = $pdo->prepare('SELECT teacher_id, last_name, first_name FROM Teacher WHERE department_id = :dept ORDER BY last_name');
+$teachers = $pdo->prepare('SELECT teacher_id, last_name, first_name FROM Teacher WHERE department_id = :dept ORDER BY teacher_id DESC');
 $teachers->execute(['dept' => $myDepartmentId]);
 $teachers = $teachers->fetchAll();
 $myTeacherIds = array_column($teachers, 'teacher_id');
 
 $sections = $pdo->prepare(
-    'SELECT sec.section_id, sec.section_name, p.program_code
+    'SELECT sec.section_id, sec.section_name, sec.year_level, p.program_code
      FROM Section sec JOIN Program p ON p.program_id = sec.program_id
      WHERE p.department_id = :dept
-     ORDER BY p.program_code, sec.section_name'
+     ORDER BY p.program_code, sec.year_level, sec.section_name'
 );
 $sections->execute(['dept' => $myDepartmentId]);
 $sections = $sections->fetchAll();
+$multiProgram = count(array_unique(array_column($sections, 'program_code'))) > 1;
 $mySectionIds = array_column($sections, 'section_id');
 
 $terms = $pdo->query("SELECT term_id, school_year, semester FROM School_term WHERE status = 'ongoing' ORDER BY term_id DESC")->fetchAll();
@@ -89,13 +90,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $roomConflict = (bool)$conflict;
         }
 
+        $conflictWhen = $conflict ? formatSchedule($conflict['day_of_week'], $conflict['start_time'], $conflict['end_time']) : '';
         if ($conflict && $roomConflict) {
             $error = "Room conflict: \"{$conflict['room']}\" is already booked for {$conflict['subject_code']} "
-                . "{$conflict['day_of_week']} {$conflict['start_time']}–{$conflict['end_time']} "
+                . "{$conflictWhen} "
                 . "with teacher {$conflict['last_name']} / section {$conflict['section_name']} in this term.";
         } elseif ($conflict) {
             $error = "Schedule conflict: {$conflict['subject_code']} already runs "
-                . "{$conflict['day_of_week']} {$conflict['start_time']}–{$conflict['end_time']} "
+                . "{$conflictWhen} "
                 . "with teacher {$conflict['last_name']} / section {$conflict['section_name']} in this term.";
         } else {
             $stmt = $pdo->prepare(
@@ -112,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $offerings = $pdo->prepare(
-    "SELECT co.*, s.subject_code, s.subject_name, t.last_name, t.first_name, sec.section_name, p.program_code, st.school_year, st.semester
+    "SELECT co.*, s.subject_code, s.subject_name, t.last_name, t.first_name, sec.section_name, sec.year_level, p.program_code, st.school_year, st.semester
      FROM Class_Offering co
      JOIN Subject s ON s.subject_id = co.subject_id
      JOIN Teacher t ON t.teacher_id = co.teacher_id
@@ -134,7 +136,7 @@ $termOptions = [];
 $sectionOptions = [];
 foreach ($offerings as $o) {
     $termOptions[(int) $o['term_id']] = $o['school_year'] . ' S' . $o['semester'];
-    $sectionOptions[(int) $o['section_id']] = $o['program_code'] . ' ' . $o['section_name'];
+    $sectionOptions[(int) $o['section_id']] = sectionLabel($o['year_level'], $o['section_name'], $multiProgram ? $o['program_code'] : null);
 }
 asort($sectionOptions);
 $showTermFilter = count($termOptions) > 1;
@@ -178,14 +180,24 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
     <h1 class="h4 mb-3">Class Offerings</h1>
 
     <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+    <?php $reopenForm = $error !== '' && $_SERVER['REQUEST_METHOD'] === 'POST'; ?>
+    <?php if ($error && !$reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <?php if (empty($terms)): ?>
         <div class="alert alert-warning">No ongoing term. Open one in <a href="<?= BASE_URL ?>/registrar/terms.php">School Terms</a> first.</div>
     <?php else: ?>
-    <form method="post" class="card mb-4">
-        <div class="card-body">
-            <h2 class="h6">Schedule a Class</h2>
+    <div class="mb-3">
+        <button type="button" class="btn btn-primary" onclick="openOfferingModal({})"><i class="bi bi-plus-lg"></i> Schedule a Class</button>
+    </div>
+    <div class="modal fade" id="offeringModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <form method="post" class="modal-content" id="offeringForm">
+          <div class="modal-header">
+            <h5 class="modal-title">Schedule a Class</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <?php if ($reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
             <div class="row">
                 <div class="col-md-3 mb-3">
                     <label class="form-label">Term</label>
@@ -197,7 +209,7 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="form-label">Subject</label>
-                    <select class="form-select" name="subject_id" required>
+                    <select class="form-select js-search" name="subject_id" data-placeholder="Search subjects">
                         <option value="">Select</option>
                         <?php foreach ($subjects as $s): ?>
                             <option value="<?= $s['subject_id'] ?>"><?= htmlspecialchars($s['subject_code'] . ' — ' . $s['subject_name']) ?></option>
@@ -206,7 +218,7 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="form-label">Teacher</label>
-                    <select class="form-select" name="teacher_id" required>
+                    <select class="form-select js-search" name="teacher_id" data-placeholder="Search teachers">
                         <option value="">Select</option>
                         <?php foreach ($teachers as $t): ?>
                             <option value="<?= $t['teacher_id'] ?>"><?= htmlspecialchars($t['last_name'] . ', ' . $t['first_name']) ?></option>
@@ -215,10 +227,10 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                 </div>
                 <div class="col-md-3 mb-3">
                     <label class="form-label">Section</label>
-                    <select class="form-select" name="section_id" required>
+                    <select class="form-select js-search" name="section_id" data-placeholder="Search sections">
                         <option value="">Select</option>
                         <?php foreach ($sections as $s): ?>
-                            <option value="<?= $s['section_id'] ?>"><?= htmlspecialchars($s['program_code'] . ' ' . $s['section_name']) ?></option>
+                            <option value="<?= $s['section_id'] ?>"><?= htmlspecialchars(sectionLabel($s['year_level'], $s['section_name'], $multiProgram ? $s['program_code'] : null)) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -244,9 +256,14 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                     <input class="form-control" name="room" placeholder="Room 101">
                 </div>
             </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
             <button type="submit" class="btn btn-primary">Schedule Class</button>
-        </div>
-    </form>
+          </div>
+        </form>
+      </div>
+    </div>
     <?php endif; ?>
 
     <?php if ($showTermFilter || $showSectionFilter): ?>
@@ -288,9 +305,9 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                 <?php if ($showTermCol): ?><td><?= htmlspecialchars($o['school_year'] . ' S' . $o['semester']) ?></td><?php endif; ?>
                 <td><?= htmlspecialchars($o['subject_code']) ?></td>
                 <td><?= htmlspecialchars($o['last_name'] . ', ' . $o['first_name']) ?></td>
-                <?php if ($showSectionCol): ?><td><?= htmlspecialchars($o['section_name']) ?></td><?php endif; ?>
+                <?php if ($showSectionCol): ?><td><?= htmlspecialchars(sectionLabel($o['year_level'], $o['section_name'], $multiProgram ? $o['program_code'] : null)) ?></td><?php endif; ?>
                 <td><?= htmlspecialchars($o['day_of_week']) ?></td>
-                <td><?= htmlspecialchars($o['start_time'] . '–' . $o['end_time']) ?></td>
+                <td><?= htmlspecialchars(formatTimeRange($o['start_time'], $o['end_time'])) ?></td>
                 <td><?= htmlspecialchars($o['room'] ?? '') ?></td>
             </tr>
         <?php endforeach; ?>
@@ -305,5 +322,25 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
     </table>
 </div>
 </div>
+<script>
+function fillModalForm(form, values) {
+    Object.keys(values).forEach(function (name) {
+        var el = form.elements[name];
+        if (!el || el.type === 'hidden') { return; }
+        if (el.tomselect) { el.tomselect.setValue(values[name]); } else { el.value = values[name]; }
+    });
+}
+function openOfferingModal(values) {
+    var form = document.getElementById('offeringForm');
+    if (!form) { return; }
+    fillModalForm(form, values);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('offeringModal')).show();
+}
+<?php if ($reopenForm && !empty($terms)): ?>
+document.addEventListener('DOMContentLoaded', function () {
+    openOfferingModal(<?= json_encode(array_intersect_key($_POST, array_flip(['term_id', 'subject_id', 'teacher_id', 'section_id', 'day_of_week', 'start_time', 'end_time', 'room'])), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
+});
+<?php endif; ?>
+</script>
 </body>
 </html>

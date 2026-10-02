@@ -11,7 +11,6 @@ $myDepartmentId = $stmt->fetchColumn();
 
 $error = '';
 $message = '';
-$editId = $_GET['edit'] ?? null;
 
 $programs = $pdo->prepare('SELECT program_id, program_code FROM Program WHERE department_id = :dept ORDER BY program_code');
 $programs->execute(['dept' => $myDepartmentId]);
@@ -30,10 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($name === '' || $yearLevel === '' || $programId === '' || $maxSlots === '') {
             $error = 'All fields are required.';
-            $editId = $id ?: null;
         } elseif (!in_array((int)$programId, $myProgramIds, true)) {
             $error = 'That program is not in your department.';
-            $editId = $id ?: null;
         } else {
             // If editing, also confirm the section being edited already belongs to your department.
             if ($id) {
@@ -44,7 +41,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ownCheck->execute(['id' => $id, 'dept' => $myDepartmentId]);
                 if ($ownCheck->fetch() === false) {
                     $error = 'That section is not in your department.';
-                    $editId = null;
                 }
             }
 
@@ -59,7 +55,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $dupCheck->execute(['pid' => $programId, 'yl' => $yearLevel, 'name' => $name, 'id' => $id ?: 0]);
                 if ($dupCheck->fetch() !== false) {
                     $error = "A section named \"$name\" already exists at Year $yearLevel for this program.";
-                    $editId = $id ?: null;
                 }
             }
 
@@ -85,8 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // dupCheck above catches this in the normal case, this catches a race
                 // between two simultaneous saves, or a duplicate created by a direct DB edit.
                 $error = "A section named \"$name\" already exists at Year $yearLevel for this program.";
-                $editId = $id ?: null;
-            }
+                }
             }
         }
     } elseif ($action === 'delete') {
@@ -109,14 +103,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$editing = null;
-if ($editId) {
-    $stmt = $pdo->prepare(
-        'SELECT sec.* FROM Section sec JOIN Program p ON p.program_id = sec.program_id
-         WHERE sec.section_id = :id AND p.department_id = :dept'
-    );
-    $stmt->execute(['id' => $editId, 'dept' => $myDepartmentId]);
-    $editing = $stmt->fetch();
+$reopenForm = $error !== '' && ($_POST['action'] ?? '') === 'save';
+$form = ['section_id' => '', 'section_name' => '', 'year_level' => '', 'program_id' => '', 'max_slots' => ''];
+if ($reopenForm) {
+    foreach ($form as $k => $_) { $form[$k] = (string)($_POST[$k] ?? ''); }
 }
 
 $sections = $pdo->prepare(
@@ -141,59 +131,27 @@ $sections = $sections->fetchAll();
     <h1 class="h4 mb-3">Sections</h1>
 
     <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+    <?php if ($error && !$reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
-    <form method="post" class="card mb-4">
-        <div class="card-body">
-            <input type="hidden" name="action" value="save">
-            <input type="hidden" name="section_id" value="<?= htmlspecialchars($editing['section_id'] ?? '') ?>">
-            <h2 class="h6"><?= $editing ? 'Edit Section #' . $editing['section_id'] : 'Add a Section' ?></h2>
-            <div class="row align-items-end">
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">Program</label>
-                    <select class="form-select" name="program_id" required>
-                        <option value="">Select</option>
-                        <?php foreach ($programs as $p): ?>
-                            <option value="<?= $p['program_id'] ?>" <?= ($editing['program_id'] ?? '') == $p['program_id'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($p['program_code']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">Section Name</label>
-                    <input class="form-control" name="section_name" value="<?= htmlspecialchars($editing['section_name'] ?? '') ?>" placeholder="BSIS-1A" required>
-                </div>
-                <div class="col-md-2 mb-3">
-                    <label class="form-label">Year Level</label>
-                    <input type="number" min="1" max="5" class="form-control" name="year_level" value="<?= htmlspecialchars($editing['year_level'] ?? '') ?>" required>
-                </div>
-                <div class="col-md-2 mb-3">
-                    <label class="form-label">Max Slots</label>
-                    <input type="number" min="1" class="form-control" name="max_slots" value="<?= htmlspecialchars($editing['max_slots'] ?? '') ?>" required>
-                </div>
-                <div class="col-md-2 mb-3">
-                    <button type="submit" class="btn btn-primary w-100"><?= $editing ? 'Save' : 'Add' ?></button>
-                </div>
-            </div>
-            <?php if ($editing): ?>
-                <a href="<?= BASE_URL ?>/registrar/sections.php" class="d-inline-block mt-1">Cancel edit</a>
-            <?php endif; ?>
-        </div>
-    </form>
+    <div class="mb-3">
+        <button type="button" class="btn btn-primary" onclick="openSectionModal({})"><i class="bi bi-plus-lg"></i> Add Section</button>
+    </div>
 
     <div class="table-responsive">
 <table class="table table-hover bg-white">
-        <thead><tr><th>Program</th><th>Section</th><th>Year</th><th>Max Slots</th><th></th></tr></thead>
+        <thead><tr><?php if (count($programs) !== 1): ?><th>Program</th><?php endif; ?><th>Section</th><th>Year</th><th>Max Slots</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($sections as $s): ?>
             <tr>
-                <td><?= htmlspecialchars($s['program_code']) ?></td>
+                <?php if (count($programs) !== 1): ?><td><?= htmlspecialchars($s['program_code']) ?></td><?php endif; ?>
                 <td><?= htmlspecialchars($s['section_name']) ?></td>
                 <td><?= $s['year_level'] ?></td>
                 <td><?= $s['max_slots'] ?></td>
                 <td>
-                    <a href="?edit=<?= $s['section_id'] ?>" class="btn btn-sm btn-outline-primary">Edit</a>
+                    <a href="<?= BASE_URL ?>/registrar/section-roster.php?id=<?= $s['section_id'] ?>" class="btn btn-sm btn-outline-secondary">Roster</a>
+                    <button type="button" class="btn btn-sm btn-outline-primary"
+                            data-section="<?= htmlspecialchars(json_encode(['section_id' => $s['section_id'], 'section_name' => $s['section_name'], 'year_level' => $s['year_level'], 'program_id' => $s['program_id'], 'max_slots' => $s['max_slots']]), ENT_QUOTES) ?>"
+                            onclick="openSectionModal(JSON.parse(this.dataset.section))">Edit</button>
                     <form method="post" class="d-inline">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="section_id" value="<?= $s['section_id'] ?>">
@@ -208,5 +166,70 @@ $sections = $sections->fetchAll();
     </table>
 </div>
 </div>
+
+<div class="modal fade" id="sectionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" class="modal-content">
+      <input type="hidden" name="action" value="save">
+      <input type="hidden" name="section_id" id="sectionId">
+      <div class="modal-header">
+        <h5 class="modal-title" id="sectionModalTitle">Add Section</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <?php if ($reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+        <?php if (count($programs) === 1): ?>
+            <input type="hidden" name="program_id" id="sectionProgram" value="<?= (int)$programs[0]['program_id'] ?>">
+        <?php else: ?>
+            <div class="mb-3">
+                <label class="form-label">Program</label>
+                <select class="form-select" name="program_id" id="sectionProgram" required>
+                    <option value="">Select</option>
+                    <?php foreach ($programs as $p): ?>
+                        <option value="<?= $p['program_id'] ?>"><?= htmlspecialchars($p['program_code']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        <?php endif; ?>
+        <div class="mb-3">
+            <label class="form-label">Section Name</label>
+            <input class="form-control" name="section_name" id="sectionName" placeholder="A" required>
+        </div>
+        <div class="row">
+            <div class="col-6 mb-3">
+                <label class="form-label">Year Level</label>
+                <input type="number" min="1" max="5" class="form-control" name="year_level" id="sectionYear" required>
+            </div>
+            <div class="col-6 mb-3">
+                <label class="form-label">Max Slots</label>
+                <input type="number" min="1" class="form-control" name="max_slots" id="sectionSlots" required>
+            </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="sectionSave">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+var singleProgram = <?= count($programs) === 1 ? 'true' : 'false' ?>;
+function openSectionModal(d) {
+    var editing = !!d.section_id;
+    document.getElementById('sectionId').value = d.section_id || '';
+    if (!singleProgram) { document.getElementById('sectionProgram').value = d.program_id || ''; }
+    document.getElementById('sectionName').value = d.section_name || '';
+    document.getElementById('sectionYear').value = d.year_level || '';
+    document.getElementById('sectionSlots').value = d.max_slots || '';
+    document.getElementById('sectionModalTitle').textContent = editing ? 'Edit Section' : 'Add Section';
+    document.getElementById('sectionSave').textContent = editing ? 'Save Changes' : 'Add Section';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('sectionModal')).show();
+}
+<?php if ($reopenForm): ?>
+document.addEventListener('DOMContentLoaded', function () { openSectionModal(<?= json_encode($form, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>); });
+<?php endif; ?>
+</script>
 </body>
 </html>

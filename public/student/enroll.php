@@ -46,16 +46,57 @@ if (!$currentTerm) {
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
+// What this enrollment will contain. The same query feeds the preview and the save, so they can't disagree.
+$preview = null;
+if ($error === '') {
+    // Year level advances only when crossing into semester 1 of a new school year.
+    $yearLevel = (int)$previous['year_level'];
+    if ($currentTerm['semester'] == 1 && $currentTerm['school_year'] !== $previous['prev_school_year']) {
+        $yearLevel++;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT cs.subject_id, s.subject_code, s.subject_name, s.units, co.offering_id,
+                co.day_of_week, co.start_time, co.end_time, co.room
+         FROM Curriculum_subject cs
+         JOIN Subject s ON s.subject_id = cs.subject_id
+         LEFT JOIN Class_Offering co
+                ON co.subject_id = cs.subject_id AND co.section_id = :section_id AND co.term_id = :term_id
+         WHERE cs.curriculum_id = :curriculum_id AND cs.year_level = :year_level AND cs.semester = :semester
+         ORDER BY s.subject_code, co.start_time'
+    );
+    $stmt->execute([
+        'section_id' => $previous['section_id'], 'term_id' => $currentTerm['term_id'],
+        'curriculum_id' => $previous['curriculum_id'], 'year_level' => $yearLevel,
+        'semester' => $currentTerm['semester'],
+    ]);
+    $rows = $stmt->fetchAll();
+
+    $sec = $pdo->prepare('SELECT section_name, year_level FROM Section WHERE section_id = :id');
+    $sec->execute(['id' => $previous['section_id']]);
+    $sec = $sec->fetch();
+
+    $scheduled = [];
+    $unscheduled = [];
+    $units = 0.0;
+    $counted = [];
+    foreach ($rows as $r) {
+        if ($r['offering_id'] !== null) {
+            $scheduled[] = $r;
+            if (!isset($counted[$r['subject_id']])) { $units += (float)$r['units']; $counted[$r['subject_id']] = true; }
+        } elseif (!isset($counted[$r['subject_id']])) {
+            $unscheduled[$r['subject_id']] = $r['subject_code'];
+        }
+    }
+    $preview = [
+        'year_level' => $yearLevel, 'scheduled' => $scheduled, 'unscheduled' => array_values($unscheduled),
+        'units' => $units, 'section' => $sec ? sectionLabel($sec['year_level'], $sec['section_name']) : '—',
+    ];
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $preview !== null) {
     try {
         $pdo->beginTransaction();
-
-        // Advance year_level only when crossing into semester 1 of a new school year —
-        // moving sem1 -> sem2 within the same year keeps the same year_level.
-        $yearLevel = $previous['year_level'];
-        if ($currentTerm['semester'] == 1 && $currentTerm['school_year'] !== $previous['prev_school_year']) {
-            $yearLevel++;
-        }
 
         $stmt = $pdo->prepare(
             "INSERT INTO Enrollment (student_id, term_id, curriculum_id, section_id, year_level, date_enrolled, status, student_standing)
@@ -64,45 +105,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
         $stmt->execute([
             'student_id' => $student['student_id'], 'term_id' => $currentTerm['term_id'],
             'curriculum_id' => $previous['curriculum_id'], 'section_id' => $previous['section_id'],
-            'year_level' => $yearLevel,
+            'year_level' => $preview['year_level'],
         ]);
         $newEnrollmentId = (int)$pdo->lastInsertId();
 
-        // Match this term's curriculum subjects against available offerings for the student's section.
-        $stmt = $pdo->prepare(
-            'SELECT cs.subject_id, s.subject_code, co.offering_id
-             FROM Curriculum_subject cs
-             JOIN Subject s ON s.subject_id = cs.subject_id
-             LEFT JOIN Class_Offering co
-                    ON co.subject_id = cs.subject_id AND co.section_id = :section_id AND co.term_id = :term_id
-             WHERE cs.curriculum_id = :curriculum_id AND cs.year_level = :year_level AND cs.semester = :semester'
-        );
-        $stmt->execute([
-            'section_id' => $previous['section_id'], 'term_id' => $currentTerm['term_id'],
-            'curriculum_id' => $previous['curriculum_id'], 'year_level' => $yearLevel,
-            'semester' => $currentTerm['semester'],
-        ]);
-        $matches = $stmt->fetchAll();
-
-        $insertOffering = $pdo->prepare(
-            'INSERT INTO Enrolled_subject (enrollment_id, offering_id) VALUES (:eid, :oid)'
-        );
+        $insertOffering = $pdo->prepare('INSERT INTO Enrolled_subject (enrollment_id, offering_id) VALUES (:eid, :oid)');
         $enrolledCodes = [];
-        $missingCodes = [];
-        foreach ($matches as $m) {
-            if ($m['offering_id'] !== null) {
-                $insertOffering->execute(['eid' => $newEnrollmentId, 'oid' => $m['offering_id']]);
-                $enrolledCodes[] = $m['subject_code'];
-            } else {
-                $missingCodes[] = $m['subject_code'];
-            }
+        foreach ($preview['scheduled'] as $m) {
+            $insertOffering->execute(['eid' => $newEnrollmentId, 'oid' => $m['offering_id']]);
+            $enrolledCodes[$m['subject_code']] = true;
         }
 
         $pdo->commit();
-        $result = ['year_level' => $yearLevel, 'enrolled' => $enrolledCodes, 'missing' => $missingCodes];
+        $result = ['year_level' => $preview['year_level'], 'enrolled' => array_keys($enrolledCodes), 'missing' => $preview['unscheduled']];
     } catch (Exception $e) {
-        $pdo->rollBack();
-        $error = 'Enrollment failed: ' . $e->getMessage();
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
+        $error = errorMessage($e, 'Enrollment failed.');
     }
 }
 ?>
@@ -136,12 +154,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '') {
         <a href="<?= BASE_URL ?>/student/dashboard.php" class="btn btn-primary">Back to Dashboard</a>
 
     <?php else: ?>
-        <h1 class="h4 mb-3">Confirm Enrollment</h1>
+        <h1 class="h4 mb-1">Confirm Enrollment</h1>
         <p class="text-muted">
-            Enrolling for <?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?>.
-            You'll stay in your current section, and move into the next set of subjects in your curriculum's
-            sequence automatically.
+            <?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?>
+            · Year <?= (int)$preview['year_level'] ?> · Section <?= htmlspecialchars($preview['section']) ?>
         </p>
+
+        <div class="table-responsive">
+        <table class="table bg-white">
+            <thead><tr><th>Subject</th><th>Units</th><th>Schedule</th></tr></thead>
+            <tbody>
+            <?php foreach ($preview['scheduled'] as $m): ?>
+                <tr>
+                    <td><?= htmlspecialchars($m['subject_code'] . ' — ' . $m['subject_name']) ?></td>
+                    <td><?= $m['units'] ?></td>
+                    <td><?= htmlspecialchars(formatSchedule($m['day_of_week'], $m['start_time'], $m['end_time'], $m['room'] ?? '')) ?></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (empty($preview['scheduled'])): ?><tr><td colspan="3" class="text-muted">No scheduled classes found for you yet.</td></tr><?php endif; ?>
+            </tbody>
+            <tfoot><tr><th>Total</th><th><?= $preview['units'] % 1 === 0 ? (int)$preview['units'] : number_format($preview['units'], 2) ?></th><th></th></tr></tfoot>
+        </table>
+        </div>
+
+        <?php if (!empty($preview['unscheduled'])): ?>
+            <div class="alert alert-warning">
+                Not scheduled this term yet, so they won't be added: <?= htmlspecialchars(implode(', ', $preview['unscheduled'])) ?>.
+                Contact the registrar after you enroll.
+            </div>
+        <?php endif; ?>
+
         <form method="post">
             <button type="submit" class="btn btn-primary w-100">Confirm Enroll</button>
         </form>

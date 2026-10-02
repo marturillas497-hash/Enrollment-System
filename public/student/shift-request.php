@@ -26,12 +26,16 @@ $currentEnrollment = $stmt->fetch();
 
 $currentTerm = $pdo->query("SELECT * FROM School_term WHERE status = 'ongoing' ORDER BY term_id DESC LIMIT 1")->fetch();
 
-$alreadyEnrolledThisTerm = false;
+$currentTermEnrollment = null;
 if ($currentTerm) {
-    $check = $pdo->prepare('SELECT 1 FROM Enrollment WHERE student_id = :sid AND term_id = :tid');
+    $check = $pdo->prepare('SELECT enrollment_id, status, source_shift_request_id FROM Enrollment WHERE student_id = :sid AND term_id = :tid');
     $check->execute(['sid' => $student['student_id'], 'tid' => $currentTerm['term_id']]);
-    $alreadyEnrolledThisTerm = $check->fetch() !== false;
+    $currentTermEnrollment = $check->fetch() ?: null;
 }
+$alreadyEnrolledThisTerm = $currentTermEnrollment !== null;
+$pendingSelection = $currentTermEnrollment
+    && $currentTermEnrollment['status'] === 'pending'
+    && !$currentTermEnrollment['source_shift_request_id'];
 
 // An existing request that hasn't been resolved yet blocks a new one.
 $stmt = $pdo->prepare(
@@ -50,21 +54,26 @@ $canRequest = $currentTerm && !$alreadyEnrolledThisTerm && !$hasOpenRequest
 
 $error = '';
 $submitted = false;
+$notice = flashGet('shift_notice');
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canRequest) {
-    $toCurriculumId = $_POST['to_curriculum_id'] ?? '';
-    if ($toCurriculumId === '') {
-        $error = 'Please select a program to shift into.';
-    } else {
-        $stmt = $pdo->prepare(
-            "INSERT INTO Program_shift_request (student_id, from_curriculum_id, to_curriculum_id, request_date, effective_term_id, status, credit_evaluation_status)
-             VALUES (:sid, :from_curr, :to_curr, CURDATE(), :term_id, 'pending', 'pending')"
-        );
-        $stmt->execute([
-            'sid' => $student['student_id'], 'from_curr' => $currentEnrollment['curriculum_id'],
-            'to_curr' => $toCurriculumId, 'term_id' => $currentTerm['term_id'],
-        ]);
-        $submitted = true;
+// An irregular student's own pending subject selection can be withdrawn so they can shift instead.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'withdraw_pending' && $pendingSelection && !$hasOpenRequest) {
+    try {
+        $pdo->beginTransaction();
+        $pdo->prepare(
+            "DELETE es FROM Enrolled_subject es JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
+             WHERE e.enrollment_id = :id AND e.student_id = :sid AND e.status = 'pending' AND e.source_shift_request_id IS NULL"
+        )->execute(['id' => $currentTermEnrollment['enrollment_id'], 'sid' => $student['student_id']]);
+        $pdo->prepare(
+            "DELETE FROM Enrollment WHERE enrollment_id = :id AND student_id = :sid AND status = 'pending' AND source_shift_request_id IS NULL"
+        )->execute(['id' => $currentTermEnrollment['enrollment_id'], 'sid' => $student['student_id']]);
+        $pdo->commit();
+        flashSet('shift_notice', 'Your pending subject selection was withdrawn. You can now request a program shift.');
+        header('Location: ' . BASE_URL . '/student/shift-request.php');
+        exit;
+    } catch (Exception $e) {
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
+        $error = errorMessage($e, 'Could not withdraw your selection.');
     }
 }
 
@@ -79,6 +88,26 @@ if ($currentEnrollment) {
     $stmt->execute(['pid' => $currentEnrollment['program_id']]);
     $curricula = $stmt->fetchAll();
 }
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canRequest && ($_POST['action'] ?? '') !== 'withdraw_pending') {
+    $toCurriculumId = $_POST['to_curriculum_id'] ?? '';
+    if ($toCurriculumId === '') {
+        $error = 'Please select a program to shift into.';
+    } elseif (!in_array((string)$toCurriculumId, array_map('strval', array_column($curricula, 'curriculum_id')), true)) {
+        $error = 'That program is not available to shift into.';
+    } else {
+        $stmt = $pdo->prepare(
+            "INSERT INTO Program_shift_request (student_id, from_curriculum_id, to_curriculum_id, request_date, effective_term_id, status, credit_evaluation_status)
+             VALUES (:sid, :from_curr, :to_curr, CURDATE(), :term_id, 'pending', 'pending')"
+        );
+        $stmt->execute([
+            'sid' => $student['student_id'], 'from_curr' => $currentEnrollment['curriculum_id'],
+            'to_curr' => $toCurriculumId, 'term_id' => $currentTerm['term_id'],
+        ]);
+        $submitted = true;
+    }
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -94,6 +123,7 @@ if ($currentEnrollment) {
     <h1 class="h4 mb-3">Request a Program Shift</h1>
 
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+    <?php if ($notice): ?><div class="alert alert-success"><?= htmlspecialchars($notice) ?></div><?php endif; ?>
 
     <?php if ($submitted): ?>
         <div class="alert alert-success">
@@ -106,6 +136,11 @@ if ($currentEnrollment) {
             submitted <?= htmlspecialchars($latestRequest['request_date']) ?>. Credit evaluation:
             <?= htmlspecialchars($latestRequest['credit_evaluation_status']) ?>.
         </div>
+    <?php elseif ($latestRequest && $latestRequest['status'] === 'approved' && $currentTermEnrollment && (int)$currentTermEnrollment['source_shift_request_id'] === (int)$latestRequest['request_id']): ?>
+        <div class="alert alert-success d-flex justify-content-between align-items-center">
+            <div>Your shift to <strong><?= htmlspecialchars($latestRequest['program_code'] . ' — ' . $latestRequest['curriculum_name']) ?></strong> was approved.</div>
+            <a href="<?= BASE_URL ?>/student/enroll-irregular.php" class="btn btn-primary">Choose Subjects</a>
+        </div>
     <?php elseif ($latestRequest && $latestRequest['status'] === 'rejected'): ?>
         <div class="alert alert-warning">
             Your last shift request (to <?= htmlspecialchars($latestRequest['program_code']) ?>) was rejected.
@@ -116,6 +151,18 @@ if ($currentEnrollment) {
     <?php if (!$submitted && !$hasOpenRequest): ?>
         <?php if (!$currentTerm): ?>
             <div class="alert alert-secondary">No term is currently open — shift requests are only accepted during an open enrollment period.</div>
+        <?php elseif ($pendingSelection): ?>
+            <div class="alert alert-warning">
+                You have a subject selection waiting on registrar approval for this term. To request a program shift
+                instead, withdraw that selection first. You can always choose subjects again afterward if you change your mind.
+            </div>
+            <form method="post">
+                <input type="hidden" name="action" value="withdraw_pending">
+                <button type="submit" class="btn btn-outline-danger"
+                        data-confirm="Withdraw your pending subject selection?" data-confirm-label="Withdraw" data-confirm-tone="danger">
+                    Withdraw Pending Selection
+                </button>
+            </form>
         <?php elseif ($alreadyEnrolledThisTerm): ?>
             <div class="alert alert-secondary">You're already enrolled for this term. Shift requests can only be made before enrolling.</div>
         <?php elseif ($student['overall_status'] !== 'active'): ?>

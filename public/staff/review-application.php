@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     guardian_contact_no = :guardian_contact_no,
                     status = \'validated\', validated_by = :validated_by,
                     date_validated = CURDATE(), evaluated_year_level = :evaluated_year_level
-                WHERE application_id = :id'
+                WHERE application_id = :id AND status = \'pending\''
             );
             $stmt->execute([
                 'last_name' => $f('applicant_last_name'), 'first_name' => $f('applicant_first_name'),
@@ -59,8 +59,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'evaluated_year_level' => $evaluatedYearLevel,
                 'id' => $id,
             ]);
-            $message = "Application #$id validated.";
-            $applicationId = null; // back to the list
+            if ($stmt->rowCount() === 0) {
+                $error = 'This application is no longer pending, so it was not changed.';
+                $applicationId = $id;
+            } else {
+                $message = "Application #$id validated.";
+                $applicationId = null; // back to the list
+            }
         }
     } elseif ($action === 'reject') {
         $reason = trim($_POST['rejection_reason'] ?? '');
@@ -72,11 +77,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'UPDATE Admission_Application SET
                     status = \'rejected\', rejected_by = :rejected_by,
                     date_rejected = CURDATE(), rejection_reason = :reason
-                 WHERE application_id = :id'
+                 WHERE application_id = :id AND status = \'pending\''
             );
             $stmt->execute(['rejected_by' => $user['account_id'], 'reason' => $reason, 'id' => $id]);
-            $message = "Application #$id rejected.";
-            $applicationId = null;
+            if ($stmt->rowCount() === 0) {
+                $error = 'This application is no longer pending, so it was not changed.';
+                $applicationId = $id;
+            } else {
+                $message = "Application #$id rejected.";
+                $applicationId = null;
+            }
+        }
+    } elseif ($action === 'reopen') {
+        $stmt = $pdo->prepare(
+            "UPDATE Admission_Application SET status = 'pending', validated_by = NULL, date_validated = NULL
+             WHERE application_id = :id AND status = 'validated'
+               AND NOT EXISTS (SELECT 1 FROM Student st WHERE st.application_id = Admission_Application.application_id)"
+        );
+        $stmt->execute(['id' => $id]);
+        if ($stmt->rowCount() === 0) {
+            $error = 'Only validated applications that have not been placed yet can be reopened.';
+            $applicationId = $id;
+        } else {
+            $message = "Application #$id reopened for review.";
+            $applicationId = $id;
         }
     }
 }
@@ -85,9 +109,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $application = null;
 if ($applicationId) {
     $stmt = $pdo->prepare(
-        'SELECT a.*, p.program_code, p.program_name
+        'SELECT a.*, p.program_code, p.program_name,
+                CONCAT(vs.first_name, " ", vs.last_name) AS validated_by_name,
+                CONCAT(rs.first_name, " ", rs.last_name) AS rejected_by_name,
+                st.student_id_number AS placed_as
          FROM Admission_Application a
          JOIN Program p ON p.program_id = a.program_id
+         LEFT JOIN Admission_Staff vs ON vs.account_id = a.validated_by
+         LEFT JOIN Admission_Staff rs ON rs.account_id = a.rejected_by
+         LEFT JOIN Student st ON st.application_id = a.application_id
          WHERE a.application_id = :id'
     );
     $stmt->execute(['id' => $applicationId]);
@@ -108,7 +138,8 @@ if (!$application) {
     }
     $fromSql = ' FROM Admission_Application a JOIN Program p ON p.program_id = a.program_id';
     $listSql = "SELECT a.application_id, a.applicant_last_name, a.applicant_first_name, a.status, a.application_date,
-                       p.program_code
+                       a.rejection_reason, a.evaluated_year_level, a.date_validated, p.program_code,
+                       (SELECT COUNT(*) FROM Student st WHERE st.application_id = a.application_id) AS placed
                 $fromSql";
     if ($search !== '') {
         $whereSql = ' WHERE a.applicant_last_name LIKE :q1 OR a.applicant_first_name LIKE :q2';
@@ -172,10 +203,57 @@ if (!$application) {
         </p>
 
         <?php if ($application['status'] !== 'pending'): ?>
-            <div class="alert alert-info">
-                This application is already <?= htmlspecialchars($application['status']) ?> and can no
-                longer be edited here.
+            <?php
+            $sections = [
+                'Applicant' => ['applicant_last_name' => 'Last Name', 'applicant_first_name' => 'First Name', 'applicant_middle_name' => 'Middle Name', 'applicant_suffix' => 'Suffix', 'birthdate' => 'Birthdate'],
+                'Address' => ['applicant_province' => 'Province', 'applicant_municipality' => 'Municipality', 'applicant_barangay' => 'Barangay', 'applicant_purok' => 'Purok'],
+                'Father' => ['father_last_name' => 'Last Name', 'father_first_name' => 'First Name', 'father_middle_name' => 'Middle Name', 'father_suffix' => 'Suffix', 'father_occupation' => 'Occupation'],
+                'Mother' => ['mother_maiden_name' => 'Maiden Name', 'mother_first_name' => 'First Name', 'mother_middle_name' => 'Middle Name', 'mother_occupation' => 'Occupation'],
+                'Contact & Guardian' => ['contact_no' => 'Contact No.', 'email_address' => 'Email', 'guardian_name' => 'Guardian', 'guardian_relationship' => 'Relationship', 'guardian_contact_no' => 'Guardian Contact'],
+            ];
+            ?>
+            <div class="card mb-3 <?= $application['status'] === 'rejected' ? 'border-danger' : 'border-success' ?>">
+                <div class="card-body">
+                    <?php if ($application['status'] === 'validated'): ?>
+                        <p class="mb-1">Validated by <strong><?= htmlspecialchars($application['validated_by_name'] ?? 'unknown') ?></strong>
+                            on <?= $application['date_validated'] ? htmlspecialchars(date('M j, Y', strtotime($application['date_validated']))) : '—' ?>.</p>
+                        <p class="mb-1">Evaluated year level: <strong><?= (int)$application['evaluated_year_level'] ?></strong></p>
+                        <p class="mb-0">Placement:
+                            <?php if ($application['placed_as']): ?>
+                                <span class="badge bg-success">Placed as <?= htmlspecialchars($application['placed_as']) ?></span>
+                            <?php else: ?>
+                                <span class="badge bg-warning text-dark">Awaiting placement</span>
+                            <?php endif; ?>
+                        </p>
+                        <?php if (!$application['placed_as']): ?>
+                            <form method="post" class="mt-3">
+                                <input type="hidden" name="action" value="reopen">
+                                <input type="hidden" name="application_id" value="<?= $application['application_id'] ?>">
+                                <button type="submit" class="btn btn-outline-secondary"
+                                        data-confirm="Reopen this application for review? It will leave the registrar's placement list until validated again."
+                                        data-confirm-label="Reopen" data-confirm-tone="danger">Reopen for Review</button>
+                            </form>
+                        <?php endif; ?>
+                    <?php else: ?>
+                        <p class="mb-1">Rejected by <strong><?= htmlspecialchars($application['rejected_by_name'] ?? 'unknown') ?></strong>
+                            on <?= $application['date_rejected'] ? htmlspecialchars(date('M j, Y', strtotime($application['date_rejected']))) : '—' ?>.</p>
+                        <p class="mb-0">Reason: <?= htmlspecialchars($application['rejection_reason'] ?? '—') ?></p>
+                    <?php endif; ?>
+                </div>
             </div>
+            <?php foreach ($sections as $title => $fields): ?>
+                <div class="card mb-3">
+                    <div class="card-header"><?= htmlspecialchars($title) ?></div>
+                    <div class="card-body">
+                        <dl class="row mb-0">
+                            <?php foreach ($fields as $col => $label): ?>
+                                <dt class="col-sm-3"><?= htmlspecialchars($label) ?></dt>
+                                <dd class="col-sm-9"><?= htmlspecialchars((string)($application[$col] ?? '')) ?: '—' ?></dd>
+                            <?php endforeach; ?>
+                        </dl>
+                    </div>
+                </div>
+            <?php endforeach; ?>
         <?php else: ?>
 
         <nav class="section-nav">
@@ -324,7 +402,7 @@ if (!$application) {
         <div class="table-responsive">
 <table class="table table-hover bg-white">
             <thead>
-                <tr><th>#</th><th>Name</th><th>Program</th><th>Submitted</th><?php if ($search !== ''): ?><th>Status</th><?php endif; ?><th></th></tr>
+                <tr><th>#</th><th>Name</th><th>Program</th><th>Submitted</th><?php if ($search !== ''): ?><th>Status</th><?php elseif ($tabKey === 'validated'): ?><th>Year</th><th>Placement</th><?php elseif ($tabKey === 'rejected'): ?><th>Reason</th><?php endif; ?><th></th></tr>
             </thead>
             <tbody>
                 <?php foreach ($applications as $a): ?>
@@ -333,7 +411,9 @@ if (!$application) {
                         <td><?= htmlspecialchars($a['applicant_first_name'] . ' ' . $a['applicant_last_name']) ?></td>
                         <td><?= htmlspecialchars($a['program_code']) ?></td>
                         <td class="text-nowrap"><?= $a['application_date'] ? htmlspecialchars(date('M j, Y', strtotime($a['application_date']))) : '' ?></td>
-                        <?php if ($search !== ''): ?><td><?= statusBadge($a['status']) ?></td><?php endif; ?>
+                        <?php if ($search !== ''): ?><td><?= statusBadge($a['status']) ?></td>
+                        <?php elseif ($tabKey === 'validated'): ?><td><?= (int)$a['evaluated_year_level'] ?></td><td><?= $a['placed'] ? '<span class="badge bg-success">Placed</span>' : '<span class="badge bg-warning text-dark">Awaiting placement</span>' ?></td>
+                        <?php elseif ($tabKey === 'rejected'): ?><td class="small"><?= htmlspecialchars(mb_strimwidth((string)$a['rejection_reason'], 0, 60, '…')) ?></td><?php endif; ?>
                         <td>
                             <a href="?id=<?= $a['application_id'] ?>" class="btn btn-sm btn-outline-primary">
                                 <?= $a['status'] === 'pending' ? 'Review' : 'View' ?>
@@ -342,7 +422,7 @@ if (!$application) {
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($applications)): ?>
-                    <tr><td colspan="<?= $search !== '' ? 6 : 5 ?>" class="text-muted">
+                    <tr><td colspan="7" class="text-muted">
                         <?php if ($search !== ''): ?>No applications match that name.
                         <?php elseif ($tabKey === 'pending'): ?>No pending applications. Nothing to review.
                         <?php else: ?>No <?= $tabKey ?> applications yet.<?php endif; ?>

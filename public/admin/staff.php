@@ -11,6 +11,12 @@ $error = '';
 $regenerated = null;
 $mailWarning = '';
 
+$flash = flashGet('regenerated');
+if ($flash) {
+    $regenerated = $flash['regenerated'];
+    $mailWarning = $flash['mailWarning'];
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regenerate_password') {
     $accountId = $_POST['account_id'] ?? '';
 
@@ -44,6 +50,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regen
         } else {
             $mailWarning = 'No email is on file for this account. Share the credentials below manually.';
         }
+
+        flashSet('regenerated', ['regenerated' => $regenerated, 'mailWarning' => $mailWarning]);
+        header('Location: ' . $_SERVER['REQUEST_URI']);
+        exit;
     }
 }
 

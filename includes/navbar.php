@@ -5,6 +5,7 @@
 // including page already loaded it.
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/helpers/ui_helper.php';
+require_once __DIR__ . '/../src/helpers/academic_helper.php';
 
 $currentUserData = currentUser();
 $role = $currentUserData['role'] ?? null;
@@ -108,6 +109,7 @@ function navActive(string $href): string
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-teacher.php') ?>" href="<?= BASE_URL ?>/admin/register-teacher.php"><i class="bi bi-person-plus"></i> Register Teacher</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-admission-staff.php') ?>" href="<?= BASE_URL ?>/admin/register-admission-staff.php"><i class="bi bi-person-plus"></i> Register Admission Staff</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/staff.php') ?>" href="<?= BASE_URL ?>/admin/staff.php"><i class="bi bi-people"></i> Staff Accounts</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/profile.php') ?>" href="<?= BASE_URL ?>/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
         <?php elseif ($role === 'registrar'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/dashboard.php') ?>" href="<?= BASE_URL ?>/registrar/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
 
@@ -119,7 +121,7 @@ function navActive(string $href): string
             // wasn't judged worth the extra complexity for a first pass).
             $navActiveInGroup = fn(array $paths) => array_reduce($paths, fn($c, $p) => $c || navActive(BASE_URL . $p) !== '', false);
             $enrollmentGroupOpen = $navActiveInGroup(['/registrar/place-student.php', '/registrar/students.php', '/registrar/shift-requests.php', '/registrar/irregular-enrollments.php']);
-            $catalogGroupOpen = $navActiveInGroup(['/registrar/subjects.php', '/registrar/prerequisites.php', '/registrar/curriculum.php', '/registrar/sections.php', '/registrar/terms.php', '/registrar/class-offerings.php']);
+            $catalogGroupOpen = $navActiveInGroup(['/registrar/subjects.php', '/registrar/prerequisites.php', '/registrar/curriculum.php', '/registrar/sections.php', '/registrar/terms.php', '/registrar/class-offerings.php', '/registrar/schedule.php']);
             ?>
 
             <div class="sidebar-group">
@@ -149,6 +151,7 @@ function navActive(string $href): string
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/sections.php') ?>" href="<?= BASE_URL ?>/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/terms.php') ?>" href="<?= BASE_URL ?>/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/class-offerings.php') ?>" href="<?= BASE_URL ?>/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/schedule.php') ?>" href="<?= BASE_URL ?>/registrar/schedule.php"><i class="bi bi-calendar3"></i> Schedule</a>
                 </div>
             </div>
         <?php elseif ($role === 'admission_staff'): ?>
@@ -164,6 +167,13 @@ function navActive(string $href): string
         <?php elseif ($role === 'student'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/dashboard.php') ?>" href="<?= BASE_URL ?>/student/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/enrollment.php') ?>" href="<?= BASE_URL ?>/student/enrollment.php"><i class="bi bi-pencil-square"></i> Enrollment</a>
+            <?php
+                $navStudent = $pdo->prepare('SELECT student_id, overall_status FROM Student WHERE account_id = :aid');
+                $navStudent->execute(['aid' => $currentUserData['account_id']]);
+                $navStudent = $navStudent->fetch();
+                $navShift = $navStudent ? shiftRequestStatus($pdo, $navStudent) : ['available' => false, 'reason' => ''];
+            ?>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/student/shift-request.php') ?><?= $navShift['available'] ? '' : ' nav-item-locked' ?>" href="<?= BASE_URL ?>/student/shift-request.php"<?= $navShift['reason'] !== '' ? ' title="' . htmlspecialchars($navShift['reason']) . '"' : '' ?>><i class="bi bi-<?= $navShift['available'] ? 'arrow-left-right' : 'lock' ?>"></i> Shift Request</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/my-subjects.php') ?>" href="<?= BASE_URL ?>/student/my-subjects.php"><i class="bi bi-journal-bookmark"></i> My Subjects</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/schedule.php') ?>" href="<?= BASE_URL ?>/student/schedule.php"><i class="bi bi-calendar-week"></i> Schedule</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/grades.php') ?>" href="<?= BASE_URL ?>/student/grades.php"><i class="bi bi-clipboard-check"></i> Grades</a>
@@ -215,6 +225,18 @@ function navActive(string $href): string
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<?php if ($role === 'registrar'): ?>
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof TomSelect === 'undefined') { return; }
+        document.querySelectorAll('select.js-search').forEach(function (el) {
+            new TomSelect(el, { maxOptions: null, allowEmptyOption: true, dropdownParent: el.closest('.modal') ? 'body' : null, placeholder: el.getAttribute('data-placeholder') || 'Type to search' });
+        });
+    });
+</script>
+<?php endif; ?>
 <script>
     (function () {
         const sidebar = document.getElementById('mistSidebar');

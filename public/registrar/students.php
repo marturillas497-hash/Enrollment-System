@@ -16,6 +16,12 @@ $error = '';
 $regenerated = null; // ['username'=>, 'password'=>] shown once after regenerating
 $mailWarning = '';
 
+$flash = flashGet('regenerated');
+if ($flash) {
+    $regenerated = $flash['regenerated'];
+    $mailWarning = $flash['mailWarning'];
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regenerate_password') {
     $accountId = $_POST['account_id'] ?? '';
 
@@ -55,6 +61,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regen
         } else {
             $mailWarning = 'No email is on file for this student. Share the credentials below manually.';
         }
+
+        flashSet('regenerated', ['regenerated' => $regenerated, 'mailWarning' => $mailWarning]);
+        header('Location: ' . $_SERVER['REQUEST_URI']);
+        exit;
     }
 }
 
@@ -109,6 +119,7 @@ if (is_string($_GET['year'] ?? null) && ctype_digit($_GET['year']) && in_array((
 }
 $filterStatus = is_string($_GET['status'] ?? null) ? $_GET['status'] : '';
 if (!isset($statusOptions[$filterStatus])) { $filterStatus = ''; }
+$filterStanding = is_string($_GET['standing'] ?? null) && in_array($_GET['standing'], ['regular', 'irregular'], true) ? $_GET['standing'] : '';
 $sortKey = is_string($_GET['sort'] ?? null) ? $_GET['sort'] : 'name_az';
 if (!isset($sortOptions[$sortKey])) { $sortKey = 'name_az'; }
 
@@ -134,6 +145,7 @@ if ($search !== '') {
 if ($filterProgram) { $fromWhere .= ' AND p.program_id = :program'; $params['program'] = $filterProgram; }
 if ($filterYear)    { $fromWhere .= ' AND e.year_level = :year';    $params['year'] = $filterYear; }
 if ($filterStatus !== '') { $fromWhere .= ' AND s.overall_status = :status'; $params['status'] = $filterStatus; }
+if ($filterStanding !== '') { $fromWhere .= ' AND e.student_standing = :standing'; $params['standing'] = $filterStanding; }
 
 $countStmt = $pdo->prepare("SELECT COUNT(*) $fromWhere");
 $countStmt->execute($params);
@@ -141,7 +153,7 @@ $totalStudents = (int) $countStmt->fetchColumn();
 $pageInfo = paginationInfo($totalStudents, 15);
 
 $sql = "SELECT s.student_id, s.student_id_number, s.last_name, s.first_name, s.overall_status, s.account_id,
-               s.student_type,
+               s.student_type, e.student_standing,
                p.program_code, e.year_level, sec.section_name, term.school_year, term.semester
         $fromWhere
         ORDER BY " . $sortOptions[$sortKey]['sql'] . '
@@ -157,7 +169,7 @@ $stmt->bindValue(':limit', $pageInfo['perPage'], PDO::PARAM_INT);
 $stmt->bindValue(':offset', $pageInfo['offset'], PDO::PARAM_INT);
 $stmt->execute();
 $students = $stmt->fetchAll();
-$isFiltered = ($search !== '' || $filterProgram || $filterYear || $filterStatus !== '' || $sortKey !== 'name_az');
+$isFiltered = ($search !== '' || $filterProgram || $filterYear || $filterStatus !== '' || $filterStanding !== '' || $sortKey !== 'name_az');
 
 // Same filter/search/sort values as the query above, reused so pagination links don't drop them.
 $pageQueryParams = array_filter([
@@ -165,6 +177,7 @@ $pageQueryParams = array_filter([
     'program' => $filterProgram ?: null,
     'year' => $filterYear ?: null,
     'status' => $filterStatus !== '' ? $filterStatus : null,
+    'standing' => $filterStanding !== '' ? $filterStanding : null,
     'sort' => $sortKey !== 'name_az' ? $sortKey : null,
 ], fn($v) => $v !== null);
 ?>
@@ -245,6 +258,14 @@ $pageQueryParams = array_filter([
         </div>
         <?php endif; ?>
         <div class="toolbar-field toolbar-field-sm">
+            <label for="standing">Standing</label>
+            <select name="standing" id="standing" class="form-select" onchange="this.form.submit()">
+                <option value="">All standings</option>
+                <option value="regular" <?= $filterStanding === 'regular' ? 'selected' : '' ?>>Regular</option>
+                <option value="irregular" <?= $filterStanding === 'irregular' ? 'selected' : '' ?>>Irregular</option>
+            </select>
+        </div>
+        <div class="toolbar-field toolbar-field-sm">
             <label for="sort">Sort by</label>
             <select name="sort" id="sort" class="form-select" onchange="this.form.submit()">
                 <?php foreach ($sortOptions as $value => $opt): ?>
@@ -260,7 +281,7 @@ $pageQueryParams = array_filter([
     <div class="table-responsive">
 <table class="table table-hover bg-white">
         <thead>
-            <tr><th>ID Number</th><th>Name</th><th>Program</th><th>Section</th><th>Term</th><th>Status</th><th></th></tr>
+            <tr><th>ID Number</th><th>Name</th><th>Program</th><th>Section</th><th>Term</th><th>Status</th><th>Standing</th><th></th></tr>
         </thead>
         <tbody>
         <?php foreach ($students as $s): ?>
@@ -268,9 +289,10 @@ $pageQueryParams = array_filter([
                 <td><?= htmlspecialchars($s['student_id_number']) ?></td>
                 <td><?= htmlspecialchars($s['first_name'] . ' ' . $s['last_name']) ?></td>
                 <td><?= htmlspecialchars($s['program_code']) ?></td>
-                <td><?= $s['section_name'] ? htmlspecialchars($s['section_name'] . ' (Yr ' . $s['year_level'] . ')') : '<span class="text-muted">—</span>' ?></td>
+                <td><?= $s['section_name'] ? htmlspecialchars(sectionLabel($s['year_level'], $s['section_name'])) : '<span class="text-muted">—</span>' ?></td>
                 <td><?= $s['school_year'] ? htmlspecialchars($s['school_year'] . ' S' . $s['semester']) : '<span class="text-muted">—</span>' ?></td>
                 <td><?= statusBadge($s['overall_status']) ?></td>
+                <td><?= statusBadge($s['student_standing']) ?></td>
                 <td>
                     <form method="post" class="d-inline">
                         <input type="hidden" name="action" value="regenerate_password">
@@ -286,7 +308,7 @@ $pageQueryParams = array_filter([
                 </td>
             </tr>
         <?php endforeach; ?>
-        <?php if (empty($students)): ?><tr><td colspan="7" class="text-muted"><?= $isFiltered ? 'No students match these filters.' : 'No students found.' ?></td></tr><?php endif; ?>
+        <?php if (empty($students)): ?><tr><td colspan="8" class="text-muted"><?= $isFiltered ? 'No students match these filters.' : 'No students found.' ?></td></tr><?php endif; ?>
         </tbody>
     </table>
 </div>

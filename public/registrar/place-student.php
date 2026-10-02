@@ -314,7 +314,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         $application = null; // done, drop back to the list
     } catch (Exception $e) {
         $pdo->rollBack();
-        $error = 'Could not complete placement. ' . $e->getMessage();
+        $error = errorMessage($e, 'Could not complete placement.');
     }
 }
 
@@ -342,7 +342,40 @@ if ($application) {
 // --- List view: validated, not-yet-placed applications in MY department ---
 $search = trim($_GET['q'] ?? '');
 $pending = [];
+$rejectedList = [];
+$listTab = ($_GET['tab'] ?? '') === 'rejected' ? 'rejected' : 'awaiting';
+$listCounts = ['awaiting' => 0, 'rejected' => 0];
 if (!$application && !$created) {
+    $cnt = $pdo->prepare(
+        "SELECT SUM(a.status = 'rejected') AS rejected,
+                SUM(a.status = 'validated' AND st.student_id IS NULL) AS awaiting
+         FROM Admission_Application a
+         JOIN Program p ON p.program_id = a.program_id
+         LEFT JOIN Student st ON st.application_id = a.application_id
+         WHERE p.department_id = :dept"
+    );
+    $cnt->execute(['dept' => $myDepartmentId]);
+    $cnt = $cnt->fetch();
+    $listCounts = ['awaiting' => (int)$cnt['awaiting'], 'rejected' => (int)$cnt['rejected']];
+}
+if (!$application && !$created && $listTab === 'rejected') {
+    $sql = "SELECT a.application_id, a.applicant_last_name, a.applicant_first_name, p.program_code,
+                   a.date_rejected, a.rejection_reason, CONCAT(rs.first_name, ' ', rs.last_name) AS rejected_by_name
+            FROM Admission_Application a
+            JOIN Program p ON p.program_id = a.program_id
+            LEFT JOIN Admission_Staff rs ON rs.account_id = a.rejected_by
+            WHERE a.status = 'rejected' AND p.department_id = :dept";
+    $params = ['dept' => $myDepartmentId];
+    if ($search !== '') {
+        $sql .= " AND (a.applicant_last_name LIKE :q1 OR a.applicant_first_name LIKE :q2)";
+        $params['q1'] = "%$search%";
+        $params['q2'] = "%$search%";
+    }
+    $sql .= " ORDER BY a.date_rejected DESC, a.application_id DESC";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rejectedList = $stmt->fetchAll();
+} elseif (!$application && !$created) {
     $sql = "SELECT a.application_id, a.applicant_last_name, a.applicant_first_name, a.evaluated_year_level,
                    p.program_code, a.date_validated
             FROM Admission_Application a
@@ -474,7 +507,7 @@ if (!$application && !$created) {
                                 <td><?= $s['units'] ?></td>
                                 <td>
                                     <?= $s['offering_id'] !== null
-                                        ? htmlspecialchars($s['day_of_week'] . ' ' . $s['start_time'] . '–' . $s['end_time'] . ' ' . $s['room'])
+                                        ? htmlspecialchars(formatSchedule($s['day_of_week'], $s['start_time'], $s['end_time'], $s['room']))
                                         : '<span class="text-muted">not scheduled</span>' ?>
                                 </td>
                             </tr>
@@ -638,18 +671,48 @@ if (!$application && !$created) {
 
     <?php else: ?>
 
-        <h1 class="h4 mb-3">Validated Applications Awaiting Placement</h1>
+        <h1 class="h4 mb-3">Applications</h1>
+        <?= tabBar([
+            'awaiting' => ['label' => 'Awaiting Placement', 'count' => $listCounts['awaiting'], 'href' => '?tab=awaiting'],
+            'rejected' => ['label' => 'Rejected', 'count' => $listCounts['rejected'], 'href' => '?tab=rejected'],
+        ], $listTab) ?>
 
         <form method="get" class="toolbar">
+            <input type="hidden" name="tab" value="<?= htmlspecialchars($listTab) ?>">
             <div class="toolbar-field toolbar-field-wide">
                 <label for="q">Search</label>
                 <input type="text" class="form-control" id="q" name="q" placeholder="Applicant name"
                        value="<?= htmlspecialchars($search) ?>">
             </div>
             <button type="submit" class="btn btn-primary">Search</button>
-            <?php if ($search !== ''): ?><a href="place-student.php" class="btn btn-outline-secondary">Reset</a><?php endif; ?>
-            <span class="toolbar-count">Showing <?= count($pending) ?> applicant<?= count($pending) === 1 ? '' : 's' ?></span>
+            <?php if ($search !== ''): ?><a href="place-student.php?tab=<?= htmlspecialchars($listTab) ?>" class="btn btn-outline-secondary">Reset</a><?php endif; ?>
+            <?php $shown = $listTab === 'rejected' ? count($rejectedList) : count($pending); ?>
+            <span class="toolbar-count">Showing <?= $shown ?> applicant<?= $shown === 1 ? '' : 's' ?></span>
         </form>
+
+        <?php if ($listTab === 'rejected'): ?>
+        <p class="text-muted small">Read-only. Rejected applications were decided by admission staff, so they are not placed here.</p>
+        <div class="table-responsive">
+<table class="table table-hover bg-white">
+            <thead><tr><th>#</th><th>Name</th><th>Program</th><th>Rejected</th><th>By</th><th>Reason</th></tr></thead>
+            <tbody>
+            <?php foreach ($rejectedList as $a): ?>
+                <tr>
+                    <td><?= $a['application_id'] ?></td>
+                    <td><?= htmlspecialchars($a['applicant_first_name'] . ' ' . $a['applicant_last_name']) ?></td>
+                    <td><?= htmlspecialchars($a['program_code']) ?></td>
+                    <td class="text-nowrap"><?= $a['date_rejected'] ? htmlspecialchars(date('M j, Y', strtotime($a['date_rejected']))) : '—' ?></td>
+                    <td><?= htmlspecialchars($a['rejected_by_name'] ?? '—') ?></td>
+                    <td><?= htmlspecialchars($a['rejection_reason'] ?? '—') ?></td>
+                </tr>
+            <?php endforeach; ?>
+            <?php if (empty($rejectedList)): ?>
+                <tr><td colspan="6" class="text-muted"><?= $search !== '' ? 'No rejected applicants match that name.' : 'No rejected applications for your department.' ?></td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+</div>
+        <?php else: ?>
 
         <div class="table-responsive">
 <table class="table table-hover bg-white">
@@ -671,6 +734,7 @@ if (!$application && !$created) {
             </tbody>
         </table>
 </div>
+        <?php endif; ?>
 
     <?php endif; ?>
 </div>

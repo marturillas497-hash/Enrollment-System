@@ -20,8 +20,8 @@ if (!function_exists('statusBadge')) {
             'ongoing'   => 'success', 'passed'    => 'success',
             'pending'   => 'warning', 'submitted' => 'warning', 'on_leave'  => 'warning',
             'rejected'  => 'danger',  'dropped'   => 'danger',  'missing'   => 'danger',
-            'failed'    => 'danger',
-            'graduated' => 'info',    'credited'  => 'info',    'irregular' => 'info',
+            'failed'    => 'danger',  'incomplete' => 'danger',
+            'graduated' => 'info',    'credited'  => 'info',    'irregular' => 'warning',
             'closed'    => 'neutral', 'retired'   => 'neutral', 'regular'   => 'neutral',
         ];
         static $allowed = ['success', 'warning', 'danger', 'info', 'neutral'];
@@ -174,5 +174,41 @@ if (!function_exists('paginationNav')) {
             ? '<a href="' . htmlspecialchars($build($page + 1)) . '" class="btn btn-outline-secondary btn-sm">Next &rarr;</a>'
             : '<span class="btn btn-outline-secondary btn-sm disabled" aria-disabled="true">Next &rarr;</span>';
         return $html . '</nav>';
+    }
+}
+
+if (!function_exists('sectionLabel')) {
+    /** "Year 1 – A", or "BSM · Year 1 – A" when a program code is passed. */
+    function sectionLabel($yearLevel, string $sectionName, ?string $programCode = null): string
+    {
+        return ($programCode ? $programCode . ' · ' : '') . 'Year ' . (int) $yearLevel . ' – ' . $sectionName;
+    }
+}
+
+if (!function_exists('formatTimeRange')) {
+    /** "8:00 AM – 10:00 AM" from two TIME values. */
+    function formatTimeRange(?string $start, ?string $end): string
+    {
+        if (!$start || !$end) {
+            return '';
+        }
+        return date('g:i A', strtotime($start)) . ' – ' . date('g:i A', strtotime($end));
+    }
+}
+
+if (!function_exists('formatSchedule')) {
+    /** "Mon 8:00 AM – 10:00 AM · T-101" (room optional). */
+    function formatSchedule(?string $day, ?string $start, ?string $end, ?string $room = null): string
+    {
+        $parts = [];
+        if ($day) {
+            $parts[] = substr($day, 0, 3);
+        }
+        $range = formatTimeRange($start, $end);
+        if ($range !== '') {
+            $parts[] = $range;
+        }
+        $text = implode(' ', $parts);
+        return ($room !== null && $room !== '') ? $text . ' · ' . $room : $text;
     }
 }

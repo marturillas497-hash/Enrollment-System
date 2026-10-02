@@ -53,6 +53,19 @@ $stmt->execute(['dept' => $myDepartmentId]);
 $activeStudentCount = (int)$stmt->fetchColumn();
 
 $stmt = $pdo->prepare(
+    "SELECT COUNT(DISTINCT s.student_id) FROM Student s
+     JOIN Enrollment e ON e.enrollment_id = (
+         SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
+         ORDER BY e2.enrollment_id DESC LIMIT 1
+     )
+     JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
+     JOIN Program p ON p.program_id = c.program_id
+     WHERE s.overall_status = 'active' AND e.student_standing = 'irregular' AND p.department_id = :dept"
+);
+$stmt->execute(['dept' => $myDepartmentId]);
+$irregularStudentCount = (int)$stmt->fetchColumn();
+
+$stmt = $pdo->prepare(
     'SELECT COUNT(*) FROM Section sec JOIN Program p ON p.program_id = sec.program_id WHERE p.department_id = :dept'
 );
 $stmt->execute(['dept' => $myDepartmentId]);
@@ -104,6 +117,7 @@ if ($currentTerm) {
         <h2 class="h6 text-muted mb-2">Department Overview</h2>
         <div class="stat-grid">
             <?= statCard($activeStudentCount, 'Active Students', 'people') ?>
+            <?= statCard($irregularStudentCount, 'Irregular Students', 'exclamation-triangle', BASE_URL . '/registrar/students.php?standing=irregular') ?>
             <?= statCard($sectionCount, 'Sections', 'diagram-3') ?>
             <?= statCard($offeringCount, 'Class Offerings This Term', 'journal-text') ?>
         </div>

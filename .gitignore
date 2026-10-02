@@ -6,3 +6,7 @@ Thumbs.db
 /notes/
 /config/mail.php
 /config/database.php
+/sql/backup-*.sql
+/sql/if0_*.sql
+/sql/enrollment_system.sql
+/sql/*.pptx

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
+require_once __DIR__ . '/../../src/helpers/picker_helper.php';
 
 $user = requireRole(['student']);
 $pdo = getDbConnection();
@@ -21,6 +22,16 @@ $currentTerm = $pdo->query("SELECT * FROM School_term WHERE status = 'ongoing' O
 $error = '';
 $submitted = false;
 
+// Right after an approved shift the student's new enrollment exists but has no subjects yet;
+// this page fills that enrollment instead of creating a pending one.
+$shiftMode = false;
+if ($latestEnrollment && $currentTerm && $latestEnrollment['source_shift_request_id']
+    && (int)$latestEnrollment['term_id'] === (int)$currentTerm['term_id'] && $latestEnrollment['status'] === 'approved') {
+    $count = $pdo->prepare('SELECT COUNT(*) FROM Enrolled_subject WHERE enrollment_id = :eid');
+    $count->execute(['eid' => $latestEnrollment['enrollment_id']]);
+    $shiftMode = (int)$count->fetchColumn() === 0;
+}
+
 // --- Re-verify every eligibility condition server-side — this guards the write,
 // the dashboard's version of these checks is only for what button to show. ---
 $eligible = true;
@@ -32,110 +43,48 @@ elseif ($student['overall_status'] !== 'active') { $eligible = false; $error = '
 if ($eligible) {
     $check = $pdo->prepare('SELECT 1 FROM Enrollment WHERE student_id = :sid AND term_id = :tid');
     $check->execute(['sid' => $student['student_id'], 'tid' => $currentTerm['term_id']]);
-    if ($check->fetch() !== false) { $eligible = false; $error = 'You are already enrolled for this term.'; }
+    if (!$shiftMode && $check->fetch() !== false) { $eligible = false; $error = 'You are already enrolled for this term.'; }
 
     $shiftCheck = $pdo->prepare("SELECT 1 FROM Program_shift_request WHERE student_id = :sid AND status = 'pending'");
     $shiftCheck->execute(['sid' => $student['student_id']]);
     if ($shiftCheck->fetch() !== false) { $eligible = false; $error = 'You have a pending program shift request.'; }
 }
 
-// --- Build the eligible subject list: curriculum subjects minus anything already
-// taken/credited, each checked against Prerequisite and against this term's offerings. ---
-$subjectRows = [];
-if ($eligible) {
-    $stmt = $pdo->prepare(
-        'SELECT DISTINCT cs.subject_id, s.subject_code, s.subject_name, s.units
-         FROM Curriculum_subject cs JOIN Subject s ON s.subject_id = cs.subject_id
-         WHERE cs.curriculum_id = :curr_id
-         ORDER BY s.subject_code'
-    );
-    $stmt->execute(['curr_id' => $latestEnrollment['curriculum_id']]);
-    $curriculumSubjects = $stmt->fetchAll();
-
-    foreach ($curriculumSubjects as $subj) {
-        if (hasTakenOrCreditedSubject($pdo, $student['student_id'], (int)$subj['subject_id'])) {
-            continue; // already completed one way or another — don't offer it again
-        }
-
-        // Prerequisite check
-        $prereqStmt = $pdo->prepare(
-            'SELECT r.subject_id, r.subject_code, r.subject_name
-             FROM Prerequisite p JOIN Subject r ON r.subject_id = p.prerequisite_subject_id
-             WHERE p.subject_id = :sid'
-        );
-        $prereqStmt->execute(['sid' => $subj['subject_id']]);
-        $prereqs = $prereqStmt->fetchAll();
-
-        $missingPrereqs = [];
-        foreach ($prereqs as $req) {
-            if (!hasCompletedSubject($pdo, $student['student_id'], (int)$req['subject_id'])) {
-                $missingPrereqs[] = $req['subject_code'];
-            }
-        }
-
-        // Offerings for this subject, this term, any section (irregular students aren't
-        // locked into one home section — that's the whole point of this flow).
-        $offeringStmt = $pdo->prepare(
-            'SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, co.room, sec.section_name
-             FROM Class_Offering co JOIN Section sec ON sec.section_id = co.section_id
-             WHERE co.subject_id = :subid AND co.term_id = :term_id'
-        );
-        $offeringStmt->execute(['subid' => $subj['subject_id'], 'term_id' => $currentTerm['term_id']]);
-        $offerings = $offeringStmt->fetchAll();
-
-        $subjectRows[] = [
-            'subject_id' => $subj['subject_id'],
-            'subject_code' => $subj['subject_code'],
-            'subject_name' => $subj['subject_name'],
-            'units' => $subj['units'],
-            'locked' => !empty($missingPrereqs) || empty($offerings),
-            'missing_prereqs' => $missingPrereqs,
-            'offerings' => $offerings,
-        ];
-    }
-}
+// --- Eligible subjects: curriculum minus anything taken or credited, with prerequisite and offering checks. ---
+$subjectRows = $eligible ? buildPickerRows($pdo, (int)$student['student_id'], (int)$latestEnrollment['curriculum_id'], (int)$currentTerm['term_id']) : [];
 
 // --- Handle submission ---
 if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $selectedOfferings = $_POST['offering'] ?? []; // [subject_id => offering_id]
-    $selectedOfferings = array_filter($selectedOfferings, fn($v) => $v !== '');
+    $toInsert = pickerSelectedOfferings($subjectRows, $_POST);
 
-    if (empty($selectedOfferings)) {
+    if (empty($toInsert)) {
         $error = 'Select at least one subject.';
     } else {
-        // Re-validate every selection against the same rules server-side — the disabled
-        // dropdowns in the form are a UI convenience, not the actual enforcement.
-        $validOfferingIds = [];
-        foreach ($subjectRows as $row) {
-            if ($row['locked']) continue;
-            foreach ($row['offerings'] as $o) {
-                $validOfferingIds[(int)$o['offering_id']] = true;
-            }
-        }
-
-        $toInsert = [];
-        foreach ($selectedOfferings as $subjectId => $offeringId) {
-            if (isset($validOfferingIds[(int)$offeringId])) {
-                $toInsert[] = (int)$offeringId;
-            }
-        }
-
-        if (empty($toInsert)) {
-            $error = 'None of your selections were valid — please try again.';
-        } else {
             try {
                 $pdo->beginTransaction();
 
-                $stmt = $pdo->prepare(
-                    "INSERT INTO Enrollment (student_id, term_id, curriculum_id, section_id, year_level, date_enrolled, status, student_standing)
-                     VALUES (:sid, :term_id, :curr_id, :sec_id, :yl, NOW(), 'pending', 'irregular')"
-                );
-                $stmt->execute([
-                    'sid' => $student['student_id'], 'term_id' => $currentTerm['term_id'],
-                    'curr_id' => $latestEnrollment['curriculum_id'], 'sec_id' => $latestEnrollment['section_id'],
-                    'yl' => $latestEnrollment['year_level'],
-                ]);
-                $newEnrollmentId = (int)$pdo->lastInsertId();
+                if ($shiftMode) {
+                    $pdo->prepare('SELECT enrollment_id FROM Enrollment WHERE enrollment_id = :eid FOR UPDATE')
+                        ->execute(['eid' => $latestEnrollment['enrollment_id']]);
+                    $count = $pdo->prepare('SELECT COUNT(*) FROM Enrolled_subject WHERE enrollment_id = :eid');
+                    $count->execute(['eid' => $latestEnrollment['enrollment_id']]);
+                    if ((int)$count->fetchColumn() > 0) {
+                        $pdo->rollBack();
+                        throw new RuntimeException('Subjects were already chosen for this enrollment.');
+                    }
+                    $newEnrollmentId = (int)$latestEnrollment['enrollment_id'];
+                } else {
+                    $stmt = $pdo->prepare(
+                        "INSERT INTO Enrollment (student_id, term_id, curriculum_id, section_id, year_level, date_enrolled, status, student_standing)
+                         VALUES (:sid, :term_id, :curr_id, :sec_id, :yl, NOW(), 'pending', 'irregular')"
+                    );
+                    $stmt->execute([
+                        'sid' => $student['student_id'], 'term_id' => $currentTerm['term_id'],
+                        'curr_id' => $latestEnrollment['curriculum_id'], 'sec_id' => $latestEnrollment['section_id'],
+                        'yl' => $latestEnrollment['year_level'],
+                    ]);
+                    $newEnrollmentId = (int)$pdo->lastInsertId();
+                }
 
                 $insertStmt = $pdo->prepare('INSERT INTO Enrolled_subject (enrollment_id, offering_id) VALUES (:eid, :oid)');
                 foreach ($toInsert as $offeringId) {
@@ -145,10 +94,9 @@ if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->commit();
                 $submitted = true;
             } catch (Exception $e) {
-                $pdo->rollBack();
-                $error = 'Could not submit your selections. ' . $e->getMessage();
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                $error = $e instanceof RuntimeException ? $e->getMessage() : errorMessage($e, 'Could not submit your selections.');
             }
-        }
     }
 }
 ?>
@@ -169,12 +117,22 @@ if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <?php if ($submitted): ?>
         <div class="alert alert-success">
-            Your subject selections have been submitted and are waiting on registrar approval.
-            You'll see them on your dashboard once approved.
+            <?php if ($shiftMode): ?>
+                Your subjects have been added to your new enrollment. They're on your dashboard now.
+            <?php else: ?>
+                Your subject selections have been submitted and are waiting on registrar approval.
+                You'll see them on your dashboard once approved.
+            <?php endif; ?>
         </div>
         <a href="<?= BASE_URL ?>/student/dashboard.php" class="btn btn-primary">Back to Dashboard</a>
 
     <?php elseif ($eligible): ?>
+        <?php if ($shiftMode): ?>
+            <div class="alert alert-info">
+                Your program shift was approved. Pick your subjects for the new program below. This is saved
+                straight to your enrollment with no further approval, and you can only submit once.
+            </div>
+        <?php endif; ?>
         <p class="text-muted">
             Since your standing is irregular, you pick your own subjects each term. A subject is only
             selectable if you've passed its prerequisite (if it has one) and a class is actually offered
@@ -182,111 +140,11 @@ if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
         </p>
 
         <form method="post">
-            <div class="table-responsive">
-            <table class="table bg-white">
-                <thead><tr><th>Code</th><th>Subject</th><th>Units</th><th>Offering</th></tr></thead>
-                <tbody>
-                <?php foreach ($subjectRows as $row): ?>
-                    <tr class="<?= $row['locked'] ? 'table-secondary' : '' ?>">
-                        <td><?= htmlspecialchars($row['subject_code']) ?></td>
-                        <td><?= htmlspecialchars($row['subject_name']) ?></td>
-                        <td><?= $row['units'] ?></td>
-                        <td>
-                            <?php if ($row['locked']): ?>
-                                <span class="text-muted small">
-                                    <?php if (!empty($row['missing_prereqs'])): ?>
-                                        Requires: <?= htmlspecialchars(implode(', ', $row['missing_prereqs'])) ?>
-                                    <?php else: ?>
-                                        Not offered this term
-                                    <?php endif; ?>
-                                </span>
-                            <?php else: ?>
-                                <select class="form-select form-select-sm" name="offering[<?= $row['subject_id'] ?>]">
-                                    <option value="">— Skip —</option>
-                                    <?php foreach ($row['offerings'] as $o): ?>
-                                        <option value="<?= $o['offering_id'] ?>">
-                                            <?= htmlspecialchars($o['section_name'] . ' — ' . $o['day_of_week'] . ' ' . $o['start_time'] . '–' . $o['end_time'] . ' ' . ($o['room'] ?? '')) ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-                <?php if (empty($subjectRows)): ?>
-                    <tr><td colspan="4" class="text-muted">No subjects left in your curriculum to enroll in.</td></tr>
-                <?php endif; ?>
-                </tbody>
-            </table>
-            </div>
+            <?php $pickerRows = $subjectRows; require __DIR__ . '/../../includes/subject_picker.php'; ?>
             <?php if (!empty($subjectRows)): ?>
-                <p class="mb-2">
-                    Total units selected: <strong><span id="unit-total">0</span></strong>
-                </p>
-                <div id="conflict-warning" class="alert alert-warning" hidden>
-                    Two selected classes overlap in time:
-                    <span id="conflict-text"></span>
-                    You can still submit, but check with the registrar before doing so.
-                </div>
-                <button type="submit" class="btn btn-primary">Submit for Approval</button>
+                <button type="submit" class="btn btn-primary"><?= $shiftMode ? 'Save My Subjects' : 'Submit for Approval' ?></button>
             <?php endif; ?>
         </form>
-
-        <script>
-            // Purely a heads-up for the student before they submit — the server does not
-            // enforce a unit cap or a conflict rule, so this never blocks the submit button.
-            (function () {
-                var offeringData = <?= json_encode(array_reduce($subjectRows, function ($carry, $row) {
-                    foreach ($row['offerings'] as $o) {
-                        $carry[(int) $o['offering_id']] = [
-                            'units' => (float) $row['units'],
-                            'day' => $o['day_of_week'],
-                            'start' => $o['start_time'],
-                            'end' => $o['end_time'],
-                            'label' => $row['subject_code'],
-                        ];
-                    }
-                    return $carry;
-                }, []), JSON_HEX_TAG) ?>;
-
-                function toMinutes(t) {
-                    var parts = t.split(':');
-                    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
-                }
-
-                function recalc() {
-                    var selected = [];
-                    document.querySelectorAll('select[name^="offering"]').forEach(function (sel) {
-                        if (sel.value !== '' && offeringData[sel.value]) { selected.push(offeringData[sel.value]); }
-                    });
-
-                    var total = 0;
-                    selected.forEach(function (o) { total += o.units; });
-                    document.getElementById('unit-total').textContent = total % 1 === 0 ? total : total.toFixed(2);
-
-                    var conflicts = [];
-                    for (var i = 0; i < selected.length; i++) {
-                        for (var j = i + 1; j < selected.length; j++) {
-                            var a = selected[i], b = selected[j];
-                            if (a.day !== b.day) { continue; }
-                            if (toMinutes(a.start) < toMinutes(b.end) && toMinutes(b.start) < toMinutes(a.end)) {
-                                conflicts.push(a.label + ' and ' + b.label + ' (' + a.day + ')');
-                            }
-                        }
-                    }
-                    var warning = document.getElementById('conflict-warning');
-                    if (warning) {
-                        document.getElementById('conflict-text').textContent = conflicts.join(', ');
-                        warning.hidden = conflicts.length === 0;
-                    }
-                }
-
-                document.querySelectorAll('select[name^="offering"]').forEach(function (sel) {
-                    sel.addEventListener('change', recalc);
-                });
-                recalc();
-            })();
-        </script>
     <?php else: ?>
         <a href="<?= BASE_URL ?>/student/dashboard.php" class="btn btn-outline-secondary">Back to Dashboard</a>
     <?php endif; ?>

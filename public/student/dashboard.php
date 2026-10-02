@@ -43,6 +43,14 @@ $alreadyEnrolledThisTerm = $currentTermEnrollmentStatus !== null;
 
 $isIrregular = $latestEnrollment && $latestEnrollment['student_standing'] === 'irregular';
 
+$needsShiftSubjects = false;
+if ($currentTerm && $latestEnrollment && $latestEnrollment['source_shift_request_id']
+    && (int)$latestEnrollment['term_id'] === (int)$currentTerm['term_id'] && $latestEnrollment['status'] === 'approved') {
+    $count = $pdo->prepare('SELECT COUNT(*) FROM Enrolled_subject WHERE enrollment_id = :eid');
+    $count->execute(['eid' => $latestEnrollment['enrollment_id']]);
+    $needsShiftSubjects = (int)$count->fetchColumn() === 0;
+}
+
 $canEnroll = $student['overall_status'] === 'active' && $currentTerm && !$alreadyEnrolledThisTerm
     && $latestEnrollment && !$isIrregular;
 $canEnrollIrregular = $student['overall_status'] === 'active' && $currentTerm && !$alreadyEnrolledThisTerm
@@ -118,10 +126,15 @@ foreach ($subjects as $s) {
     <p class="text-muted"><?= htmlspecialchars($student['student_id_number']) ?> — <?= htmlspecialchars($student['overall_status']) ?></p>
 
     <?php if ($hasPendingShift): ?>
-        <div class="alert alert-info">
-            You have a pending program shift request — the registrar will place you in the new
-            program's enrollment once it's evaluated and approved.
+        <div class="alert alert-warning">
+            <i class="bi bi-hourglass-split"></i> You have a pending program shift request. The registrar will evaluate your credits and approve or reject it,
+            then you'll choose your subjects for the new program.
             <a href="<?= BASE_URL ?>/student/shift-request.php">View status</a>
+        </div>
+    <?php elseif ($needsShiftSubjects): ?>
+        <div class="alert alert-success d-flex justify-content-between align-items-center">
+            <div>Your program shift was approved. Choose your subjects for <strong><?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?></strong>.</div>
+            <a href="<?= BASE_URL ?>/student/enroll-irregular.php" class="btn btn-primary">Choose Subjects</a>
         </div>
     <?php elseif ($canEnroll): ?>
         <div class="alert alert-primary d-flex justify-content-between align-items-center">
@@ -137,12 +150,16 @@ foreach ($subjects as $s) {
                 A new term is open: <strong><?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?></strong>
                 — your standing is <strong>irregular</strong>, so you'll pick your own subjects this term.
             </div>
-            <a href="<?= BASE_URL ?>/student/enroll-irregular.php" class="btn btn-primary">Choose Subjects</a>
+            <div>
+                <a href="<?= BASE_URL ?>/student/shift-request.php" class="btn btn-outline-primary">Request Program Shift</a>
+                <a href="<?= BASE_URL ?>/student/enroll-irregular.php" class="btn btn-primary">Choose Subjects</a>
+            </div>
         </div>
     <?php elseif ($currentTerm && $alreadyEnrolledThisTerm && $currentTermEnrollmentStatus === 'pending'): ?>
-        <div class="alert alert-info">
-            Your subject selections for <?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?>
+        <div class="alert alert-warning">
+            <i class="bi bi-hourglass-split"></i> Your subject selections for <?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?>
             are submitted and waiting on registrar approval.
+            <a href="<?= BASE_URL ?>/student/shift-request.php">Want to shift programs instead?</a>
         </div>
     <?php elseif ($currentTerm && $alreadyEnrolledThisTerm): ?>
         <div class="alert alert-success">You're enrolled for <?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?>.</div>
@@ -178,7 +195,7 @@ foreach ($subjects as $s) {
                             <td><?= htmlspecialchars($s['subject_name']) ?></td>
                             <td><?= $s['units'] ?></td>
                             <td><?= htmlspecialchars($s['last_name'] . ', ' . $s['first_name']) ?></td>
-                            <td><?= htmlspecialchars($s['day_of_week'] . ' ' . $s['start_time'] . '–' . $s['end_time'] . ' ' . ($s['room'] ?? '')) ?></td>
+                            <td><?= htmlspecialchars(formatSchedule($s['day_of_week'], $s['start_time'], $s['end_time'], $s['room'] ?? '')) ?></td>
                             <td><?= $s['grade'] !== null ? htmlspecialchars($s['grade']) : '<span class="text-muted">—</span>' ?></td>
                         </tr>
                     <?php endforeach; ?>

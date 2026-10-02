@@ -30,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute(['id' => $user['account_id']]);
         session_regenerate_id(true);
         $_SESSION['user']['session_version'] = (int)$stmt->fetchColumn();
+        $_SESSION['user']['must_change'] = false;
 
         $success = true;
     }

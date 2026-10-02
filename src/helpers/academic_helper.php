@@ -127,3 +127,35 @@ function prerequisiteWouldCreateCycle(PDO $pdo, int $subjectId, int $prereqId): 
     }
     return false;
 }
+
+/**
+ * Whether a student can file a program shift request right now, and if not, why.
+ * Shared by the navbar (lock icon + tooltip) and student/shift-request.php.
+ *
+ * @return array{available: bool, reason: string}
+ */
+function shiftRequestStatus(PDO $pdo, array $student): array
+{
+    if ($student['overall_status'] !== 'active') {
+        return ['available' => false, 'reason' => 'Your account is not active. Contact the registrar.'];
+    }
+    $term = $pdo->query("SELECT term_id FROM School_term WHERE status = 'ongoing' ORDER BY term_id DESC LIMIT 1")->fetch();
+    if (!$term) {
+        return ['available' => false, 'reason' => 'Available while a term is open.'];
+    }
+    $stmt = $pdo->prepare("SELECT 1 FROM Program_shift_request WHERE student_id = :sid AND status = 'pending'");
+    $stmt->execute(['sid' => $student['student_id']]);
+    if ($stmt->fetch() !== false) {
+        return ['available' => false, 'reason' => 'You already have a pending shift request.'];
+    }
+    $stmt = $pdo->prepare('SELECT status, source_shift_request_id FROM Enrollment WHERE student_id = :sid AND term_id = :tid');
+    $stmt->execute(['sid' => $student['student_id'], 'tid' => $term['term_id']]);
+    $enrollment = $stmt->fetch();
+    if ($enrollment) {
+        if ($enrollment['status'] === 'pending' && !$enrollment['source_shift_request_id']) {
+            return ['available' => true, 'reason' => 'You have a pending subject selection. Withdraw it to request a shift instead.'];
+        }
+        return ['available' => false, 'reason' => 'Available before you enroll in the open term.'];
+    }
+    return ['available' => true, 'reason' => ''];
+}

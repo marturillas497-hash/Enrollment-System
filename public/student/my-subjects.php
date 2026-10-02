@@ -86,7 +86,7 @@ foreach ($subjects as $s) {
                 <td><?= htmlspecialchars($s['subject_name']) ?></td>
                 <td><?= $s['units'] ?></td>
                 <td><?= htmlspecialchars($s['last_name'] . ', ' . $s['first_name']) ?></td>
-                <td><?= htmlspecialchars($s['day_of_week'] . ' ' . $s['start_time'] . '–' . $s['end_time'] . ' ' . ($s['room'] ?? '')) ?></td>
+                <td><?= htmlspecialchars(formatSchedule($s['day_of_week'], $s['start_time'], $s['end_time'], $s['room'] ?? '')) ?></td>
                 <td><?= $s['grade'] !== null ? htmlspecialchars($s['grade']) : '<span class="text-muted">—</span>' ?></td>
             </tr>
         <?php endforeach; ?>

@@ -17,7 +17,7 @@ if ($teacher === false) {
 }
 
 $stmt = $pdo->prepare(
-    "SELECT co.offering_id, s.subject_code, s.subject_name, s.units, sec.section_name, p.program_code,
+    "SELECT co.offering_id, s.subject_code, s.subject_name, s.units, sec.section_name, sec.year_level, p.program_code,
             st.school_year, st.semester, st.status AS term_status, co.day_of_week, co.start_time, co.end_time, co.room,
             (SELECT COUNT(*) FROM Enrolled_subject es WHERE es.offering_id = co.offering_id) AS enrolled_count
      FROM Class_Offering co
@@ -55,8 +55,8 @@ $offerings = $stmt->fetchAll();
                 </td>
                 <td><?= htmlspecialchars($o['subject_code'] . ' — ' . $o['subject_name']) ?></td>
                 <td><?= $o['units'] ?></td>
-                <td><?= htmlspecialchars($o['program_code'] . ' ' . $o['section_name']) ?></td>
-                <td><?= htmlspecialchars(($o['day_of_week'] ?? '') . ' ' . ($o['start_time'] ?? '') . '–' . ($o['end_time'] ?? '') . ' ' . ($o['room'] ?? '')) ?></td>
+                <td><?= htmlspecialchars(sectionLabel($o['year_level'], $o['section_name'], $o['program_code'])) ?></td>
+                <td><?= htmlspecialchars(formatSchedule($o['day_of_week'] ?? '', $o['start_time'] ?? '', $o['end_time'] ?? '', $o['room'] ?? '')) ?></td>
                 <td><?= $o['enrolled_count'] ?></td>
                 <td><a href="<?= BASE_URL ?>/teacher/grade-entry.php?offering_id=<?= $o['offering_id'] ?>"
                        class="btn btn-sm btn-outline-primary">Enter Grades</a></td>

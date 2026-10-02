@@ -12,7 +12,7 @@ $myDepartmentId = $stmt->fetchColumn();
 
 $requestId = $_GET['id'] ?? ($_POST['request_id'] ?? null);
 $error = '';
-$message = '';
+$message = flashGet('shift_msg') ?? '';
 
 // --- Load the request under review ---
 // Scoped to MY department via the FROM side — the department a student is currently in
@@ -79,7 +79,7 @@ if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = 'Credit evaluation saved.';
             } catch (Exception $e) {
                 $pdo->rollBack();
-                $error = 'Could not save evaluation. ' . $e->getMessage();
+                $error = errorMessage($e, 'Could not save evaluation.');
             }
         }
     } elseif ($action === 'approve') {
@@ -105,11 +105,12 @@ if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 )->execute(['by' => $user['account_id'], 'id' => $requestId]);
 
                 $pdo->commit();
-                header("Location: " . BASE_URL . "/registrar/shift-add-subjects.php?enrollment_id=$newEnrollmentId");
+                flashSet('shift_msg', $request['first_name'] . ' ' . $request['last_name'] . "'s shift to " . $request['to_program'] . ' was approved. They will choose their subjects from their dashboard.');
+                header('Location: ' . BASE_URL . '/registrar/shift-requests.php?tab=approved');
                 exit;
             } catch (Exception $e) {
-                $pdo->rollBack();
-                $error = 'Could not approve. ' . $e->getMessage();
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                $error = errorMessage($e, 'Could not approve.');
             }
         }
     } elseif ($action === 'reject') {
@@ -158,7 +159,7 @@ if ($request) {
         $existingCredits[$row['enrolled_subject_id']] = $row['credited_subject_id'];
     }
 
-    $stmt = $pdo->prepare('SELECT section_id, section_name, year_level FROM Section WHERE program_id = :pid');
+    $stmt = $pdo->prepare('SELECT section_id, section_name, year_level FROM Section WHERE program_id = :pid ORDER BY year_level, section_name');
     $stmt->execute(['pid' => $request['to_program_id']]);
     $targetSections = $stmt->fetchAll();
 
@@ -181,12 +182,46 @@ if ($request) {
     }
 }
 
+// --- Read-only record for a decided request ---
+$decidedInfo = null;
+if ($request && $request['status'] === 'approved') {
+    $sec = $pdo->prepare('SELECT section_name, year_level FROM Section WHERE section_id = :id');
+    $sec->execute(['id' => $request['target_section_id']]);
+    $sec = $sec->fetch();
+
+    $cr = $pdo->prepare(
+        'SELECT sub.subject_code, sub.subject_name, tsub.subject_code AS old_code
+         FROM Shift_credit sc
+         JOIN Subject sub ON sub.subject_id = sc.credited_subject_id
+         JOIN Enrolled_subject es ON es.enrolled_subject_id = sc.enrolled_subject_id
+         JOIN Class_Offering co ON co.offering_id = es.offering_id
+         JOIN Subject tsub ON tsub.subject_id = co.subject_id
+         WHERE sc.request_id = :id ORDER BY sub.subject_code'
+    );
+    $cr->execute(['id' => $requestId]);
+
+    $cnt = $pdo->prepare(
+        'SELECT COUNT(es.enrolled_subject_id) FROM Enrollment e
+         LEFT JOIN Enrolled_subject es ON es.enrollment_id = e.enrollment_id
+         WHERE e.source_shift_request_id = :id'
+    );
+    $cnt->execute(['id' => $requestId]);
+
+    $decidedInfo = [
+        'section' => $sec ? sectionLabel($sec['year_level'], $sec['section_name']) : '—',
+        'credits' => $cr->fetchAll(),
+        'subjects' => (int)$cnt->fetchColumn(),
+    ];
+}
+
 // --- List view ---
 $requests = [];
 if (!$request) {
     $stmt = $pdo->prepare(
         "SELECT psr.request_id, psr.status, psr.credit_evaluation_status, psr.request_date,
-                s.student_id_number, s.last_name, s.first_name, tp.program_code AS to_program
+                s.student_id_number, s.last_name, s.first_name, tp.program_code AS to_program,
+                (SELECT COUNT(*) FROM Enrollment e JOIN Enrolled_subject es ON es.enrollment_id = e.enrollment_id
+                 WHERE e.source_shift_request_id = psr.request_id) AS subject_count
          FROM Program_shift_request psr
          JOIN Student s ON s.student_id = psr.student_id
          JOIN Curriculum fc ON fc.curriculum_id = psr.from_curriculum_id
@@ -236,7 +271,36 @@ if (!$request) {
         </p>
 
         <?php if ($request['status'] !== 'pending'): ?>
-            <div class="alert alert-info">This request is already <?= htmlspecialchars($request['status']) ?>.</div>
+            <?php if ($decidedInfo): ?>
+                <div class="card mb-3">
+                    <div class="card-header">Approved shift record</div>
+                    <div class="card-body">
+                        <p class="mb-1">Placed in section: <strong><?= htmlspecialchars($decidedInfo['section']) ?></strong>, Year <?= (int)$request['target_year_level'] ?></p>
+                        <p class="mb-1">Approved: <?= $request['applied_at'] ? htmlspecialchars(date('M j, Y g:i A', strtotime($request['applied_at']))) : '—' ?></p>
+                        <p class="mb-3">Student's subjects:
+                            <?php if ($decidedInfo['subjects'] > 0): ?>
+                                <strong><?= $decidedInfo['subjects'] ?> chosen</strong>
+                            <?php else: ?>
+                                <span class="text-muted">waiting on the student to choose</span>
+                            <?php endif; ?>
+                        </p>
+                        <h2 class="h6">Credited subjects</h2>
+                        <?php if ($decidedInfo['credits']): ?>
+                            <ul class="mb-0">
+                                <?php foreach ($decidedInfo['credits'] as $cr): ?>
+                                    <li><?= htmlspecialchars($cr['old_code']) ?> &rarr; <?= htmlspecialchars($cr['subject_code'] . ' — ' . $cr['subject_name']) ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        <?php else: ?>
+                            <p class="text-muted mb-0">None credited.</p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php elseif ($request['status'] === 'rejected'): ?>
+                <div class="alert alert-info">This request was rejected<?= $request['remarks'] ? ': ' . htmlspecialchars($request['remarks']) : '.' ?></div>
+            <?php else: ?>
+                <div class="alert alert-info">This request is already <?= htmlspecialchars($request['status']) ?>.</div>
+            <?php endif; ?>
         <?php else: ?>
 
         <form method="post" class="card mb-3">
@@ -280,7 +344,7 @@ if (!$request) {
                             <option value="">Select</option>
                             <?php foreach ($targetSections as $sec): ?>
                                 <option value="<?= $sec['section_id'] ?>" <?= $request['target_section_id'] == $sec['section_id'] ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($sec['section_name'] . ' (Yr ' . $sec['year_level'] . ')') ?>
+                                    <?= htmlspecialchars(sectionLabel($sec['year_level'], $sec['section_name'])) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
@@ -304,7 +368,7 @@ if (!$request) {
             <input type="hidden" name="action" value="approve">
             <input type="hidden" name="request_id" value="<?= $requestId ?>">
             <button type="submit" class="btn btn-success" <?= $request['credit_evaluation_status'] !== 'completed' ? 'disabled' : '' ?>
-                    data-confirm="Approve this shift and create the new enrollment?" data-confirm-label="Approve" data-confirm-tone="success">
+                    data-confirm="Approve this shift? The student will then choose their own subjects." data-confirm-label="Approve" data-confirm-tone="success">
                 Approve Shift
             </button>
         </form>
@@ -329,19 +393,19 @@ if (!$request) {
         ], $tabKey) ?>
         <div class="table-responsive">
 <table class="table table-hover bg-white">
-            <thead><tr><th>Student</th><th>Target Program</th><th>Requested</th><?php if ($tabKey === 'pending'): ?><th>Credit Eval</th><?php endif; ?><th></th></tr></thead>
+            <thead><tr><th>Student</th><th>Target Program</th><th>Requested</th><?php if ($tabKey === 'pending'): ?><th>Credit Eval</th><?php elseif ($tabKey === 'approved'): ?><th>Subjects</th><?php endif; ?><th></th></tr></thead>
             <tbody>
             <?php foreach ($visibleRequests as $r): ?>
                 <tr>
                     <td><?= htmlspecialchars($r['first_name'] . ' ' . $r['last_name']) ?> (<?= htmlspecialchars($r['student_id_number']) ?>)</td>
                     <td><?= htmlspecialchars($r['to_program']) ?></td>
                     <td class="text-nowrap"><?= $r['request_date'] ? htmlspecialchars(date('M j, Y', strtotime($r['request_date']))) : '' ?></td>
-                    <?php if ($tabKey === 'pending'): ?><td><?= statusBadge($r['credit_evaluation_status']) ?></td><?php endif; ?>
+                    <?php if ($tabKey === 'pending'): ?><td><?= statusBadge($r['credit_evaluation_status']) ?></td><?php elseif ($tabKey === 'approved'): ?><td><?= (int)$r['subject_count'] > 0 ? (int)$r['subject_count'] . ' chosen' : '<span class="text-muted">Waiting on student</span>' ?></td><?php endif; ?>
                     <td><a href="?id=<?= $r['request_id'] ?>" class="btn btn-sm btn-outline-primary"><?= $tabKey === 'pending' ? 'Review' : 'View' ?></a></td>
                 </tr>
             <?php endforeach; ?>
             <?php if (empty($visibleRequests)): ?>
-                <tr><td colspan="<?= $tabKey === 'pending' ? 5 : 4 ?>" class="text-muted">
+                <tr><td colspan="5" class="text-muted">
                     <?= $tabKey === 'pending' ? 'No pending shift requests. Nothing to review.' : 'No ' . $tabKey . ' requests yet.' ?>
                 </td></tr>
             <?php endif; ?>

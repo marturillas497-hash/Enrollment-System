@@ -7,6 +7,7 @@
 require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../src/helpers/ui_helper.php';
+require_once __DIR__ . '/../src/helpers/flash_helper.php';
 
 // A session cookie with no explicit lifetime is a "session cookie" in the strict
 // sense — some browsers drop it the moment the window fully closes, others don't
@@ -62,6 +63,10 @@ function requireLogin(): array
     if (!sessionIsCurrent($user)) {
         logoutUser();
         header('Location: ' . BASE_URL . '/login.php?ended=1');
+        exit;
+    }
+    if (!empty($user['must_change']) && !in_array(basename($_SERVER['SCRIPT_NAME'] ?? ''), ['change-password.php', 'logout.php'], true)) {
+        header('Location: ' . BASE_URL . '/change-password.php');
         exit;
     }
     return $user;

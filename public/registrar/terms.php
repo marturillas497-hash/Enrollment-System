@@ -7,6 +7,7 @@ $pdo = getDbConnection();
 
 $error = '';
 $message = '';
+$showStandingLink = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -17,16 +18,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($schoolYear === '' || $semester === '') {
             $error = 'School year and semester are required.';
+        } elseif (!preg_match('/^\d{4}-\d{4}$/', $schoolYear) || !in_array($semester, ['1', '2', '3'], true)) {
+            $error = 'Use the school year format 2026-2027 and a semester of 1, 2 or Summer.';
         } else {
-            $stmt = $pdo->prepare(
-                "INSERT INTO School_term (school_year, semester, status) VALUES (:sy, :sem, 'ongoing')"
-            );
-            $stmt->execute(['sy' => $schoolYear, 'sem' => $semester]);
-            $message = 'Term opened.';
+            $dup = $pdo->prepare('SELECT 1 FROM School_term WHERE school_year = :sy AND semester = :sem');
+            $dup->execute(['sy' => $schoolYear, 'sem' => $semester]);
+            if ($dup->fetch() !== false) {
+                $error = "A term for $schoolYear, semester $semester already exists.";
+            } else {
+                $others = $pdo->query("SELECT school_year, semester FROM School_term WHERE status = 'ongoing'")->fetchAll();
+                $stmt = $pdo->prepare(
+                    "INSERT INTO School_term (school_year, semester, status) VALUES (:sy, :sem, 'ongoing')"
+                );
+                $stmt->execute(['sy' => $schoolYear, 'sem' => $semester]);
+                $message = 'Term opened.';
+                if ($others) {
+                    $names = implode(', ', array_map(fn($t) => $t['school_year'] . ' S' . $t['semester'], $others));
+                    $message .= " Warning: $names is still ongoing. Students and shift requests only use the newest open term.";
+                }
+            }
         }
     } elseif ($action === 'close_term') {
         $termId = $_POST['term_id'] ?? '';
 
+        $termCheck = $pdo->prepare("SELECT 1 FROM School_term WHERE term_id = :id AND status = 'ongoing'");
+        $termCheck->execute(['id' => $termId]);
+        if ($termCheck->fetch() === false) {
+            $error = 'That term is not ongoing, so it cannot be closed.';
+        } else {
         try {
             $pdo->beginTransaction();
 
@@ -82,14 +101,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
-            $message = "Term #$termId closed. Standing recalculated: $regularCount regular, $irregularCount irregular.";
+            $message = "Term #$termId closed. Standing recalculated: $regularCount regular, $irregularCount irregular"
+                . " ($incompleteCount with incomplete or ungraded subjects).";
             if ($incompleteCount > 0) {
-                $message .= " Note: $incompleteCount enrollment(s) had at least one incomplete or ungraded subject"
-                    . " and were set to irregular standing pending resolution. Follow up with the relevant teachers.";
+                $message .= " Those enrollments were set to irregular pending resolution. Follow up with the relevant teachers.";
             }
+            $showStandingLink = $irregularCount > 0;
         } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = 'Could not close the term. ' . $e->getMessage();
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            $error = errorMessage($e, 'Could not close the term.');
+        }
         }
     }
 }
@@ -110,17 +131,36 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
     <h1 class="h4 mb-3">School Terms</h1>
     <?= termBanner(array_values(array_filter($terms, fn($t) => $t['status'] === 'ongoing'))) ?>
 
-    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
-    <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+    <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="<?= $showStandingLink ? 15000 : 8000 ?>"><?= htmlspecialchars($message) ?><?php if ($showStandingLink): ?> <a href="<?= BASE_URL ?>/registrar/students.php?standing=irregular">View irregular students</a><?php endif; ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
+    <?php $reopenForm = $error !== '' && ($_POST['action'] ?? '') === 'open_term'; ?>
+    <?php if ($error && !$reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
-    <form method="post" class="card mb-4">
-        <div class="card-body row align-items-end">
-            <input type="hidden" name="action" value="open_term">
-            <div class="col-md-4 mb-2">
+    <?php $ongoingTerms = array_values(array_filter($terms, fn($t) => $t['status'] === 'ongoing')); ?>
+    <div class="mb-3">
+        <button type="button" class="btn btn-primary" onclick="openTermModal({})"><i class="bi bi-plus-lg"></i> Open a Term</button>
+    </div>
+
+    <div class="modal fade" id="termModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog">
+        <form method="post" class="modal-content" id="termForm">
+          <input type="hidden" name="action" value="open_term">
+          <div class="modal-header">
+            <h5 class="modal-title">Open a Term</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <?php if ($reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+            <?php if ($ongoingTerms): ?>
+                <div class="alert alert-warning">
+                    <?= htmlspecialchars($ongoingTerms[0]['school_year'] . ' Semester ' . $ongoingTerms[0]['semester']) ?> is still ongoing.
+                    If you open another term, students and shift requests will only see the newest one, and every department is affected.
+                </div>
+            <?php endif; ?>
+            <div class="mb-3">
                 <label class="form-label">School Year</label>
                 <input class="form-control" name="school_year" placeholder="2025-2026" required>
             </div>
-            <div class="col-md-3 mb-2">
+            <div class="mb-3">
                 <label class="form-label">Semester</label>
                 <select class="form-select" name="semester" required>
                     <option value="1">1</option>
@@ -128,16 +168,15 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
                     <option value="3">Summer (3)</option>
                 </select>
             </div>
-            <div class="col-md-3 mb-2">
-                <button type="submit" class="btn btn-primary w-100">Open Term</button>
-            </div>
-        </div>
-        <div class="card-body pt-0 text-muted small">
-            The schema doesn't stop multiple terms from being "ongoing" at once — that's on you to manage.
-            Close the old term before opening a new one, unless overlap is genuinely intended (e.g. summer
-            running alongside a delayed previous semester).
-        </div>
-    </form>
+            <p class="text-muted small mb-0">Terms are shared by every department. Close the old term before opening a new one.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary"><?= $ongoingTerms ? 'Open Anyway' : 'Open Term' ?></button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <div class="table-responsive">
 <table class="table table-hover bg-white">
@@ -170,5 +209,23 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
     </table>
 </div>
 </div>
+<script>
+function fillModalForm(form, values) {
+    Object.keys(values).forEach(function (name) {
+        var el = form.elements[name];
+        if (!el || el.type === 'hidden') { return; }
+        if (el.tomselect) { el.tomselect.setValue(values[name]); } else { el.value = values[name]; }
+    });
+}
+function openTermModal(values) {
+    fillModalForm(document.getElementById('termForm'), values);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('termModal')).show();
+}
+<?php if ($reopenForm): ?>
+document.addEventListener('DOMContentLoaded', function () {
+    openTermModal(<?= json_encode(array_intersect_key($_POST, array_flip(['school_year', 'semester'])), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
+});
+<?php endif; ?>
+</script>
 </body>
 </html>

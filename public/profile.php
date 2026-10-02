@@ -38,6 +38,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'chang
     }
 }
 
+$emailError = '';
+$emailSuccess = '';
+if ($user['role'] === 'admin' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'change_email') {
+    $newEmail = trim($_POST['new_email'] ?? '');
+    if ($newEmail === '' || !filter_var($newEmail, FILTER_VALIDATE_EMAIL) || strlen($newEmail) > 255) {
+        $emailError = 'Enter a valid email address.';
+    } else {
+        $pdo->prepare('UPDATE Accounts SET email = :e WHERE account_id = :id')
+            ->execute(['e' => $newEmail, 'id' => $user['account_id']]);
+        $emailSuccess = 'Email updated. Password reset links will be sent here.';
+    }
+}
+
+$accountRow = $pdo->prepare('SELECT email, created_at FROM Accounts WHERE account_id = :id');
+$accountRow->execute(['id' => $user['account_id']]);
+$accountRow = $accountRow->fetch();
+
 $profile = null;
 switch ($user['role']) {
     case 'student':
@@ -103,6 +120,8 @@ switch ($user['role']) {
     <?php if ($usernameError): ?>
         <div class="alert alert-danger"><?= htmlspecialchars($usernameError) ?></div>
     <?php endif; ?>
+    <?php if ($emailSuccess): ?><div class="alert alert-success"><?= htmlspecialchars($emailSuccess) ?></div><?php endif; ?>
+    <?php if ($emailError): ?><div class="alert alert-danger"><?= htmlspecialchars($emailError) ?></div><?php endif; ?>
 
     <div class="card">
         <div class="card-body">
@@ -128,9 +147,12 @@ switch ($user['role']) {
                 <?php elseif ($profile && $user['role'] === 'admission_staff'): ?>
                     <dt class="col-sm-4">Full Name</dt>
                     <dd class="col-sm-8"><?= htmlspecialchars($profile['first_name'] . ' ' . ($profile['middle_name'] ?? '') . ' ' . $profile['last_name']) ?></dd>
-                <?php elseif ($user['role'] === 'admin'): ?>
-                    <dd class="col-sm-12 text-muted">No additional profile information is stored for admin accounts.</dd>
                 <?php endif; ?>
+
+                <dt class="col-sm-4">Email</dt>
+                <dd class="col-sm-8"><?= !empty($accountRow['email']) ? htmlspecialchars($accountRow['email']) : '<span class="text-muted">Not set</span>' ?></dd>
+                <dt class="col-sm-4">Account Created</dt>
+                <dd class="col-sm-8"><?= !empty($accountRow['created_at']) ? htmlspecialchars(date('M j, Y', strtotime($accountRow['created_at']))) : '—' ?></dd>
             </dl>
         </div>
     </div>
@@ -157,6 +179,23 @@ switch ($user['role']) {
             </form>
         </div>
     </div>
+
+    <?php if ($user['role'] === 'admin'): ?>
+    <div class="card mt-3">
+        <div class="card-header">Email</div>
+        <div class="card-body">
+            <form method="post" novalidate>
+                <input type="hidden" name="action" value="change_email">
+                <label class="form-label">Email address</label>
+                <div class="d-flex gap-2">
+                    <input type="email" class="form-control" name="new_email" value="<?= htmlspecialchars($accountRow['email'] ?? '') ?>" required>
+                    <button type="submit" class="btn btn-primary text-nowrap">Save</button>
+                </div>
+                <div class="form-text">Used for password recovery. Without an email, the forgot-password screen cannot reach you.</div>
+            </form>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <a href="<?= BASE_URL ?>/change-password.php" class="btn btn-outline-primary mt-3">Change Password</a>
 </div>

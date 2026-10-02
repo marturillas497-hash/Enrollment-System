@@ -11,6 +11,13 @@ $pdo = getDbConnection();
 $error = '';
 $created = null;
 $mailWarning = '';
+$duplicates = [];
+
+$flash = flashGet('staff_created');
+if ($flash) {
+    $created = $flash['created'];
+    $mailWarning = $flash['mailWarning'];
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $lastName   = trim($_POST['last_name'] ?? '');
@@ -21,6 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($lastName === '' || $firstName === '' || $email === '') {
         $error = 'Last name, first name, and email are required.';
+    } elseif (!isset($_POST['confirm_duplicate']) && ($duplicates = findDuplicateStaff($pdo, $firstName, $lastName, $email))) {
+        // form re-renders below with the warning
     } else {
         try {
             $pdo->beginTransaction();
@@ -52,9 +61,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$mailSent) {
                 $mailWarning = 'The account was created, but the credentials email could not be sent. Share the credentials below manually.';
             }
+
+            flashSet('staff_created', ['created' => $created, 'mailWarning' => $mailWarning]);
+            header('Location: ' . BASE_URL . '/admin/register-admission-staff.php');
+            exit;
         } catch (Exception $e) {
-            $pdo->rollBack();
-            $error = 'Could not create the admission staff account. ' . $e->getMessage();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $error = errorMessage($e, 'Could not create the admission staff account.');
         }
     }
 }
@@ -104,6 +119,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </a>
         <?php else: ?>
             <form method="post" novalidate>
+                <?php if ($duplicates): ?>
+                    <div class="alert alert-warning">
+                        <strong>Possible duplicate.</strong> A staff account with the same name or email already exists:
+                        <ul class="mb-2">
+                            <?php foreach ($duplicates as $d): ?>
+                                <li><code><?= htmlspecialchars($d['username']) ?></code> (<?= htmlspecialchars(str_replace('_', ' ', $d['role'])) ?>, <?= htmlspecialchars($d['email'] ?? 'no email') ?>)</li>
+                            <?php endforeach; ?>
+                        </ul>
+                        If this is a different person, press the button again to create the account anyway.
+                    </div>
+                    <input type="hidden" name="confirm_duplicate" value="1">
+                <?php endif; ?>
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Last Name</label>
@@ -133,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="email" class="form-control" name="email"
                            value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
                 </div>
-                <button type="submit" class="btn btn-primary w-100">Create Admission Staff Account</button>
+                <button type="submit" class="btn btn-primary w-100"><?= $duplicates ? 'Create Anyway' : 'Create Admission Staff Account' ?></button>
             </form>
         <?php endif; ?>
     </div>
