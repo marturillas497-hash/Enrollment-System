@@ -94,15 +94,14 @@ function navActive(string $href): string
 
     <a href="<?= BASE_URL ?>/profile.php" class="profile-card">
         <div class="profile-avatar"><i class="bi bi-person-fill"></i></div>
-        <div>
-            <div class="welcome-label">WELCOME BACK,</div>
+        <div class="profile-text">
             <div class="profile-name"><?= htmlspecialchars($displayName) ?></div>
             <?php if ($subtitle): ?><div class="profile-subtitle"><?= htmlspecialchars($subtitle) ?></div><?php endif; ?>
             <?php if ($roleLabel): ?><span class="role-badge"><?= htmlspecialchars($roleLabel) ?></span><?php endif; ?>
         </div>
     </a>
 
-    <div class="nav-items">
+    <nav class="nav-items" aria-label="Main menu">
         <?php if ($role === 'admin'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/dashboard.php') ?>" href="<?= BASE_URL ?>/admin/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-registrar.php') ?>" href="<?= BASE_URL ?>/admin/register-registrar.php"><i class="bi bi-person-plus"></i> Register Registrar</a>
@@ -113,46 +112,23 @@ function navActive(string $href): string
         <?php elseif ($role === 'registrar'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/dashboard.php') ?>" href="<?= BASE_URL ?>/registrar/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
 
-            <?php
-            // The registrar's list is long enough (11 links) to be worth grouping — every other
-            // role's list is short enough that this would just be extra clicks, so this pattern
-            // only appears here. Each group defaults open (data-bs-toggle="collapse" plus a plain
-            // Bootstrap .collapse.show — no page reload keeps a group's open/closed state, that
-            // wasn't judged worth the extra complexity for a first pass).
-            $navActiveInGroup = fn(array $paths) => array_reduce($paths, fn($c, $p) => $c || navActive(BASE_URL . $p) !== '', false);
-            $enrollmentGroupOpen = $navActiveInGroup(['/registrar/place-student.php', '/registrar/students.php', '/registrar/shift-requests.php', '/registrar/irregular-enrollments.php']);
-            $catalogGroupOpen = $navActiveInGroup(['/registrar/subjects.php', '/registrar/prerequisites.php', '/registrar/curriculum.php', '/registrar/sections.php', '/registrar/terms.php', '/registrar/class-offerings.php', '/registrar/schedule.php']);
-            ?>
-
             <div class="sidebar-group">
-                <button type="button" class="sidebar-group-toggle<?= $enrollmentGroupOpen ? '' : ' collapsed' ?>"
-                        data-bs-toggle="collapse" data-bs-target="#sidebarGroupEnrollment"
-                        aria-expanded="<?= $enrollmentGroupOpen ? 'true' : 'false' ?>">
-                    <span>Enrollment</span><i class="bi bi-chevron-down"></i>
-                </button>
-                <div class="collapse<?= $enrollmentGroupOpen ? ' show' : '' ?>" id="sidebarGroupEnrollment">
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/place-student.php') ?>" href="<?= BASE_URL ?>/registrar/place-student.php"><i class="bi bi-person-check"></i> Place Student</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/students.php') ?>" href="<?= BASE_URL ?>/registrar/students.php"><i class="bi bi-people"></i> Students</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/shift-requests.php') ?>" href="<?= BASE_URL ?>/registrar/shift-requests.php"><i class="bi bi-box-arrow-in-right"></i> Shift Requests</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/irregular-enrollments.php') ?>" href="<?= BASE_URL ?>/registrar/irregular-enrollments.php"><i class="bi bi-list-check"></i> Irregular Enrollments</a>
-                </div>
+                <div class="sidebar-group-title">Enrollment</div>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/place-student.php') ?>" href="<?= BASE_URL ?>/registrar/place-student.php"><i class="bi bi-person-check"></i> Place Student</a>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/students.php') ?>" href="<?= BASE_URL ?>/registrar/students.php"><i class="bi bi-people"></i> Students</a>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/shift-requests.php') ?>" href="<?= BASE_URL ?>/registrar/shift-requests.php"><i class="bi bi-box-arrow-in-right"></i> Shift Requests</a>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/irregular-enrollments.php') ?>" href="<?= BASE_URL ?>/registrar/irregular-enrollments.php"><i class="bi bi-list-check"></i> Irregular Enrollments</a>
             </div>
 
             <div class="sidebar-group">
-                <button type="button" class="sidebar-group-toggle<?= $catalogGroupOpen ? '' : ' collapsed' ?>"
-                        data-bs-toggle="collapse" data-bs-target="#sidebarGroupCatalog"
-                        aria-expanded="<?= $catalogGroupOpen ? 'true' : 'false' ?>">
-                    <span>Academic Setup</span><i class="bi bi-chevron-down"></i>
-                </button>
-                <div class="collapse<?= $catalogGroupOpen ? ' show' : '' ?>" id="sidebarGroupCatalog">
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/subjects.php') ?>" href="<?= BASE_URL ?>/registrar/subjects.php"><i class="bi bi-journal-bookmark"></i> Subjects</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/prerequisites.php') ?>" href="<?= BASE_URL ?>/registrar/prerequisites.php"><i class="bi bi-diagram-2"></i> Prerequisites</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/curriculum.php') ?>" href="<?= BASE_URL ?>/registrar/curriculum.php"><i class="bi bi-file-earmark-text"></i> Curriculum</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/sections.php') ?>" href="<?= BASE_URL ?>/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/terms.php') ?>" href="<?= BASE_URL ?>/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/class-offerings.php') ?>" href="<?= BASE_URL ?>/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/schedule.php') ?>" href="<?= BASE_URL ?>/registrar/schedule.php"><i class="bi bi-calendar3"></i> Schedule</a>
-                </div>
+                <div class="sidebar-group-title">Academic Setup</div>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/subjects.php') ?>" href="<?= BASE_URL ?>/registrar/subjects.php"><i class="bi bi-journal-bookmark"></i> Subjects</a>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/prerequisites.php') ?>" href="<?= BASE_URL ?>/registrar/prerequisites.php"><i class="bi bi-diagram-2"></i> Prerequisites</a>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/curriculum.php') ?>" href="<?= BASE_URL ?>/registrar/curriculum.php"><i class="bi bi-file-earmark-text"></i> Curriculum</a>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/sections.php') ?>" href="<?= BASE_URL ?>/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/terms.php') ?>" href="<?= BASE_URL ?>/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/class-offerings.php') ?>" href="<?= BASE_URL ?>/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
+                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/schedule.php') ?>" href="<?= BASE_URL ?>/registrar/schedule.php"><i class="bi bi-calendar3"></i> Schedule</a>
             </div>
         <?php elseif ($role === 'admission_staff'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/staff/dashboard.php') ?>" href="<?= BASE_URL ?>/staff/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
@@ -166,7 +142,6 @@ function navActive(string $href): string
             <a class="nav-item-link<?= navActive(BASE_URL . '/profile.php') ?>" href="<?= BASE_URL ?>/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
         <?php elseif ($role === 'student'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/dashboard.php') ?>" href="<?= BASE_URL ?>/student/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
-            <a class="nav-item-link<?= navActive(BASE_URL . '/student/enrollment.php') ?>" href="<?= BASE_URL ?>/student/enrollment.php"><i class="bi bi-pencil-square"></i> Enrollment</a>
             <?php
                 $navStudent = $pdo->prepare('SELECT student_id, overall_status FROM Student WHERE account_id = :aid');
                 $navStudent->execute(['aid' => $currentUserData['account_id']]);
@@ -180,11 +155,13 @@ function navActive(string $href): string
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/enrollment-history.php') ?>" href="<?= BASE_URL ?>/student/enrollment-history.php"><i class="bi bi-clock-history"></i> Enrollment History</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/profile.php') ?>" href="<?= BASE_URL ?>/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
         <?php endif; ?>
-    </div>
+    </nav>
 
-    <button type="button" class="logout-link" data-bs-toggle="modal" data-bs-target="#logoutConfirmModal">
-        <i class="bi bi-box-arrow-right"></i> Logout
-    </button>
+    <div class="sidebar-footer">
+        <button type="button" class="logout-link" data-bs-toggle="modal" data-bs-target="#logoutConfirmModal">
+            <i class="bi bi-box-arrow-right"></i> Logout
+        </button>
+    </div>
 </div>
 
 <div class="modal fade" id="logoutConfirmModal" tabindex="-1" aria-hidden="true">
@@ -228,6 +205,11 @@ function navActive(string $href): string
 <?php if ($role === 'registrar'): ?>
 <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+<script>
+    document.addEventListener('hidden.bs.modal', function (e) {
+        e.target.querySelectorAll('.js-modal-alert').forEach(function (a) { a.remove(); });
+    });
+</script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         if (typeof TomSelect === 'undefined') { return; }

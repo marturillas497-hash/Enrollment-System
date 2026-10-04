@@ -50,6 +50,8 @@ if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($targetSectionId === '' || $targetYearLevel === '') {
             $error = 'Target section and year level are required.';
+        } elseif (!ctype_digit((string)$targetYearLevel) || (int)$targetYearLevel < 1 || (int)$targetYearLevel > 4) {
+            $error = 'Year level must be between 1 and 4.';
         } else {
             try {
                 $pdo->beginTransaction();
@@ -351,7 +353,7 @@ if (!$request) {
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label">Target Year Level</label>
-                        <input type="number" min="1" max="5" class="form-control" name="target_year_level"
+                        <input type="number" min="1" max="4" class="form-control" name="target_year_level"
                                value="<?= htmlspecialchars($request['target_year_level'] ?? '1') ?>" required>
                     </div>
                 </div>

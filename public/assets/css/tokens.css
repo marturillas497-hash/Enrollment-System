@@ -44,6 +44,13 @@
     --radius-card: 16px;
     --radius-shell: 24px;
 
+    /* Sidebar (sits on the brand gradient) */
+    --on-brand: #ffffff;
+    --sidebar-hover: rgba(255, 255, 255, 0.10);
+    --sidebar-active: rgba(255, 255, 255, 0.18);
+    --sidebar-line: rgba(255, 255, 255, 0.14);
+    --sidebar-muted: rgba(255, 255, 255, 0.78);
+
     /* Layout */
     --sidebar-width: 270px;
 }

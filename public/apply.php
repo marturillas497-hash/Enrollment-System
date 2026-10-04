@@ -46,12 +46,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $studentType = $f('student_type');
     $programId   = $f('program_id');
+    $yearLevel   = $f('applicant_year_level');
 
     // Required fields mirror the schema's NOT NULL columns.
     $validProgramIds = array_column($programs, 'program_id');
     if ($lastName === '' || $firstName === '' || $birthdate === ''
         || !in_array($studentType, ['freshman', 'transferee'], true) || $programId === '') {
         $error = 'Please fill in your name, birthdate, student type, and program.';
+    } elseif ($studentType === 'transferee' && (!ctype_digit($yearLevel) || (int)$yearLevel < 1 || (int)$yearLevel > 4)) {
+        $error = 'Transferees must select their current year level.';
     } elseif (!in_array((int)$programId, $validProgramIds, true)) {
         // Never trust the raw program_id — the dropdown only ever lists real
         // programs, but a tampered request could send anything.
@@ -67,14 +70,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     father_last_name, father_first_name, father_middle_name, father_suffix, father_occupation,
                     mother_maiden_name, mother_first_name, mother_middle_name, mother_occupation,
                     contact_no, email_address, guardian_name, guardian_relationship, guardian_contact_no,
-                    student_type, program_id, application_date, status
+                    student_type, applicant_year_level, program_id, application_date, status
                 ) VALUES (
                     :last_name, :first_name, :middle_name, :suffix,
                     :birthdate, :province, :municipality, :barangay, :purok,
                     :father_last_name, :father_first_name, :father_middle_name, :father_suffix, :father_occupation,
                     :mother_maiden_name, :mother_first_name, :mother_middle_name, :mother_occupation,
                     :contact_no, :email_address, :guardian_name, :guardian_relationship, :guardian_contact_no,
-                    :student_type, :program_id, CURDATE(), \'pending\'
+                    :student_type, :applicant_year_level, :program_id, CURDATE(), \'pending\'
                 )'
             );
 
@@ -102,6 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'guardian_relationship' => $guardianRel !== '' ? $guardianRel : null,
                 'guardian_contact_no' => $guardianContact !== '' ? $guardianContact : null,
                 'student_type' => $studentType,
+                'applicant_year_level' => $studentType === 'transferee' ? (int)$yearLevel : null,
                 'program_id' => $programId,
             ]);
 
@@ -311,6 +315,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <?php endforeach; ?>
                     </select>
                 </div>
+                <div class="col-md-6 mb-3" id="year-level-wrap"<?= ($_POST['student_type'] ?? '') === 'transferee' ? '' : ' hidden' ?>>
+                    <label class="form-label">Current Year Level</label>
+                    <select class="form-select neu-select" name="applicant_year_level" id="applicant-year-level"<?= ($_POST['student_type'] ?? '') === 'transferee' ? ' required' : ' disabled' ?>>
+                        <option value="">Select</option>
+                        <?php foreach ([1 => '1st Year', 2 => '2nd Year', 3 => '3rd Year', 4 => '4th Year'] as $n => $label): ?>
+                            <option value="<?= $n ?>" <?= ($_POST['applicant_year_level'] ?? '') == $n ? 'selected' : '' ?>><?= $label ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
             </div>
 
             </div>
@@ -387,5 +400,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     </div>
 </div>
+<script>
+(function () {
+    var type = document.querySelector('select[name="student_type"]');
+    var wrap = document.getElementById('year-level-wrap');
+    var year = document.getElementById('applicant-year-level');
+    if (!type || !wrap || !year) { return; }
+    function sync() {
+        var on = type.value === 'transferee';
+        wrap.hidden = !on;
+        year.required = on;
+        year.disabled = !on;
+        if (!on) { year.value = ''; }
+    }
+    type.addEventListener('change', sync);
+    sync();
+})();
+</script>
 </body>
 </html>

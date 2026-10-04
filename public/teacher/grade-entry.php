@@ -130,6 +130,17 @@ $stmt = $pdo->prepare(
 $stmt->execute(['oid' => $offeringId]);
 $roster = $stmt->fetchAll();
 
+$siblings = $pdo->prepare(
+    "SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, sec.section_name, sec.year_level, p.program_code,
+            (SELECT COUNT(*) FROM Enrolled_subject es JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
+             WHERE es.offering_id = co.offering_id AND e.status = 'approved') AS enrolled
+     FROM Class_Offering co JOIN Section sec ON sec.section_id = co.section_id JOIN Program p ON p.program_id = sec.program_id
+     WHERE co.teacher_id = :tid AND co.subject_id = :sub AND co.term_id = :term
+     ORDER BY sec.year_level, sec.section_name, FIELD(co.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), co.start_time"
+);
+$siblings->execute(['tid' => $teacher['teacher_id'], 'sub' => $offering['subject_id'], 'term' => $offering['term_id']]);
+$siblings = $siblings->fetchAll();
+
 $gradedCount = 0;
 foreach ($roster as $r) {
     if ($r['grade'] !== null) { $gradedCount++; }
@@ -148,6 +159,19 @@ foreach ($roster as $r) {
 <div class="container">
     <h1 class="h4 mb-1"><?= htmlspecialchars($offering['subject_code'] . ' — ' . $offering['subject_name']) ?></h1>
     <p class="text-muted mb-3">Section <?= htmlspecialchars($offering['section_name']) ?></p>
+
+    <?php if (count($siblings) > 1): ?>
+        <div class="mb-3">
+            <label class="form-label small mb-1" for="classSwitch">You teach this subject in <?= count($siblings) ?> classes this term</label>
+            <select class="form-select" id="classSwitch" onchange="window.location.href = '?offering_id=' + this.value">
+                <?php foreach ($siblings as $sib): ?>
+                    <option value="<?= (int)$sib['offering_id'] ?>"<?= (int)$sib['offering_id'] === (int)$offering['offering_id'] ? ' selected' : '' ?>>
+                        <?= htmlspecialchars(sectionLabel($sib['year_level'], $sib['section_name'], $sib['program_code']) . ' · ' . formatSchedule($sib['day_of_week'], $sib['start_time'], $sib['end_time']) . ' · ' . (int)$sib['enrolled'] . ' enrolled') ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    <?php endif; ?>
 
     <?php if (!empty($roster)): ?>
         <?= progressMeter($gradedCount, count($roster), 'students graded') ?>

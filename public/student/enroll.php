@@ -88,13 +88,16 @@ if ($error === '') {
             $unscheduled[$r['subject_id']] = $r['subject_code'];
         }
     }
+    if (empty($scheduled)) {
+        $error = 'No classes are scheduled for you this term yet. Ask the registrar to set up the class offerings, then try again.';
+    }
     $preview = [
         'year_level' => $yearLevel, 'scheduled' => $scheduled, 'unscheduled' => array_values($unscheduled),
         'units' => $units, 'section' => $sec ? sectionLabel($sec['year_level'], $sec['section_name']) : '—',
     ];
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $preview !== null) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $preview !== null && $error === '') {
     try {
         $pdo->beginTransaction();
 

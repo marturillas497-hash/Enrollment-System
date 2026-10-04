@@ -26,15 +26,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($dup->fetch() !== false) {
                 $error = "A term for $schoolYear, semester $semester already exists.";
             } else {
-                $others = $pdo->query("SELECT school_year, semester FROM School_term WHERE status = 'ongoing'")->fetchAll();
-                $stmt = $pdo->prepare(
-                    "INSERT INTO School_term (school_year, semester, status) VALUES (:sy, :sem, 'ongoing')"
-                );
-                $stmt->execute(['sy' => $schoolYear, 'sem' => $semester]);
-                $message = 'Term opened.';
-                if ($others) {
-                    $names = implode(', ', array_map(fn($t) => $t['school_year'] . ' S' . $t['semester'], $others));
-                    $message .= " Warning: $names is still ongoing. Students and shift requests only use the newest open term.";
+                $open = $pdo->query("SELECT school_year, semester FROM School_term WHERE status = 'ongoing' LIMIT 1")->fetch();
+                if ($open) {
+                    $error = 'Close the ongoing term (' . $open['school_year'] . ' Semester ' . $open['semester'] . ') before opening a new one.';
+                } else {
+                    $stmt = $pdo->prepare(
+                        "INSERT INTO School_term (school_year, semester, status) VALUES (:sy, :sem, 'ongoing')"
+                    );
+                    $stmt->execute(['sy' => $schoolYear, 'sem' => $semester]);
+                    $message = 'Term opened.';
                 }
             }
         }
@@ -137,7 +137,8 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
 
     <?php $ongoingTerms = array_values(array_filter($terms, fn($t) => $t['status'] === 'ongoing')); ?>
     <div class="mb-3">
-        <button type="button" class="btn btn-primary" onclick="openTermModal({})"><i class="bi bi-plus-lg"></i> Open a Term</button>
+        <button type="button" class="btn btn-primary" onclick="openTermModal({})"<?= $ongoingTerms ? ' disabled title="Close the ongoing term first"' : '' ?>><i class="bi bi-plus-lg"></i> Open a Term</button>
+        <?php if ($ongoingTerms): ?><span class="text-muted small ms-2">Close the ongoing term before opening another.</span><?php endif; ?>
     </div>
 
     <div class="modal fade" id="termModal" tabindex="-1" aria-hidden="true">
@@ -149,13 +150,7 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <?php if ($reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-            <?php if ($ongoingTerms): ?>
-                <div class="alert alert-warning">
-                    <?= htmlspecialchars($ongoingTerms[0]['school_year'] . ' Semester ' . $ongoingTerms[0]['semester']) ?> is still ongoing.
-                    If you open another term, students and shift requests will only see the newest one, and every department is affected.
-                </div>
-            <?php endif; ?>
+            <?php if ($reopenForm): ?><div class="alert alert-danger js-modal-alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
             <div class="mb-3">
                 <label class="form-label">School Year</label>
                 <input class="form-control" name="school_year" placeholder="2025-2026" required>
@@ -172,7 +167,7 @@ $terms = $pdo->query('SELECT * FROM School_term ORDER BY term_id DESC')->fetchAl
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="submit" class="btn btn-primary"><?= $ongoingTerms ? 'Open Anyway' : 'Open Term' ?></button>
+            <button type="submit" class="btn btn-primary">Open Term</button>
           </div>
         </form>
       </div>

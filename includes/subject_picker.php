@@ -2,6 +2,7 @@
 // Shared checkbox subject picker. Expects $pickerRows (from buildPickerRows). Renders the cards only, not the <form>.
 /** @var array $pickerRows set by the including page */
 $pickerRows = $pickerRows ?? [];
+$pickerExisting = $pickerExisting ?? [];
 $pickerGroups = [];
 foreach ($pickerRows as $r) {
     $pickerGroups[$r['year_level']][$r['semester']][] = $r;
@@ -31,7 +32,7 @@ foreach ($pickerRows as $r) {
                     <tr class="<?= $row['locked'] ? 'table-secondary' : '' ?>">
                         <td><input type="checkbox" class="picker-check" name="pick[<?= $row['subject_id'] ?>]" value="1" <?= $row['locked'] ? 'disabled' : '' ?>></td>
                         <td><?= htmlspecialchars($row['subject_code']) ?></td>
-                        <td><?= htmlspecialchars($row['subject_name']) ?></td>
+                        <td><?= htmlspecialchars($row['subject_name']) ?><?php if (!empty($row['retake'])): ?> <span class="badge text-bg-warning">Retake</span><?php endif; ?></td>
                         <td><?= $row['units'] ?></td>
                         <td>
                             <?php if ($row['locked']): ?>
@@ -58,14 +59,18 @@ foreach ($pickerRows as $r) {
     <div class="alert alert-secondary">No subjects left to add.</div>
 <?php else: ?>
     <p class="mb-2">Total units selected: <strong><span id="unit-total">0</span></strong></p>
-    <div id="conflict-warning" class="alert alert-warning" hidden>
-        Two selected classes overlap in time: <span id="conflict-text"></span>
-        You can still submit, but double-check the schedule first.
+    <div id="conflict-warning" class="alert alert-danger" hidden>
+        These classes overlap in time: <span id="conflict-text"></span>
+        Untick one or choose a different class to continue.
     </div>
 <?php endif; ?>
 <script>
 (function () {
     var data = <?= json_encode($pickerOfferingData, JSON_HEX_TAG) ?>;
+    var existing = <?= json_encode(array_map(fn($x) => ['day' => $x['day_of_week'], 'start' => $x['start_time'], 'end' => $x['end_time'], 'label' => $x['subject_code']], array_values($pickerExisting)), JSON_HEX_TAG) ?>;
+    var firstCheck = document.querySelector('.picker-check');
+    var form = firstCheck ? firstCheck.closest('form') : null;
+    var submitBtn = form ? form.querySelector('button[type=submit]') : null;
     function mins(t) { var p = t.split(':'); return parseInt(p[0], 10) * 60 + parseInt(p[1], 10); }
     function recalc() {
         var chosen = [];
@@ -77,17 +82,19 @@ foreach ($pickerRows as $r) {
         chosen.forEach(function (o) { total += o.units; });
         var out = document.getElementById('unit-total');
         if (out) { out.textContent = total % 1 === 0 ? total : total.toFixed(2); }
-        var conflicts = [];
-        for (var i = 0; i < chosen.length; i++) {
-            for (var j = i + 1; j < chosen.length; j++) {
-                var a = chosen[i], b = chosen[j];
-                if (a.day === b.day && mins(a.start) < mins(b.end) && mins(b.start) < mins(a.end)) {
+        var all = existing.concat(chosen), conflicts = [];
+        for (var i = 0; i < all.length; i++) {
+            for (var j = i + 1; j < all.length; j++) {
+                if (j < existing.length) { continue; }
+                var a = all[i], b = all[j];
+                if (a.day && a.day === b.day && mins(a.start) < mins(b.end) && mins(b.start) < mins(a.end)) {
                     conflicts.push(a.label + ' and ' + b.label + ' (' + a.day + ')');
                 }
             }
         }
         var w = document.getElementById('conflict-warning');
         if (w) { document.getElementById('conflict-text').textContent = conflicts.join(', ') + '.'; w.hidden = conflicts.length === 0; }
+        if (submitBtn) { submitBtn.disabled = conflicts.length > 0; }
     }
     document.querySelectorAll('.picker-check, .picker-offering').forEach(function (el) { el.addEventListener('change', recalc); });
     document.querySelectorAll('.picker-select-all').forEach(function (all) {

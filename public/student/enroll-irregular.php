@@ -59,6 +59,8 @@ if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (empty($toInsert)) {
         $error = 'Select at least one subject.';
+    } elseif (($clash = findScheduleConflict($pdo, $toInsert)) !== null) {
+        $error = $clash;
     } else {
             try {
                 $pdo->beginTransaction();

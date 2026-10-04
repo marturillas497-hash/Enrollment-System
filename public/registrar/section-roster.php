@@ -108,6 +108,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $termId) {
                 }
             }
 
+            $all = $pdo->prepare('SELECT offering_id FROM Enrolled_subject WHERE enrollment_id = :e');
+            $all->execute(['e' => $eid]);
+            $clash = findScheduleConflict($pdo, $all->fetchAll(PDO::FETCH_COLUMN));
+            if ($clash !== null) {
+                throw new RuntimeException('The move would put two classes at the same time. ' . $clash);
+            }
+
             $occupancy = sectionOccupancy($pdo, (int)$target['section_id']);
             $pdo->prepare('UPDATE Enrollment SET section_id = :t WHERE enrollment_id = :e')
                 ->execute(['t' => $target['section_id'], 'e' => $eid]);
@@ -181,6 +188,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $termId) {
                 $final[] = $swaps[$esId] ?? (int)$r['offering_id'];
             }
             $final = array_merge($final, $additions);
+            if (empty($final)) {
+                throw new RuntimeException('This would leave the student with no classes. Keep at least one.');
+            }
             if (count($final) !== count(array_unique($final))) {
                 throw new RuntimeException('The same class would be on the roster twice.');
             }
@@ -236,6 +246,25 @@ if ($termId) {
     $stmt->execute(['tid' => $termId, 'sec' => $sectionId]);
     $students = $stmt->fetchAll();
     $occupancy = sectionOccupancy($pdo, $sectionId);
+}
+
+$holders = [];
+if ($termId) {
+    $rosterNumbers = array_column($students, 'student_id_number');
+    $stmt = $pdo->prepare(
+        "SELECT s.student_id_number, s.first_name, s.last_name, e.status, st.school_year, st.semester
+         FROM Student s
+         JOIN Enrollment e ON e.enrollment_id = (
+             SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id ORDER BY e2.enrollment_id DESC LIMIT 1
+         )
+         JOIN School_term st ON st.term_id = e.term_id
+         WHERE e.section_id = :sid AND s.overall_status = 'active'
+         ORDER BY s.last_name, s.first_name"
+    );
+    $stmt->execute(['sid' => $sectionId]);
+    foreach ($stmt->fetchAll() as $h) {
+        if (!in_array($h['student_id_number'], $rosterNumbers, true)) { $holders[] = $h; }
+    }
 }
 
 $targets = [];
@@ -304,12 +333,12 @@ if ($editing) {
 <body class="bg-light">
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
 <div class="container container-xl">
-    <a href="<?= BASE_URL ?>/registrar/sections.php" class="small">&larr; Sections</a>
-    <h1 class="h4 mt-1 mb-1">Roster: <?= htmlspecialchars(sectionLabel($section['year_level'], $section['section_name'], $section['program_code'])) ?></h1>
+    <a href="<?= BASE_URL ?>/registrar/sections.php" class="btn btn-sm btn-outline-secondary">&larr; Back to Sections</a>
+    <h1 class="h4 mt-3 mb-1">Roster: <?= htmlspecialchars(sectionLabel($section['year_level'], $section['section_name'], $section['program_code'])) ?></h1>
     <?php if ($term): ?>
         <p class="text-muted">
             <?= htmlspecialchars($term['school_year'] . ' — Semester ' . $term['semester']) ?>
-            · <?= $occupancy ?> of <?= (int)$section['max_slots'] ?> slots used
+            · <?= $occupancy ?> of <?= (int)$section['max_slots'] ?> seats held · <?= count($students) ?> enrolled this term
         </p>
     <?php endif; ?>
 
@@ -389,6 +418,19 @@ if ($editing) {
         </tbody>
     </table>
     </div>
+    <?php if ($holders): ?>
+        <div class="card mb-4 border-secondary-subtle">
+            <div class="card-header text-muted small">Holding a seat in this section, not enrolled this term</div>
+            <ul class="list-group list-group-flush">
+                <?php foreach ($holders as $h): ?>
+                    <li class="list-group-item text-muted d-flex justify-content-between">
+                        <span><?= htmlspecialchars($h['last_name'] . ', ' . $h['first_name']) ?> (<?= htmlspecialchars($h['student_id_number']) ?>)</span>
+                        <span class="small">Latest enrollment: <?= htmlspecialchars($h['school_year'] . ' S' . $h['semester']) ?> (<?= htmlspecialchars($h['status']) ?>)</span>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
     <?php endif; ?>
 </div>
 

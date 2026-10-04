@@ -42,14 +42,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $day = $_POST['day_of_week'] ?? '';
     $startTime = $_POST['start_time'] ?? '';
     $endTime = $_POST['end_time'] ?? '';
+    $offeringId = (int)($_POST['offering_id'] ?? 0);
+    $editLocked = false;
+    $editEnrolled = 0;
+    $existing = false;
 
-    if ($subjectId === '' || $teacherId === '' || $sectionId === '' || $termId === '' || $day === '' || $startTime === '' || $endTime === '') {
+    if ($offeringId) {
+        $ex = $pdo->prepare(
+            'SELECT co.*, st.status AS term_status, p.department_id
+             FROM Class_Offering co JOIN Section sec ON sec.section_id = co.section_id
+             JOIN Program p ON p.program_id = sec.program_id JOIN School_term st ON st.term_id = co.term_id
+             WHERE co.offering_id = :id'
+        );
+        $ex->execute(['id' => $offeringId]);
+        $existing = $ex->fetch();
+        if ($existing && (int)$existing['department_id'] === (int)$myDepartmentId && $existing['term_status'] === 'ongoing') {
+            $cnt = $pdo->prepare('SELECT COUNT(*) FROM Enrolled_subject WHERE offering_id = :id');
+            $cnt->execute(['id' => $offeringId]);
+            $editEnrolled = (int)$cnt->fetchColumn();
+            if ($editEnrolled > 0) {
+                $editLocked = true;
+                $subjectId = $_POST['subject_id'] = (string)$existing['subject_id'];
+                $sectionId = $_POST['section_id'] = (string)$existing['section_id'];
+                $termId = $_POST['term_id'] = (string)$existing['term_id'];
+            }
+        }
+    }
+
+    if ($offeringId && (!$existing || (int)$existing['department_id'] !== (int)$myDepartmentId || $existing['term_status'] !== 'ongoing')) {
+        $error = 'That class cannot be edited. It is not in your department, or its term is closed.';
+    } elseif ($subjectId === '' || $teacherId === '' || $sectionId === '' || $termId === '' || $day === '' || $startTime === '' || $endTime === '') {
         $error = 'All fields except room are required.';
     } elseif ($startTime >= $endTime) {
         $error = 'Start time must be before end time.';
     } elseif (!in_array((int)$teacherId, $myTeacherIds, true) || !in_array((int)$sectionId, $mySectionIds, true)) {
         // Defense in depth — the dropdowns only list your department's own teachers/sections.
         $error = 'That teacher or section is not in your department.';
+    } elseif (!in_array((int)$termId, array_map('intval', array_column($terms, 'term_id')), true)) {
+        $error = 'That term is not open.';
     } else {
         // Conflict check: same teacher OR same section, same term/day, overlapping time.
         $stmt = $pdo->prepare(
@@ -60,11 +90,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              JOIN Section sec ON sec.section_id = co.section_id
              WHERE co.term_id = :term_id AND co.day_of_week = :day
                AND (co.teacher_id = :teacher_id OR co.section_id = :section_id)
+               AND co.offering_id <> :self
                AND co.start_time < :end_time AND co.end_time > :start_time"
         );
         $stmt->execute([
             'term_id' => $termId, 'day' => $day, 'teacher_id' => $teacherId, 'section_id' => $sectionId,
-            'end_time' => $endTime, 'start_time' => $startTime,
+            'end_time' => $endTime, 'start_time' => $startTime, 'self' => $offeringId,
         ]);
         $conflict = $stmt->fetch();
         $roomConflict = false;
@@ -80,11 +111,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  JOIN Section sec ON sec.section_id = co.section_id
                  WHERE co.term_id = :term_id AND co.day_of_week = :day
                    AND LOWER(co.room) = LOWER(:room)
+                   AND co.offering_id <> :self
                    AND co.start_time < :end_time AND co.end_time > :start_time"
             );
             $stmt->execute([
                 'term_id' => $termId, 'day' => $day, 'room' => $room,
-                'end_time' => $endTime, 'start_time' => $startTime,
+                'end_time' => $endTime, 'start_time' => $startTime, 'self' => $offeringId,
             ]);
             $conflict = $stmt->fetch();
             $roomConflict = (bool)$conflict;
@@ -99,6 +131,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Schedule conflict: {$conflict['subject_code']} already runs "
                 . "{$conflictWhen} "
                 . "with teacher {$conflict['last_name']} / section {$conflict['section_name']} in this term.";
+        } elseif ($offeringId) {
+            $clash = $pdo->prepare(
+                'SELECT sub.subject_code, st.last_name, COUNT(*) OVER () AS total
+                 FROM Enrolled_subject es
+                 JOIN Enrolled_subject es2 ON es2.enrollment_id = es.enrollment_id AND es2.offering_id <> es.offering_id
+                 JOIN Class_Offering co2 ON co2.offering_id = es2.offering_id
+                 JOIN Subject sub ON sub.subject_id = co2.subject_id
+                 JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
+                 JOIN Student st ON st.student_id = e.student_id
+                 WHERE es.offering_id = :self AND co2.day_of_week = :day
+                   AND co2.start_time < :end_time AND co2.end_time > :start_time
+                 LIMIT 1'
+            );
+            $clash->execute(['self' => $offeringId, 'day' => $day, 'end_time' => $endTime, 'start_time' => $startTime]);
+            $hit = $clash->fetch();
+            if ($hit) {
+                $error = 'That time overlaps ' . $hit['subject_code'] . ' for ' . $hit['last_name']
+                    . ((int)$hit['total'] > 1 ? ' and ' . ((int)$hit['total'] - 1) . ' other enrolled student(s)' : '')
+                    . '. Pick a time that fits their schedules.';
+            } else {
+                $pdo->prepare(
+                    'UPDATE Class_Offering SET subject_id = :subject_id, teacher_id = :teacher_id, section_id = :section_id,
+                        term_id = :term_id, room = :room, day_of_week = :day, start_time = :start_time, end_time = :end_time
+                     WHERE offering_id = :self'
+                )->execute([
+                    'subject_id' => $subjectId, 'teacher_id' => $teacherId, 'section_id' => $sectionId, 'term_id' => $termId,
+                    'room' => $room ?: null, 'day' => $day, 'start_time' => $startTime, 'end_time' => $endTime, 'self' => $offeringId,
+                ]);
+                $message = 'Class offering updated.';
+            }
         } else {
             $stmt = $pdo->prepare(
                 'INSERT INTO Class_Offering (subject_id, teacher_id, section_id, term_id, room, day_of_week, start_time, end_time)
@@ -114,7 +176,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $offerings = $pdo->prepare(
-    "SELECT co.*, s.subject_code, s.subject_name, t.last_name, t.first_name, sec.section_name, sec.year_level, p.program_code, st.school_year, st.semester
+    "SELECT co.*, s.subject_code, s.subject_name, t.last_name, t.first_name, sec.section_name, sec.year_level, p.program_code, st.school_year, st.semester,
+            st.status AS term_status, (SELECT COUNT(*) FROM Enrolled_subject es WHERE es.offering_id = co.offering_id) AS enrolled_count
      FROM Class_Offering co
      JOIN Subject s ON s.subject_id = co.subject_id
      JOIN Teacher t ON t.teacher_id = co.teacher_id
@@ -164,7 +227,7 @@ $visibleOfferings = array_values(array_filter($offerings, fn($o) =>
 // Columns that would repeat the same value on every row are left out.
 $showTermCol = $showTermFilter && $filterTerm === 0;
 $showSectionCol = $filterSection === 0;
-$colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
+$colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -192,14 +255,16 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
     <div class="modal fade" id="offeringModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-lg">
         <form method="post" class="modal-content" id="offeringForm">
+          <input type="hidden" name="offering_id" id="offeringId">
           <div class="modal-header">
-            <h5 class="modal-title">Schedule a Class</h5>
+            <h5 class="modal-title" id="offeringModalTitle">Schedule a Class</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <?php if ($reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+            <?php if ($reopenForm): ?><div class="alert alert-danger js-modal-alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+            <div class="alert alert-info" id="offeringLockNote" hidden>Subject, section and term are locked because <span id="offeringLockCount">0</span> student(s) are enrolled. Teacher, room, day and time can still change.</div>
             <div class="row">
-                <div class="col-md-3 mb-3">
+                <div class="col-md-4 mb-3">
                     <label class="form-label">Term</label>
                     <select class="form-select" name="term_id" required>
                         <?php foreach ($terms as $t): ?>
@@ -207,7 +272,7 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-3 mb-3">
+                <div class="col-md-8 mb-3">
                     <label class="form-label">Subject</label>
                     <select class="form-select js-search" name="subject_id" data-placeholder="Search subjects">
                         <option value="">Select</option>
@@ -216,7 +281,7 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-3 mb-3">
+                <div class="col-md-6 mb-3">
                     <label class="form-label">Teacher</label>
                     <select class="form-select js-search" name="teacher_id" data-placeholder="Search teachers">
                         <option value="">Select</option>
@@ -225,7 +290,7 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-3 mb-3">
+                <div class="col-md-6 mb-3">
                     <label class="form-label">Section</label>
                     <select class="form-select js-search" name="section_id" data-placeholder="Search sections">
                         <option value="">Select</option>
@@ -243,11 +308,11 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-2 mb-3">
+                <div class="col-md-3 mb-3">
                     <label class="form-label">Start</label>
                     <input type="time" class="form-control" name="start_time" required>
                 </div>
-                <div class="col-md-2 mb-3">
+                <div class="col-md-3 mb-3">
                     <label class="form-label">End</label>
                     <input type="time" class="form-control" name="end_time" required>
                 </div>
@@ -259,7 +324,7 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="submit" class="btn btn-primary">Schedule Class</button>
+            <button type="submit" class="btn btn-primary" id="offeringSubmit">Schedule Class</button>
           </div>
         </form>
       </div>
@@ -298,7 +363,7 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
 
     <div class="table-responsive">
 <table class="table table-hover bg-white">
-        <thead><tr><?php if ($showTermCol): ?><th>Term</th><?php endif; ?><th>Subject</th><th>Teacher</th><?php if ($showSectionCol): ?><th>Section</th><?php endif; ?><th>Day</th><th>Time</th><th>Room</th></tr></thead>
+        <thead><tr><?php if ($showTermCol): ?><th>Term</th><?php endif; ?><th>Subject</th><th>Teacher</th><?php if ($showSectionCol): ?><th>Section</th><?php endif; ?><th>Day</th><th>Time</th><th>Room</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($visibleOfferings as $o): ?>
             <tr>
@@ -309,6 +374,18 @@ $colCount = 5 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                 <td><?= htmlspecialchars($o['day_of_week']) ?></td>
                 <td><?= htmlspecialchars(formatTimeRange($o['start_time'], $o['end_time'])) ?></td>
                 <td><?= htmlspecialchars($o['room'] ?? '') ?></td>
+                <td>
+                    <?php if ($o['term_status'] === 'ongoing'): ?>
+                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                data-offering="<?= htmlspecialchars(json_encode([
+                                    'offering_id' => (int)$o['offering_id'], 'term_id' => (string)$o['term_id'], 'subject_id' => (string)$o['subject_id'],
+                                    'teacher_id' => (string)$o['teacher_id'], 'section_id' => (string)$o['section_id'], 'day_of_week' => $o['day_of_week'],
+                                    'start_time' => substr((string)$o['start_time'], 0, 5), 'end_time' => substr((string)$o['end_time'], 0, 5),
+                                    'room' => $o['room'] ?? '', 'locked' => (int)$o['enrolled_count'] > 0, 'enrolled' => (int)$o['enrolled_count'],
+                                ]), ENT_QUOTES) ?>"
+                                onclick="openOfferingModal(JSON.parse(this.dataset.offering))">Edit</button>
+                    <?php endif; ?>
+                </td>
             </tr>
         <?php endforeach; ?>
         <?php if (empty($visibleOfferings)): ?>
@@ -333,12 +410,27 @@ function fillModalForm(form, values) {
 function openOfferingModal(values) {
     var form = document.getElementById('offeringForm');
     if (!form) { return; }
+    var editing = !!values.offering_id, locked = !!values.locked;
+    if (!editing && Object.keys(values).length === 0) {
+        form.reset();
+        form.querySelectorAll('select.js-search').forEach(function (el) { if (el.tomselect) { el.tomselect.clear(true); } });
+    }
+    document.getElementById('offeringId').value = values.offering_id || '';
     fillModalForm(form, values);
+    ['term_id', 'subject_id', 'section_id'].forEach(function (n) {
+        var el = form.elements[n];
+        if (!el) { return; }
+        if (el.tomselect) { if (locked) { el.tomselect.disable(); } else { el.tomselect.enable(); } } else { el.disabled = locked; }
+    });
+    document.getElementById('offeringLockNote').hidden = !locked;
+    document.getElementById('offeringLockCount').textContent = values.enrolled || 0;
+    document.getElementById('offeringModalTitle').textContent = editing ? 'Edit Class' : 'Schedule a Class';
+    document.getElementById('offeringSubmit').textContent = editing ? 'Save Changes' : 'Schedule Class';
     bootstrap.Modal.getOrCreateInstance(document.getElementById('offeringModal')).show();
 }
 <?php if ($reopenForm && !empty($terms)): ?>
 document.addEventListener('DOMContentLoaded', function () {
-    openOfferingModal(<?= json_encode(array_intersect_key($_POST, array_flip(['term_id', 'subject_id', 'teacher_id', 'section_id', 'day_of_week', 'start_time', 'end_time', 'room'])), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
+    openOfferingModal(<?= json_encode(array_merge(array_intersect_key($_POST, array_flip(['offering_id', 'term_id', 'subject_id', 'teacher_id', 'section_id', 'day_of_week', 'start_time', 'end_time', 'room'])), ['locked' => $editLocked, 'enrolled' => $editEnrolled]), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
 });
 <?php endif; ?>
 </script>

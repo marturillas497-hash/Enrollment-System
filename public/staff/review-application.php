@@ -18,8 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $f = fn(string $key) => trim($_POST[$key] ?? '');
         $evaluatedYearLevel = $f('evaluated_year_level');
 
-        if ($evaluatedYearLevel === '' || !ctype_digit($evaluatedYearLevel)) {
-            $error = 'Evaluated year level is required and must be a number.';
+        if ($evaluatedYearLevel === '' || !ctype_digit($evaluatedYearLevel) || (int)$evaluatedYearLevel < 1 || (int)$evaluatedYearLevel > 4) {
+            $error = 'Evaluated year level is required and must be between 1 and 4.';
             $applicationId = $id;
         } else {
             $stmt = $pdo->prepare(
@@ -337,10 +337,15 @@ if (!$application) {
                 <div class="form-section-title" id="sec-placement">Placement</div>
                 <div class="mb-3 col-md-3">
                     <label class="form-label">Evaluated Year Level</label>
-                    <input type="number" min="1" max="5" class="form-control" name="evaluated_year_level"
-                           value="<?= $v('evaluated_year_level') ?: '1' ?>" required>
-                    <div class="form-text">Freshmen normally start at 1. For transferees, base this on credited
-                        units once transferee credit evaluation exists — for now, use your best judgment.</div>
+                    <input type="number" min="1" max="4" class="form-control" name="evaluated_year_level"
+                           value="<?= $v('evaluated_year_level') ?: (int)($application['applicant_year_level'] ?? 1) ?>" required>
+                    <div class="form-text">
+                        <?php if (!empty($application['applicant_year_level'])): ?>
+                            The applicant reports Year <?= (int)$application['applicant_year_level'] ?>. Adjust it if the credited units say otherwise.
+                        <?php else: ?>
+                            Freshmen normally start at 1.
+                        <?php endif; ?>
+                    </div>
                 </div>
 
                 <div class="action-bar">

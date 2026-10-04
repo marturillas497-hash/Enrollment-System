@@ -7,6 +7,7 @@ $pdo = getDbConnection();
 
 $error = '';
 $message = '';
+$dupNameWarning = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -21,7 +22,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($code === '' || $name === '' || $units === '' || !ctype_digit($units)) {
             $error = 'Subject code, name, and a numeric unit count are required.';
         } else {
-            if ($id) {
+            $codeCheck = $pdo->prepare('SELECT 1 FROM Subject WHERE LOWER(subject_code) = LOWER(:c) AND subject_id <> :id');
+            $codeCheck->execute(['c' => $code, 'id' => $id ?: 0]);
+            $nameCheck = $pdo->prepare('SELECT 1 FROM Subject WHERE LOWER(subject_name) = LOWER(:n) AND subject_id <> :id');
+            $nameCheck->execute(['n' => $name, 'id' => $id ?: 0]);
+
+            if ($codeCheck->fetch() !== false) {
+                $error = "A subject with the code \"$code\" already exists.";
+            } elseif (!isset($_POST['confirm_dup_name']) && $nameCheck->fetch() !== false) {
+                $dupNameWarning = "A subject named \"$name\" already exists under a different code.";
+            } elseif ($id) {
                 $stmt = $pdo->prepare(
                     'UPDATE Subject SET subject_code=:code, subject_name=:name, subject_description=:desc, units=:units
                      WHERE subject_id=:id'
@@ -48,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$reopenForm = $error !== '' && ($_POST['action'] ?? '') === 'save';
+$reopenForm = ($error !== '' || $dupNameWarning !== '') && ($_POST['action'] ?? '') === 'save';
 $form = ['subject_id' => '', 'subject_code' => '', 'subject_name' => '', 'subject_description' => '', 'units' => ''];
 if ($reopenForm) {
     foreach ($form as $k => $_) { $form[$k] = (string)($_POST[$k] ?? ''); }
@@ -137,7 +147,8 @@ if ($search !== '') {
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <?php if ($reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+        <?php if ($reopenForm && $error !== ''): ?><div class="alert alert-danger js-modal-alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+        <?php if ($dupNameWarning !== ''): ?><div class="alert alert-warning js-modal-alert"><?= htmlspecialchars($dupNameWarning) ?> Save anyway?<input type="hidden" name="confirm_dup_name" value="1"></div><?php endif; ?>
         <div class="row">
             <div class="col-8 mb-3">
                 <label class="form-label">Code</label>
@@ -178,7 +189,10 @@ function openSubjectModal(d) {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('subjectModal')).show();
 }
 <?php if ($reopenForm): ?>
-document.addEventListener('DOMContentLoaded', function () { openSubjectModal(<?= json_encode($form, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>); });
+document.addEventListener('DOMContentLoaded', function () {
+    openSubjectModal(<?= json_encode($form, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
+<?php if ($dupNameWarning !== ''): ?>    document.getElementById('subjectSave').textContent = 'Save Anyway';
+<?php endif; ?>});
 <?php endif; ?>
 </script>
 </body>

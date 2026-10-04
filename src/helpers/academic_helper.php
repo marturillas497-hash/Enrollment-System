@@ -47,6 +47,37 @@ function hasTakenOrCreditedSubject(PDO $pdo, int $studentId, int $subjectId): bo
     return $stmt->fetch() !== false;
 }
 
+/** True if the student has any Enrolled_subject row for this subject, graded or not. */
+function hasEnrolledRecord(PDO $pdo, int $studentId, int $subjectId): bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT 1 FROM Enrolled_subject es
+         JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
+         JOIN Class_Offering co ON co.offering_id = es.offering_id
+         WHERE e.student_id = :sid AND co.subject_id = :subid LIMIT 1'
+    );
+    $stmt->execute(['sid' => $studentId, 'subid' => $subjectId]);
+    return $stmt->fetch() !== false;
+}
+
+/**
+ * True if the student has a failed, dropped or incomplete attempt at this subject,
+ * which makes it a retake rather than a first take.
+ */
+function hasFailedAttempt(PDO $pdo, int $studentId, int $subjectId): bool
+{
+    $stmt = $pdo->prepare(
+        "SELECT 1 FROM Enrolled_subject es
+         JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
+         JOIN Class_Offering co ON co.offering_id = es.offering_id
+         WHERE e.student_id = :sid AND co.subject_id = :subid
+           AND (es.remarks IN ('Failed','Dropped','Incomplete') OR (es.grade IS NOT NULL AND es.grade > 3.00))
+         LIMIT 1"
+    );
+    $stmt->execute(['sid' => $studentId, 'subid' => $subjectId]);
+    return $stmt->fetch() !== false;
+}
+
 /**
  * How many active students currently call this section "home" — i.e. their most
  * recent Enrollment row points here. Used for capacity warnings at the two places

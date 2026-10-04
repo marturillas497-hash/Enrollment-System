@@ -5,68 +5,70 @@
    No raw colors or shadows here, use the tokens.
    ============================================================ */
     body { margin-left: var(--sidebar-width); padding-top: 32px; }
+
+    /* Sidebar: fixed column. Brand and profile stay put, the menu scrolls on its own,
+       and the logout footer is always on screen. */
     .mist-sidebar {
-        position: fixed; top: 0; left: 0; width: var(--sidebar-width); height: 100vh;
-        background: var(--brand-gradient-vertical); color: #fff; display: flex; flex-direction: column;
-        overflow-y: auto; z-index: 1030;
+        position: fixed; top: 0; left: 0; width: var(--sidebar-width); height: 100vh; height: 100dvh;
+        background: var(--brand-gradient-vertical); color: var(--on-brand);
+        display: flex; flex-direction: column; overflow: hidden; z-index: 1030;
     }
-    .mist-sidebar .brand {
-        padding: 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.15);
-        display: flex; align-items: center;
-    }
-    .mist-sidebar .brand img { height: 40px; margin-right: 10px; }
-    .mist-sidebar .brand .brand-text { line-height: 1.1; }
-    .mist-sidebar .brand .brand-text strong { font-size: 1.15rem; display: block; }
-    .mist-sidebar .brand .brand-text small { opacity: 0.75; letter-spacing: 0.04em; }
+    .mist-sidebar .brand { flex: none; padding: 16px 20px 14px; display: flex; align-items: center; gap: 10px; }
+    .mist-sidebar .brand img { height: 36px; }
+    .mist-sidebar .brand .brand-text { line-height: 1.15; }
+    .mist-sidebar .brand .brand-text strong { font-size: 1.1rem; display: block; }
+    .mist-sidebar .brand .brand-text small { opacity: 0.8; letter-spacing: 0.04em; font-size: 0.7rem; }
 
     .mist-sidebar .profile-card {
-        padding: 18px 16px; border-bottom: 1px solid rgba(255,255,255,0.15);
-        display: flex; align-items: center; gap: 12px; color: #fff; text-decoration: none;
+        flex: none; margin: 0 10px 8px; padding: 10px 12px; border-radius: var(--radius-control-lg);
+        background: var(--sidebar-hover); display: flex; align-items: center; gap: 12px;
+        color: var(--on-brand); text-decoration: none;
     }
-    .mist-sidebar .profile-card:hover { background: rgba(255,255,255,0.06); color: #fff; }
+    .mist-sidebar .profile-card:hover { background: var(--sidebar-active); color: var(--on-brand); }
     .mist-sidebar .profile-avatar {
-        width: 54px; height: 54px; border-radius: 50%; background: #fff; color: var(--royal-blue);
-        display: flex; align-items: center; justify-content: center; font-size: 1.6rem; flex-shrink: 0;
+        width: 42px; height: 42px; border-radius: 50%; background: var(--on-brand); color: var(--royal-blue);
+        display: flex; align-items: center; justify-content: center; font-size: 1.3rem; flex-shrink: 0;
     }
-    .mist-sidebar .profile-card .welcome-label { font-size: 0.7rem; opacity: 0.75; letter-spacing: 0.05em; }
-    .mist-sidebar .profile-card .profile-name { font-weight: 700; font-size: 1.05rem; line-height: 1.2; }
-    .mist-sidebar .profile-card .profile-subtitle { font-size: 0.65rem; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.03em; }
+    .mist-sidebar .profile-text { min-width: 0; }
+    .mist-sidebar .profile-name { font-weight: 700; font-size: 0.98rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mist-sidebar .profile-subtitle {
+        font-size: 0.68rem; line-height: 1.25; color: var(--sidebar-muted); margin-top: 1px;
+        display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
     .mist-sidebar .role-badge {
-        display: inline-block; background: #fff; color: var(--royal-blue); font-weight: 700; font-size: 0.7rem;
-        padding: 2px 10px; border-radius: 20px; margin-top: 4px;
+        display: inline-block; background: var(--on-brand); color: var(--royal-blue); font-weight: 700; font-size: 0.68rem;
+        padding: 1px 9px; border-radius: 20px; margin-top: 5px;
     }
 
-    .mist-sidebar .nav-items { flex: 1 1 auto; }
+    .mist-sidebar .nav-items {
+        flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 10px 12px;
+        scrollbar-width: thin; scrollbar-color: var(--sidebar-line) transparent;
+    }
     .mist-sidebar .nav-item-link {
-        display: flex; align-items: center; gap: 12px; padding: 14px 16px; color: #fff;
-        text-decoration: none; border-bottom: 1px solid rgba(255,255,255,0.1); font-weight: 600;
-        border-left: 4px solid transparent;
+        display: flex; align-items: center; gap: 12px; padding: 9px 12px; margin: 1px 0;
+        color: var(--on-brand); text-decoration: none; font-weight: 500; font-size: 0.94rem;
+        border-radius: var(--radius-control);
     }
-    .mist-sidebar .nav-item-link:hover { background: rgba(255,255,255,0.1); color: #fff; }
-    .mist-sidebar .nav-item-link.active {
-        background: rgba(255,255,255,0.16); color: #fff;
-        border-left: 4px solid #fff; padding-left: 12px;
-    }
-    .mist-sidebar .nav-item-link i { font-size: 1.1rem; width: 20px; text-align: center; }
+    .mist-sidebar .nav-item-link:hover { background: var(--sidebar-hover); color: var(--on-brand); }
+    .mist-sidebar .nav-item-link:focus-visible,
+    .mist-sidebar .logout-link:focus-visible,
+    .mist-sidebar .profile-card:focus-visible { outline: 2px solid var(--on-brand); outline-offset: 2px; }
+    .mist-sidebar .nav-item-link.active { background: var(--on-brand); color: var(--royal-blue); font-weight: 700; }
+    .mist-sidebar .nav-item-link i { font-size: 1.05rem; width: 20px; text-align: center; flex-shrink: 0; }
 
-    /* Collapsible sidebar section headings — only the registrar's nav is long enough to use these */
-    .mist-sidebar .sidebar-group-toggle {
-        display: flex; align-items: center; justify-content: space-between; width: 100%;
-        padding: 0.6rem 1.25rem 0.35rem; margin-top: 0.4rem;
-        background: none; border: none; color: rgba(255,255,255,0.6);
-        font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    /* Registrar menu sections: a hairline between groups, a quiet heading above each */
+    .mist-sidebar .sidebar-group { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--sidebar-line); }
+    .mist-sidebar .sidebar-group-title {
+        padding: 4px 12px 6px; color: var(--sidebar-muted); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.02em;
     }
-    .mist-sidebar .sidebar-group-toggle:hover { color: #fff; }
-    .mist-sidebar .sidebar-group-toggle i { font-size: 0.8rem; width: auto; transition: transform 0.15s ease; }
-    /* Bootstrap's collapse JS toggles .collapsed on this button itself, no extra JS needed here */
-    .mist-sidebar .sidebar-group-toggle.collapsed i { transform: rotate(-90deg); }
 
+    .mist-sidebar .sidebar-footer { flex: none; padding: 8px 10px 12px; border-top: 1px solid var(--sidebar-line); }
     .mist-sidebar .logout-link {
-        display: flex; align-items: center; gap: 12px; padding: 16px; color: var(--accent-logout);
-        text-decoration: none; font-weight: 700; border-top: 1px solid rgba(255,255,255,0.15);
-        background: none; border-left: none; border-right: none; border-bottom: none; width: 100%; text-align: left;
+        display: flex; align-items: center; gap: 12px; padding: 9px 12px; width: 100%; text-align: left;
+        color: var(--accent-logout); text-decoration: none; font-weight: 600; font-size: 0.94rem;
+        background: none; border: none; border-radius: var(--radius-control);
     }
-    .mist-sidebar .logout-link:hover { background: rgba(255,255,255,0.08); color: var(--accent-logout); }
+    .mist-sidebar .logout-link:hover { background: var(--sidebar-hover); color: var(--accent-logout); }
 
     /* ============================================================
        Global content styling — matches the login/apply pages.
@@ -196,4 +198,4 @@
 /* Sidebar link that exists but isn't usable right now (e.g. Shift Request) */
 .mist-sidebar .nav-item-link.nav-item-locked { opacity: 0.6; }
 .col-w-50 { width: 50px; }
-.ts-dropdown { z-index: 2000; }
+.ts-dropdown { z-index: 2000 !important; }

@@ -1,7 +1,14 @@
--- Auto-generated from REVISED_MODEL_WITH_REGISTAR.mwb
--- BSIS Enrollment System schema (PRD v7)
-
--- Import into an existing empty database. FOREIGN_KEY_CHECKS stays on so a bad FK fails the import.
+-- MIST Enrollment System: database schema
+-- 22 tables, all InnoDB utf8mb4. Current through Batch 9 (October 2026): unique subject code and unique
+-- term (school year + semester), Admission_Application.applicant_year_level, grade CHECK constraints,
+-- Password_reset, and Accounts.email / session_version.
+--
+-- Import into an existing EMPTY database. FOREIGN_KEY_CHECKS stays on so a bad FK fails the import.
+-- This file holds structure only. To wipe an existing database back to a clean slate, run MIST_Full_Reset.sql instead.
+--
+-- phpMyAdmin 4.9 underlines CHECK in red and leaves CHECK constraints out of its exports. Both are cosmetic;
+-- the server enforces them. After an import, MIST_Full_Reset.sql's last query should report 22 tables,
+-- 0 non-InnoDB, 45 foreign keys and 2 check constraints.
 
 CREATE TABLE `Accounts` (
   `account_id` INT NOT NULL AUTO_INCREMENT,
@@ -29,7 +36,8 @@ CREATE TABLE `Subject` (
   `subject_name` VARCHAR(255) NOT NULL,
   `subject_description` VARCHAR(255) NULL DEFAULT NULL,
   `units` INT NOT NULL,
-  PRIMARY KEY (`subject_id`)
+  PRIMARY KEY (`subject_id`),
+  UNIQUE KEY `uq_subject_code` (`subject_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Program` (
@@ -59,6 +67,7 @@ CREATE TABLE `School_term` (
   `closed_by` INT NULL DEFAULT NULL,
   `date_closed` DATETIME NULL DEFAULT NULL,
   PRIMARY KEY (`term_id`),
+  UNIQUE KEY `uq_term_year_semester` (`school_year`, `semester`),
   KEY `closed_by_idx` (`closed_by`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -144,6 +153,7 @@ CREATE TABLE `Admission_Application` (
   `guardian_relationship` VARCHAR(45) NULL DEFAULT NULL,
   `guardian_contact_no` VARCHAR(15) NULL DEFAULT NULL,
   `student_type` ENUM('freshman', 'transferee') NOT NULL,
+  `applicant_year_level` INT NULL,
   `program_id` INT NOT NULL,
   `application_date` DATE NOT NULL,
   `status` ENUM('pending', 'validated', 'rejected') NOT NULL,
@@ -379,7 +389,6 @@ ALTER TABLE `Shift_credit` ADD CONSTRAINT `fk_shift_credit_credited_subject_id` 
 ALTER TABLE `Shift_credit` ADD CONSTRAINT `fk_shift_credit_evaluated_by` FOREIGN KEY (`evaluated_by`) REFERENCES `Accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Password_reset` ADD CONSTRAINT `fk_password_reset_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Manual hardening: MySQL Workbench's reverse-engineer process does not carry
--- CHECK constraints through automatically (see PRD Section 8, Known Open Items).
+-- Manual hardening: the Workbench model does not carry CHECK constraints, so they are added here.
 ALTER TABLE `Enrolled_subject` ADD CONSTRAINT `chk_enrolled_subject_grade` CHECK (`grade` IS NULL OR (`grade` BETWEEN 1.00 AND 5.00));
 ALTER TABLE `Transferee_credit` ADD CONSTRAINT `chk_transferee_credit_grade` CHECK (`previous_grade` BETWEEN 1.00 AND 5.00);

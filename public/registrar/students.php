@@ -1,8 +1,6 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
-require_once __DIR__ . '/../../src/helpers/password_helper.php';
-require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -11,62 +9,7 @@ $stmt = $pdo->prepare('SELECT department_id FROM Registrar WHERE account_id = :a
 $stmt->execute(['aid' => $user['account_id']]);
 $myDepartmentId = $stmt->fetchColumn();
 
-$message = '';
 $error = '';
-$regenerated = null; // ['username'=>, 'password'=>] shown once after regenerating
-$mailWarning = '';
-
-$flash = flashGet('regenerated');
-if ($flash) {
-    $regenerated = $flash['regenerated'];
-    $mailWarning = $flash['mailWarning'];
-}
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regenerate_password') {
-    $accountId = $_POST['account_id'] ?? '';
-
-    // Confirm both that this is a student account AND that their current program (via their
-    // latest enrollment) is in this registrar's own department.
-    $stmt = $pdo->prepare(
-        "SELECT a.username, a.email, s.first_name, s.last_name FROM Accounts a
-         JOIN Student s ON s.account_id = a.account_id
-         JOIN Enrollment e ON e.enrollment_id = (
-             SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
-             ORDER BY e2.enrollment_id DESC LIMIT 1
-         )
-         JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
-         JOIN Program p ON p.program_id = c.program_id
-         WHERE a.account_id = :id AND a.role = 'student' AND p.department_id = :dept"
-    );
-    $stmt->execute(['id' => $accountId, 'dept' => $myDepartmentId]);
-    $account = $stmt->fetch();
-
-    if (!$account) {
-        $error = 'Student account not found in your department.';
-    } else {
-        $newPassword = generateTempPassword();
-        $stmt = $pdo->prepare(
-            'UPDATE Accounts SET password_hash = :hash, must_change_password = 1, session_version = session_version + 1 WHERE account_id = :id'
-        );
-        $stmt->execute(['hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $accountId]);
-
-        $regenerated = ['username' => $account['username'], 'password' => $newPassword, 'email' => $account['email']];
-
-        if ($account['email']) {
-            $studentName = $account['first_name'] . ' ' . $account['last_name'];
-            $mailSent = sendPasswordResetEmail($account['email'], $studentName, $account['username'], $newPassword);
-            if (!$mailSent) {
-                $mailWarning = 'The password was reset, but the email could not be sent. Share the credentials below manually.';
-            }
-        } else {
-            $mailWarning = 'No email is on file for this student. Share the credentials below manually.';
-        }
-
-        flashSet('regenerated', ['regenerated' => $regenerated, 'mailWarning' => $mailWarning]);
-        header('Location: ' . $_SERVER['REQUEST_URI']);
-        exit;
-    }
-}
 
 // --- Search, filters and sorting. Every value is checked against a whitelist or the
 // department's own data before it goes near the SQL. ---
@@ -196,28 +139,6 @@ $pageQueryParams = array_filter([
 
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
-    <?php if ($mailWarning): ?>
-        <div class="alert alert-warning"><?= htmlspecialchars($mailWarning) ?></div>
-    <?php endif; ?>
-
-    <?php if ($regenerated): ?>
-        <div class="alert alert-success alert-dismissible fade show">
-            <!-- No data-auto-dismiss here on purpose: this box shows a one-time plaintext password the person still needs to copy. See CLAUDE-UI-REDESIGN.md. -->
-            <strong>New temporary password generated.</strong>
-            <?php if (!$mailWarning): ?>
-                Email has been sent to <strong><?= htmlspecialchars($regenerated['email']) ?></strong>.
-            <?php endif; ?>
-            Their old password no longer works.
-            <dl class="row mb-0 mt-2">
-                <dt class="col-sm-2">Username</dt>
-                <dd class="col-sm-10"><code><?= htmlspecialchars($regenerated['username']) ?></code></dd>
-                <dt class="col-sm-2">New Password</dt>
-                <dd class="col-sm-10"><code><?= htmlspecialchars($regenerated['password']) ?></code></dd>
-            </dl>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    <?php endif; ?>
-
     <form method="get" class="toolbar">
         <div class="toolbar-field toolbar-field-wide">
             <label for="q">Search</label>
@@ -287,24 +208,13 @@ $pageQueryParams = array_filter([
         <?php foreach ($students as $s): ?>
             <tr>
                 <td><?= htmlspecialchars($s['student_id_number']) ?></td>
-                <td><?= htmlspecialchars($s['first_name'] . ' ' . $s['last_name']) ?></td>
+                <td><a href="<?= BASE_URL ?>/registrar/student-view.php?id=<?= (int)$s['student_id'] ?>"><?= htmlspecialchars($s['first_name'] . ' ' . $s['last_name']) ?></a></td>
                 <td><?= htmlspecialchars($s['program_code']) ?></td>
                 <td><?= $s['section_name'] ? htmlspecialchars(sectionLabel($s['year_level'], $s['section_name'])) : '<span class="text-muted">—</span>' ?></td>
                 <td><?= $s['school_year'] ? htmlspecialchars($s['school_year'] . ' S' . $s['semester']) : '<span class="text-muted">—</span>' ?></td>
                 <td><?= statusBadge($s['overall_status']) ?></td>
                 <td><?= statusBadge($s['student_standing']) ?></td>
-                <td>
-                    <form method="post" class="d-inline">
-                        <input type="hidden" name="action" value="regenerate_password">
-                        <input type="hidden" name="account_id" value="<?= $s['account_id'] ?>">
-                        <button type="submit" class="btn btn-sm btn-outline-warning"
-                                data-confirm="Generate a new temporary password for this student? Their current password will stop working immediately."
-                                data-confirm-label="Regenerate" data-confirm-tone="warning">Regenerate Password</button>
-                    </form>
-                    <?php if ($s['student_type'] === 'transferee'): ?>
-                        <a href="<?= BASE_URL ?>/registrar/transferee-credit.php?student_id=<?= $s['student_id'] ?>"
-                           class="btn btn-sm btn-outline-info">Credit Eval</a>
-                    <?php endif; ?>
+                <td><a href="<?= BASE_URL ?>/registrar/student-view.php?id=<?= (int)$s['student_id'] ?>" class="btn btn-sm btn-outline-primary">View</a>
                 </td>
             </tr>
         <?php endforeach; ?>

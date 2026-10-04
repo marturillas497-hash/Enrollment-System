@@ -188,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <select class="form-select" name="department_id" required>
                         <option value="">Select a department</option>
                         <?php foreach ($departments as $dept): ?>
-                            <option value="<?= $dept['department_id'] ?>">
+                            <option value="<?= $dept['department_id'] ?>"<?= (string)($_POST['department_id'] ?? '') === (string)$dept['department_id'] ? ' selected' : '' ?>>
                                 <?= htmlspecialchars($dept['department_name']) ?>
                             </option>
                         <?php endforeach; ?>

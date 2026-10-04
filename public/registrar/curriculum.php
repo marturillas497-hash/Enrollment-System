@@ -115,26 +115,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'add_subject') {
         $curriculumId = $_POST['curriculum_id'] ?? '';
-        $subjectId = $_POST['subject_id'] ?? '';
         $yearLevel = $_POST['year_level'] ?? '';
         $semester = $_POST['semester'] ?? '';
+        $subjectIds = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['subject_ids'] ?? [])), fn($v) => $v > 0)));
 
         $ownCheck = $pdo->prepare('SELECT 1 FROM Curriculum c JOIN Program p ON p.program_id = c.program_id WHERE c.curriculum_id = :id AND p.department_id = :dept');
         $ownCheck->execute(['id' => $curriculumId, 'dept' => $myDepartmentId]);
 
         if ($ownCheck->fetch() === false) {
             $error = 'That curriculum is not in your department.';
-        } elseif ($subjectId === '' || $yearLevel === '' || $semester === '') {
-            $error = 'Pick a subject, year level, and semester.';
+        } elseif (!ctype_digit((string) $yearLevel) || (int) $yearLevel < 1 || (int) $yearLevel > 4
+                  || !ctype_digit((string) $semester) || (int) $semester < 1 || (int) $semester > 3) {
+            $error = 'Pick a valid year level and semester.';
+        } elseif (empty($subjectIds)) {
+            $error = 'Tick at least one subject.';
         } else {
             try {
-                $pdo->prepare(
-                    'INSERT INTO Curriculum_subject (curriculum_id, subject_id, year_level, semester)
-                     VALUES (:c, :s, :yl, :sem)'
-                )->execute(['c' => $curriculumId, 's' => $subjectId, 'yl' => $yearLevel, 'sem' => $semester]);
-                $message = 'Subject added to curriculum.';
+                $in = implode(',', array_fill(0, count($subjectIds), '?'));
+                $valid = $pdo->prepare("SELECT subject_id FROM Subject WHERE subject_id IN ($in)");
+                $valid->execute($subjectIds);
+                $validIds = array_map('intval', $valid->fetchAll(PDO::FETCH_COLUMN));
+
+                $have = $pdo->prepare('SELECT subject_id FROM Curriculum_subject WHERE curriculum_id = ?');
+                $have->execute([$curriculumId]);
+                $haveIds = array_map('intval', $have->fetchAll(PDO::FETCH_COLUMN));
+
+                $toAdd = array_values(array_diff($validIds, $haveIds));
+                if (empty($toAdd)) {
+                    $error = 'Those subjects are already in this curriculum.';
+                } else {
+                    $pdo->beginTransaction();
+                    $ins = $pdo->prepare('INSERT INTO Curriculum_subject (curriculum_id, subject_id, year_level, semester) VALUES (?, ?, ?, ?)');
+                    foreach ($toAdd as $sid) {
+                        $ins->execute([$curriculumId, $sid, (int) $yearLevel, (int) $semester]);
+                    }
+                    $pdo->commit();
+                    $skipped = count($subjectIds) - count($toAdd);
+                    $message = count($toAdd) . ' subject(s) added to Year ' . (int) $yearLevel . ', Semester ' . (int) $semester . '.'
+                        . ($skipped > 0 ? ' ' . $skipped . ' skipped (already in this curriculum).' : '');
+                    $_GET['year'] = (string) (int) $yearLevel;
+                }
             } catch (Exception $e) {
-                $error = 'That subject is already in this curriculum.';
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                $error = errorMessage($e, 'Could not add the subjects.');
             }
         }
     }
@@ -162,7 +185,7 @@ if ($expandId) {
         $stmt->execute(['id' => $expandId]);
         $curriculumSubjects = $stmt->fetchAll();
 
-        $allSubjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_id DESC')->fetchAll();
+        $allSubjects = $pdo->query('SELECT subject_id, subject_code, subject_name, units FROM Subject ORDER BY subject_id DESC')->fetchAll();
     }
 }
 
@@ -205,43 +228,71 @@ $curricula = $curricula->fetchAll();
         $selectedYear = (is_string($_GET['year'] ?? null) && ctype_digit($_GET['year']) && in_array((int) $_GET['year'], $yearKeys, true))
             ? (int) $_GET['year'] : ($yearKeys[0] ?? null);
         ?>
+        <?php
+        $placed = [];
+        foreach ($curriculumSubjects as $cs) {
+            $placed[(int) $cs['subject_id']] = 'Year ' . $cs['year_level'] . ' · Sem ' . $cs['semester'];
+        }
+        $postedIds = array_map('intval', (array) ($_POST['subject_ids'] ?? []));
+        $defYear = $reopenSubject ? (int) ($_POST['year_level'] ?? 1) : (int) ($selectedYear ?? 1);
+        $defSem = $reopenSubject ? (int) ($_POST['semester'] ?? 1) : 1;
+        ?>
         <div class="mb-3">
-            <button type="button" class="btn btn-primary" onclick="openCurriculumSubjectModal({ year_level: '<?= $selectedYear ?? '' ?>' })"><i class="bi bi-plus-lg"></i> Add Subject</button>
+            <button type="button" class="btn btn-primary" onclick="openCurriculumSubjectModal(<?= $defYear ?>)"><i class="bi bi-plus-lg"></i> Add Subjects</button>
         </div>
         <div class="modal fade" id="curriculumSubjectModal" tabindex="-1" aria-hidden="true">
-          <div class="modal-dialog">
+          <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <form method="post" class="modal-content" id="curriculumSubjectForm">
               <input type="hidden" name="action" value="add_subject">
               <input type="hidden" name="curriculum_id" value="<?= $expanded['curriculum_id'] ?>">
-              <div class="modal-header">
-                <h5 class="modal-title">Add Subject to Curriculum</h5>
+              <div class="modal-header flex-wrap gap-2">
+                <h5 class="modal-title">Add Subjects to Curriculum</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="row g-2 w-100">
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small mb-1" for="csYear">Year Level</label>
+                        <select class="form-select" name="year_level" id="csYear">
+                            <?php for ($y = 1; $y <= 4; $y++): ?><option value="<?= $y ?>"<?= $y === $defYear ? ' selected' : '' ?>>Year <?= $y ?></option><?php endfor; ?>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small mb-1" for="csSem">Semester</label>
+                        <select class="form-select" name="semester" id="csSem">
+                            <?php for ($m = 1; $m <= 3; $m++): ?><option value="<?= $m ?>"<?= $m === $defSem ? ' selected' : '' ?>>Semester <?= $m ?></option><?php endfor; ?>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label small mb-1" for="csSearch">Search</label>
+                        <input type="search" class="form-control" id="csSearch" placeholder="Code or name" autocomplete="off">
+                    </div>
+                </div>
               </div>
               <div class="modal-body">
-                <?php if ($reopenSubject): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-                <div class="mb-3">
-                    <label class="form-label">Subject</label>
-                    <select class="form-select js-search" name="subject_id" data-placeholder="Search subjects">
-                        <option value="">Select a subject</option>
-                        <?php foreach ($allSubjects as $s): ?>
-                            <option value="<?= $s['subject_id'] ?>"><?= htmlspecialchars($s['subject_code'] . ' — ' . $s['subject_name']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                <?php if ($reopenSubject): ?><div class="alert alert-danger js-modal-alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+                <?php if (empty($allSubjects)): ?>
+                    <p class="text-muted mb-0">No subjects exist yet. Add some on the Subjects page first.</p>
+                <?php else: ?>
+                <div class="list-group">
+                    <?php foreach ($allSubjects as $s): ?>
+                        <?php $sid = (int) $s['subject_id']; $isPlaced = isset($placed[$sid]); ?>
+                        <label class="list-group-item d-flex align-items-center gap-2 cs-row<?= $isPlaced ? ' text-muted' : '' ?>" data-search="<?= htmlspecialchars(strtolower($s['subject_code'] . ' ' . $s['subject_name'])) ?>">
+                            <input class="form-check-input mt-0" type="checkbox" name="subject_ids[]" value="<?= $sid ?>"<?= $isPlaced ? ' disabled' : '' ?><?= !$isPlaced && in_array($sid, $postedIds, true) ? ' checked' : '' ?>>
+                            <span class="fw-semibold"><?= htmlspecialchars($s['subject_code']) ?></span>
+                            <span class="flex-grow-1"><?= htmlspecialchars($s['subject_name']) ?></span>
+                            <span class="small text-muted"><?= rtrim(rtrim(number_format((float) $s['units'], 2), '0'), '.') ?> units</span>
+                            <?php if ($isPlaced): ?><span class="badge text-bg-secondary"><?= htmlspecialchars($placed[$sid]) ?></span><?php endif; ?>
+                        </label>
+                    <?php endforeach; ?>
                 </div>
-                <div class="row">
-                    <div class="col-6 mb-3">
-                        <label class="form-label">Year Level</label>
-                        <input type="number" min="1" max="5" class="form-control" name="year_level" required>
-                    </div>
-                    <div class="col-6 mb-3">
-                        <label class="form-label">Semester</label>
-                        <input type="number" min="1" max="3" class="form-control" name="semester" required>
-                    </div>
-                </div>
+                <div id="csEmpty" class="text-muted small d-none mt-2">No subjects match your search.</div>
+                <?php endif; ?>
               </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-primary">Add</button>
+              <div class="modal-footer justify-content-between">
+                <span class="text-muted small" id="csCount">0 selected</span>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="csSubmit" disabled>Add Selected</button>
+                </div>
               </div>
             </form>
           </div>
@@ -400,24 +451,43 @@ $curricula = $curricula->fetchAll();
     <?php endif; ?>
 </div>
 <script>
-function fillModalForm(form, values) {
-    Object.keys(values).forEach(function (name) {
-        var el = form.elements[name];
-        if (!el || el.type === 'hidden') { return; }
-        if (el.tomselect) { el.tomselect.setValue(values[name]); } else { el.value = values[name]; }
-    });
-}
-function openCurriculumSubjectModal(values) {
+(function () {
+    var modalEl = document.getElementById('curriculumSubjectModal');
+    if (!modalEl) { return; }
     var form = document.getElementById('curriculumSubjectForm');
-    if (!form) { return; }
-    fillModalForm(form, values);
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('curriculumSubjectModal')).show();
-}
+    var search = document.getElementById('csSearch');
+    var rows = form.querySelectorAll('.cs-row');
+    var count = document.getElementById('csCount');
+    var empty = document.getElementById('csEmpty');
+    var submit = document.getElementById('csSubmit');
+    function refreshCount() {
+        var n = form.querySelectorAll('input[name="subject_ids[]"]:checked').length;
+        count.textContent = n + ' selected';
+        submit.disabled = n === 0;
+    }
+    function filter() {
+        var q = search.value.trim().toLowerCase(), shown = 0;
+        rows.forEach(function (r) {
+            var hit = r.getAttribute('data-search').indexOf(q) !== -1;
+            r.classList.toggle('d-none', !hit);
+            if (hit) { shown++; }
+        });
+        if (empty) { empty.classList.toggle('d-none', shown !== 0); }
+    }
+    search.addEventListener('input', filter);
+    form.addEventListener('change', refreshCount);
+    modalEl.addEventListener('shown.bs.modal', function () { search.focus(); });
+    refreshCount();
+    window.openCurriculumSubjectModal = function (year) {
+        document.getElementById('csYear').value = year;
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    };
 <?php if ($reopenSubject && $expanded): ?>
-document.addEventListener('DOMContentLoaded', function () {
-    openCurriculumSubjectModal(<?= json_encode(array_intersect_key($_POST, array_flip(['subject_id', 'year_level', 'semester'])), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
-});
+    document.addEventListener('DOMContentLoaded', function () {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
 <?php endif; ?>
+})();
 </script>
 </body>
 </html>

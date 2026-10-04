@@ -69,6 +69,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'That subject is not part of this student\'s curriculum.';
         } elseif (!is_numeric($previousGrade) || $previousGrade < 1.00 || $previousGrade > 5.00) {
             $error = 'Previous grade must be between 1.00 and 5.00.';
+        } elseif ($creditId === '' && hasEnrolledRecord($pdo, (int)$studentId, (int)$subjectId)) {
+            $error = 'This student already has an enrollment record for that subject, so it cannot also be credited.';
         } elseif ($creditId !== '') {
             $pdo->prepare(
                 'UPDATE Transferee_credit SET previous_school = :school, previous_subject_description = :desc,
@@ -101,6 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $toInsert = pickerSelectedOfferings($pickRows, $_POST);
         if (empty($toInsert)) {
             $error = 'Tick at least one subject that is available to add.';
+        } elseif (($clash = findScheduleConflict($pdo, array_merge(array_column(rosterSlots($pdo, (int)$student['enrollment_id']), 'offering_id'), $toInsert))) !== null) {
+            $error = $clash;
         } else {
             try {
                 $pdo->beginTransaction();
@@ -230,7 +234,7 @@ $pickerRows = $view === 'add'
         <form method="post">
             <input type="hidden" name="action" value="add_subjects">
             <input type="hidden" name="student_id" value="<?= (int)$studentId ?>">
-            <?php require __DIR__ . '/../../includes/subject_picker.php'; ?>
+            <?php $pickerExisting = rosterSlots($pdo, (int)$student['enrollment_id']); require __DIR__ . '/../../includes/subject_picker.php'; ?>
             <?php if (!empty($pickerRows)): ?><button type="submit" class="btn btn-primary">Add Selected Subjects</button><?php endif; ?>
         </form>
     <?php else: ?>

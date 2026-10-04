@@ -29,6 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($name === '' || $yearLevel === '' || $programId === '' || $maxSlots === '') {
             $error = 'All fields are required.';
+        } elseif (!ctype_digit((string)$yearLevel) || (int)$yearLevel < 1 || (int)$yearLevel > 4) {
+            $error = 'Year level must be between 1 and 4.';
         } elseif (!in_array((int)$programId, $myProgramIds, true)) {
             $error = 'That program is not in your department.';
         } else {
@@ -177,7 +179,7 @@ $sections = $sections->fetchAll();
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <?php if ($reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+        <?php if ($reopenForm): ?><div class="alert alert-danger js-modal-alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
         <?php if (count($programs) === 1): ?>
             <input type="hidden" name="program_id" id="sectionProgram" value="<?= (int)$programs[0]['program_id'] ?>">
         <?php else: ?>
@@ -198,7 +200,7 @@ $sections = $sections->fetchAll();
         <div class="row">
             <div class="col-6 mb-3">
                 <label class="form-label">Year Level</label>
-                <input type="number" min="1" max="5" class="form-control" name="year_level" id="sectionYear" required>
+                <input type="number" min="1" max="4" class="form-control" name="year_level" id="sectionYear" required>
             </div>
             <div class="col-6 mb-3">
                 <label class="form-label">Max Slots</label>

@@ -10,3 +10,6 @@ Thumbs.db
 /sql/if0_*.sql
 /sql/enrollment_system.sql
 /sql/*.pptx
+
+/sql/if0_*.sql
+/sql/*.pptx

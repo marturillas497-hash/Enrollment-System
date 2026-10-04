@@ -53,6 +53,8 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
 
     if ($newProgramId === '' || $newYearLevel === '') {
         $error = 'Program and year level are required.';
+    } elseif (!ctype_digit((string)$newYearLevel) || (int)$newYearLevel < 1 || (int)$newYearLevel > 4) {
+        $error = 'Year level must be between 1 and 4.';
     } else {
         $stmt = $pdo->prepare(
             'UPDATE Admission_Application SET
@@ -191,7 +193,9 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     $validOfferingIds = array_map('intval', array_column($validStmt->fetchAll(), 'offering_id'));
     $offeringIds = array_values(array_intersect(array_map('intval', $offeringIds), $validOfferingIds));
 
-    try {
+    if (empty($offeringIds)) {
+        $error = 'Tick at least one scheduled class before placing the student. Create the class offerings first if none are listed.';
+    } else try {
         $pdo->beginTransaction();
 
         // Chicken-and-egg problem: Student.account_id is NOT NULL, so the Account must exist
@@ -612,7 +616,7 @@ if (!$application && !$created && $listTab === 'rejected') {
                     </div>
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Year Level</label>
-                        <input type="number" min="1" max="5" class="form-control" name="evaluated_year_level"
+                        <input type="number" min="1" max="4" class="form-control" name="evaluated_year_level"
                                value="<?= $v('evaluated_year_level') ?>" required>
                     </div>
                 </div>
