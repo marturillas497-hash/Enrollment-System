@@ -10,6 +10,11 @@ $roleCounts = $pdo->query(
      GROUP BY role"
 )->fetchAll(PDO::FETCH_KEY_PAIR);
 
+$openTerm = $pdo->query("SELECT school_year, semester FROM School_term WHERE status = 'ongoing' ORDER BY term_id DESC LIMIT 1")->fetch();
+$termLabel = $openTerm
+    ? $openTerm['school_year'] . ((int)$openTerm['semester'] === 3 ? ' Summer' : ' Sem ' . $openTerm['semester'])
+    : 'None open';
+
 $departmentCount = (int)$pdo->query('SELECT COUNT(*) FROM Department')->fetchColumn();
 $programCount = (int)$pdo->query('SELECT COUNT(*) FROM Program')->fetchColumn();
 
@@ -42,6 +47,7 @@ $recentAccounts = $pdo->query(
             <?= statCard((int)($roleCounts['registrar'] ?? 0), 'Registrars', 'person-badge', BASE_URL . '/admin/staff.php?role=registrar') ?>
             <?= statCard((int)($roleCounts['teacher'] ?? 0), 'Teachers', 'person-workspace', BASE_URL . '/admin/staff.php?role=teacher') ?>
             <?= statCard((int)($roleCounts['admission_staff'] ?? 0), 'Admission Staff', 'person-check', BASE_URL . '/admin/staff.php?role=admission_staff') ?>
+            <?= statCard($termLabel, 'Current Term', 'calendar-check', BASE_URL . '/admin/terms.php') ?>
             <?= statCard($departmentCount . ' / ' . $programCount, 'Departments / Programs', 'building') ?>
         </div>
 

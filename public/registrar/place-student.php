@@ -2,8 +2,9 @@
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/password_helper.php';
-require_once __DIR__ . '/../../src/helpers/mail_helper.php';
+require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
+require_once __DIR__ . '/../../src/helpers/picker_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -45,6 +46,16 @@ if ($applicationId) {
     }
 }
 
+/** A student cannot be placed without an address to send the account invite to. */
+function applicationEmailError(array $application): string
+{
+    $email = trim((string)($application['email_address'] ?? ''));
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
+        return 'This application has no valid email address. Add one in the review panel and save it, then place the student.';
+    }
+    return '';
+}
+
 // --- Review/edit applicant info + possible program reassignment (POST) ---
 if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'update_application') {
     $f = fn(string $key) => trim($_POST[$key] ?? '');
@@ -55,6 +66,8 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         $error = 'Program and year level are required.';
     } elseif (!ctype_digit((string)$newYearLevel) || (int)$newYearLevel < 1 || (int)$newYearLevel > 4) {
         $error = 'Year level must be between 1 and 4.';
+    } elseif ($f('email_address') === '' || !filter_var($f('email_address'), FILTER_VALIDATE_EMAIL) || strlen($f('email_address')) > 255) {
+        $error = 'A valid email address is required. It is where the student\'s account invite is sent.';
     } else {
         $stmt = $pdo->prepare(
             'UPDATE Admission_Application SET
@@ -104,6 +117,40 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     }
 }
 
+/**
+ * Re-checks the term, curriculum and section a placement POST names: the term must be open,
+ * the curriculum must be the program's active one, and the section must belong to the same
+ * program and the applicant's evaluated year level. Returns an error message, or '' when valid.
+ */
+function validatePlacementChoice(PDO $pdo, array $application, mixed $termId, mixed $curriculumId, mixed $sectionId): string
+{
+    foreach ([$termId, $curriculumId, $sectionId] as $value) {
+        if (!ctype_digit((string)$value)) {
+            return 'Please select a term, curriculum, and section.';
+        }
+    }
+
+    $stmt = $pdo->prepare("SELECT 1 FROM School_term WHERE term_id = :id AND status = 'ongoing'");
+    $stmt->execute(['id' => $termId]);
+    if ($stmt->fetch() === false) {
+        return 'That term is not open.';
+    }
+
+    $stmt = $pdo->prepare('SELECT 1 FROM Curriculum WHERE curriculum_id = :id AND program_id = :pid AND is_active = 1');
+    $stmt->execute(['id' => $curriculumId, 'pid' => $application['program_id']]);
+    if ($stmt->fetch() === false) {
+        return 'That curriculum is not the active curriculum for this program.';
+    }
+
+    $stmt = $pdo->prepare('SELECT 1 FROM Section WHERE section_id = :id AND program_id = :pid AND year_level = :yl');
+    $stmt->execute(['id' => $sectionId, 'pid' => $application['program_id'], 'yl' => $application['evaluated_year_level']]);
+    if ($stmt->fetch() === false) {
+        return 'That section does not belong to this program and year level.';
+    }
+
+    return '';
+}
+
 // --- Stage: load subjects (POST) ---
 $subjectRows = [];
 $chosenTermId = $chosenCurriculumId = $chosenSectionId = null;
@@ -114,8 +161,11 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     $chosenCurriculumId = $_POST['curriculum_id'] ?? '';
     $chosenSectionId = $_POST['section_id'] ?? '';
 
-    if ($chosenTermId === '' || $chosenCurriculumId === '' || $chosenSectionId === '') {
-        $error = 'Please select a term, curriculum, and section.';
+    $choiceError = validatePlacementChoice($pdo, $application, $chosenTermId, $chosenCurriculumId, $chosenSectionId);
+    if ($choiceError !== '') {
+        $error = $choiceError;
+    } elseif (($emailError = applicationEmailError($application)) !== '') {
+        $error = $emailError;
     } else {
         $term = $pdo->prepare('SELECT * FROM School_term WHERE term_id = :id');
         $term->execute(['id' => $chosenTermId]);
@@ -193,8 +243,24 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     $validOfferingIds = array_map('intval', array_column($validStmt->fetchAll(), 'offering_id'));
     $offeringIds = array_values(array_intersect(array_map('intval', $offeringIds), $validOfferingIds));
 
-    if (empty($offeringIds)) {
+    /*
+     * A transferee's subjects are loaded afterwards on the Transferee Credit screen, so the
+     * confirm form sends no offerings and the placement is created with an empty enrollment.
+     */
+    $isTransferee = ($application['student_type'] === 'transferee');
+    if ($isTransferee) {
+        $offeringIds = [];
+    }
+
+    $choiceError = validatePlacementChoice($pdo, $application, $termId, $curriculumId, $sectionId);
+    if ($choiceError !== '') {
+        $error = $choiceError;
+    } elseif (($emailError = applicationEmailError($application)) !== '') {
+        $error = $emailError;
+    } elseif (empty($offeringIds) && !$isTransferee) {
         $error = 'Tick at least one scheduled class before placing the student. Create the class offerings first if none are listed.';
+    } elseif (($teacherClash = findSubjectTeacherConflict($pdo, $offeringIds)) !== null) {
+        $error = $teacherClash;
     } else try {
         $pdo->beginTransaction();
 
@@ -203,15 +269,14 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         // real auto-increment ID to compute. Solved with a placeholder-then-rename: create the
         // Account with a temporary unique username, create the Student pointing at it, then
         // rename both to the real student_id_number once we know it.
-        $tempPassword = generateTempPassword();
         $placeholderUsername = 'PENDING-' . bin2hex(random_bytes(6));
-        $studentEmail = $application['email_address'];
+        $studentEmail = trim((string)$application['email_address']);
 
         $stmt = $pdo->prepare(
             "INSERT INTO Accounts (username, email, password_hash, role, must_change_password)
-             VALUES (:username, :email, :hash, 'student', 1)"
+             VALUES (:username, :email, :hash, 'student', 0)"
         );
-        $stmt->execute(['username' => $placeholderUsername, 'email' => $studentEmail, 'hash' => password_hash($tempPassword, PASSWORD_DEFAULT)]);
+        $stmt->execute(['username' => $placeholderUsername, 'email' => $studentEmail, 'hash' => placeholderPasswordHash()]);
         $newAccountId = (int)$pdo->lastInsertId();
 
         $stmt = $pdo->prepare(
@@ -243,7 +308,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
             'mother_maiden_name' => $application['mother_maiden_name'], 'mother_first_name' => $application['mother_first_name'],
             'mother_middle_name' => $application['mother_middle_name'],
             'father_occupation' => $application['father_occupation'], 'mother_occupation' => $application['mother_occupation'],
-            'contact_no' => $application['contact_no'], 'email_address' => $application['email_address'],
+            'contact_no' => $application['contact_no'], 'email_address' => $studentEmail,
             'guardian_name' => $application['guardian_name'], 'guardian_relationship' => $application['guardian_relationship'],
             'guardian_contact_no' => $application['guardian_contact_no'],
             'student_type' => $application['student_type'],
@@ -297,7 +362,6 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
 
         $created = [
             'username' => $studentIdNumber,
-            'password' => $tempPassword,
             'student_id_number' => $studentIdNumber,
             'subjects_count' => $enrolledCount,
             'student_id' => $newStudentId,
@@ -305,19 +369,14 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
             'email' => $studentEmail,
         ];
 
-        if ($studentEmail) {
-            $studentName = $application['applicant_first_name'] . ' ' . $application['applicant_last_name'];
-            $mailSent = sendAccountCredentialsEmail($studentEmail, $studentName, $studentIdNumber, $tempPassword);
-            if (!$mailSent) {
-                $mailWarning = 'The student was placed, but the credentials email could not be sent. Share the credentials below manually.';
-            }
-        } else {
-            $mailWarning = 'No email was on file for this applicant. Share the credentials below manually.';
+        $invite = sendAccountLink($pdo, $newAccountId);
+        if ($invite['result'] !== 'sent') {
+            $mailWarning = 'The student was placed, but the invite email could not be sent. Open the student\'s Account tab and use Resend invite once the address is confirmed.';
         }
 
         $application = null; // done, drop back to the list
     } catch (Exception $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
         $error = errorMessage($e, 'Could not complete placement.');
     }
 }
@@ -432,15 +491,12 @@ if (!$application && !$created && $listTab === 'rejected') {
                 <h2 class="h5 card-title text-success">Student placed successfully</h2>
                 <?php if (!$mailWarning): ?>
                     <p class="text-success">
-                        Email has been sent to <strong><?= htmlspecialchars($created['email']) ?></strong>.
+                        An invite was emailed to <strong><?= htmlspecialchars($created['email']) ?></strong>. They have 24 hours to open it and choose their own password.
                     </p>
                 <?php endif; ?>
-                <p class="text-muted">This password will not be shown again.</p>
                 <dl class="row mb-0">
                     <dt class="col-sm-4">Student ID Number / Username</dt>
                     <dd class="col-sm-8"><code><?= htmlspecialchars($created['student_id_number']) ?></code></dd>
-                    <dt class="col-sm-4">Temporary Password</dt>
-                    <dd class="col-sm-8"><code><?= htmlspecialchars($created['password']) ?></code></dd>
                     <dt class="col-sm-4">Subjects Enrolled</dt>
                     <dd class="col-sm-8"><?= (int)$created['subjects_count'] ?></dd>
                 </dl>
@@ -453,6 +509,9 @@ if (!$application && !$created && $listTab === 'rejected') {
                 Continue to Transferee Credit Evaluation
             </a>
         <?php endif; ?>
+        <a href="<?= BASE_URL ?>/registrar/student-view.php?id=<?= (int)$created['student_id'] ?>&tab=password" class="btn btn-outline-secondary">
+            View Student
+        </a>
         <a href="<?= BASE_URL ?>/registrar/place-student.php" class="btn btn-outline-primary">
             Place Another Student
         </a>
@@ -590,7 +649,7 @@ if (!$application && !$created && $listTab === 'rejected') {
                     <div class="col-md-3 mb-3"><label class="form-label">Contact No.</label>
                         <input class="form-control" name="contact_no" value="<?= $v('contact_no') ?>"></div>
                     <div class="col-md-3 mb-3"><label class="form-label">Email</label>
-                        <input class="form-control" name="email_address" value="<?= $v('email_address') ?>"></div>
+                        <input type="email" class="form-control" name="email_address" value="<?= $v('email_address') ?>" maxlength="255" required></div>
                     <div class="col-md-3 mb-3"><label class="form-label">Guardian Name</label>
                         <input class="form-control" name="guardian_name" value="<?= $v('guardian_name') ?>"></div>
                     <div class="col-md-3 mb-3"><label class="form-label">Guardian Contact No.</label>

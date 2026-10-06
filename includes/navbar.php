@@ -20,7 +20,7 @@ if ($role === 'student') {
         'SELECT s.first_name, s.last_name, p.program_name
          FROM Student s
          JOIN Enrollment e ON e.enrollment_id = (
-             SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
+             SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id AND e2.status <> \'rejected\'
              ORDER BY e2.enrollment_id DESC LIMIT 1
          )
          JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
@@ -108,27 +108,28 @@ function navActive(string $href): string
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-teacher.php') ?>" href="<?= BASE_URL ?>/admin/register-teacher.php"><i class="bi bi-person-plus"></i> Register Teacher</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-admission-staff.php') ?>" href="<?= BASE_URL ?>/admin/register-admission-staff.php"><i class="bi bi-person-plus"></i> Register Admission Staff</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/staff.php') ?>" href="<?= BASE_URL ?>/admin/staff.php"><i class="bi bi-people"></i> Staff Accounts</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/terms.php') ?>" href="<?= BASE_URL ?>/admin/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/profile.php') ?>" href="<?= BASE_URL ?>/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
         <?php elseif ($role === 'registrar'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/dashboard.php') ?>" href="<?= BASE_URL ?>/registrar/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
 
             <div class="sidebar-group">
                 <div class="sidebar-group-title">Enrollment</div>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/place-student.php') ?>" href="<?= BASE_URL ?>/registrar/place-student.php"><i class="bi bi-person-check"></i> Place Student</a>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/students.php') ?>" href="<?= BASE_URL ?>/registrar/students.php"><i class="bi bi-people"></i> Students</a>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/shift-requests.php') ?>" href="<?= BASE_URL ?>/registrar/shift-requests.php"><i class="bi bi-box-arrow-in-right"></i> Shift Requests</a>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/irregular-enrollments.php') ?>" href="<?= BASE_URL ?>/registrar/irregular-enrollments.php"><i class="bi bi-list-check"></i> Irregular Enrollments</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/place-student.php') ?>" href="<?= BASE_URL ?>/registrar/place-student.php"><i class="bi bi-person-check"></i> Place Student</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/students.php') ?>" href="<?= BASE_URL ?>/registrar/students.php"><i class="bi bi-people"></i> Students</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/shift-requests.php') ?>" href="<?= BASE_URL ?>/registrar/shift-requests.php"><i class="bi bi-box-arrow-in-right"></i> Shift Requests</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/irregular-enrollments.php') ?>" href="<?= BASE_URL ?>/registrar/irregular-enrollments.php"><i class="bi bi-list-check"></i> Irregular Enrollments</a>
             </div>
 
             <div class="sidebar-group">
                 <div class="sidebar-group-title">Academic Setup</div>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/subjects.php') ?>" href="<?= BASE_URL ?>/registrar/subjects.php"><i class="bi bi-journal-bookmark"></i> Subjects</a>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/prerequisites.php') ?>" href="<?= BASE_URL ?>/registrar/prerequisites.php"><i class="bi bi-diagram-2"></i> Prerequisites</a>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/curriculum.php') ?>" href="<?= BASE_URL ?>/registrar/curriculum.php"><i class="bi bi-file-earmark-text"></i> Curriculum</a>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/sections.php') ?>" href="<?= BASE_URL ?>/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/terms.php') ?>" href="<?= BASE_URL ?>/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/class-offerings.php') ?>" href="<?= BASE_URL ?>/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
-                <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/schedule.php') ?>" href="<?= BASE_URL ?>/registrar/schedule.php"><i class="bi bi-calendar3"></i> Schedule</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/subjects.php') ?>" href="<?= BASE_URL ?>/registrar/subjects.php"><i class="bi bi-journal-bookmark"></i> Subjects</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/prerequisites.php') ?>" href="<?= BASE_URL ?>/registrar/prerequisites.php"><i class="bi bi-diagram-2"></i> Prerequisites</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/curriculum.php') ?>" href="<?= BASE_URL ?>/registrar/curriculum.php"><i class="bi bi-file-earmark-text"></i> Curriculum</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/sections.php') ?>" href="<?= BASE_URL ?>/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/terms.php') ?>" href="<?= BASE_URL ?>/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/class-offerings.php') ?>" href="<?= BASE_URL ?>/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/schedule.php') ?>" href="<?= BASE_URL ?>/registrar/schedule.php"><i class="bi bi-calendar3"></i> Schedule</a>
             </div>
         <?php elseif ($role === 'admission_staff'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/staff/dashboard.php') ?>" href="<?= BASE_URL ?>/staff/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
@@ -176,7 +177,9 @@ function navActive(string $href): string
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <a href="<?= BASE_URL ?>/logout.php" class="btn btn-danger">Log Out</a>
+        <form method="post" action="<?= BASE_URL ?>/logout.php" class="d-inline">
+            <button type="submit" class="btn btn-danger">Log Out</button>
+        </form>
       </div>
     </div>
   </div>

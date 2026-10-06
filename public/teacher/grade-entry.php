@@ -83,15 +83,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             continue;
         }
 
-        // 3.00 or better is Passed, anything above is Failed. Dropped and Incomplete are manual.
-        if ($gradeToSave !== null && in_array($remarkValue, ['', 'Passed', 'Failed'], true)) {
-            $derived = (float)$gradeToSave <= 3.00 ? 'Passed' : 'Failed';
-            if ($remarkValue !== '' && $remarkValue !== $derived) {
+        /*
+         * The grade decides Passed or Failed, never the remark. Dropped and Incomplete
+         * must have no grade, and Passed or Failed cannot exist without one.
+         */
+        if ($gradeToSave !== null) {
+            if (in_array($remarkValue, ['Dropped', 'Incomplete'], true)) {
                 $ruleRows[] = $enrolledSubjectId;
                 continue;
             }
-            $remarkValue = $derived;
-        } elseif ($gradeToSave === null && in_array($remarkValue, ['Passed', 'Failed'], true)) {
+            $remarkValue = (float)$gradeToSave <= 3.00 ? 'Passed' : 'Failed';
+        } elseif (in_array($remarkValue, ['Passed', 'Failed'], true)) {
             $ruleRows[] = $enrolledSubjectId;
             continue;
         }
@@ -109,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         $problems[] = 'Some grades were out of range (must be 1.00–5.00).';
     }
     if ($ruleRows) {
-        $problems[] = 'Some remarks did not match the grade: 3.00 or better is Passed, above 3.00 is Failed, and Passed or Failed needs a grade.';
+        $problems[] = 'Some rows broke the grade rules: Dropped and Incomplete cannot have a grade, and Passed or Failed needs a grade.';
     }
     if ($problems) {
         $error = implode(' ', $problems) . ' Those rows were not saved. Fix and resubmit them.';
@@ -182,7 +184,7 @@ foreach ($roster as $r) {
     <?php if ($termLocked): ?><div class="alert alert-secondary">This term is closed. Grades are locked and shown read-only.</div><?php endif; ?>
 
     <?php if (!$termLocked): ?>
-        <p class="text-muted small">Remarks fill in from the grade: 3.00 or better is Passed, above 3.00 is Failed. Set Dropped or Incomplete by hand.</p>
+        <p class="text-muted small">The grade decides the remark: 3.00 or better is Passed, above 3.00 is Failed. For Dropped or Incomplete, leave the grade empty.</p>
     <?php endif; ?>
 
     <form method="post">
@@ -224,8 +226,10 @@ foreach ($roster as $r) {
     </form>
 </div>
 <script>
-    // Out-of-range check as the teacher types (1.00–5.00), and a heads-up for unsaved edits.
-    // This mirrors, not replaces, the same range check the server already enforces on save.
+    /*
+     * Range check and remark sync as the teacher types, plus a heads-up for unsaved edits.
+     * This mirrors, not replaces, the rules the server enforces on save.
+     */
     (function () {
         var form = document.querySelector('form');
         if (!form) { return; }
@@ -243,9 +247,24 @@ foreach ($roster as $r) {
             return input.closest('tr').querySelector('select[name^="remarks"]');
         }
 
+        function isManual(select) {
+            return !!select && ['Dropped', 'Incomplete'].indexOf(select.value) !== -1;
+        }
+
+        function applyLock(select, clear) {
+            var input = select.closest('tr').querySelector('.grade-input');
+            if (!input) { return; }
+            var manual = isManual(select);
+            if (manual && clear) {
+                input.value = '';
+                checkRange(input);
+            }
+            input.readOnly = manual;
+        }
+
         function syncRemark(input) {
             var select = remarkSelect(input);
-            if (!select || ['', 'Passed', 'Failed'].indexOf(select.value) === -1) { return; }
+            if (!select || isManual(select)) { return; }
             var v = input.value.trim();
             var n = parseFloat(v);
             var valid = /^\d+(\.\d+)?$/.test(v) && n >= 1 && n <= 5;
@@ -264,9 +283,11 @@ foreach ($roster as $r) {
             });
         });
         document.querySelectorAll('select[name^="remarks"]').forEach(function (select) {
+            applyLock(select, false);
             select.addEventListener('change', function () {
                 var input = select.closest('tr').querySelector('.grade-input');
-                if (input && ['Passed', 'Failed'].indexOf(select.value) !== -1) { syncRemark(input); }
+                applyLock(select, true);
+                if (input) { syncRemark(input); }
                 dirty = true;
                 if (unsavedNote) { unsavedNote.hidden = false; }
             });

@@ -38,10 +38,17 @@ if ($enrollment && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = 'Enrollment approved.';
         $enrollment = null;
     } elseif ($action === 'reject') {
-        $pdo->prepare("UPDATE Enrollment SET status = 'rejected', approved_by = :by WHERE enrollment_id = :id")
-            ->execute(['by' => $user['account_id'], 'id' => $enrollmentId]);
-        $message = 'Enrollment rejected.';
-        $enrollment = null;
+        $reason = trim($_POST['reason'] ?? '');
+        if ($reason === '') {
+            $error = 'A rejection reason is required.';
+        } elseif (strlen($reason) > 255) {
+            $error = 'The reason is too long. Keep it under 255 characters.';
+        } else {
+            $pdo->prepare("UPDATE Enrollment SET status = 'rejected', approved_by = :by, rejection_reason = :reason WHERE enrollment_id = :id")
+                ->execute(['by' => $user['account_id'], 'reason' => $reason, 'id' => $enrollmentId]);
+            $message = 'Enrollment rejected.';
+            $enrollment = null;
+        }
     }
 }
 
@@ -130,10 +137,14 @@ if (!$enrollment) {
             <input type="hidden" name="enrollment_id" value="<?= $enrollmentId ?>">
             <button type="submit" class="btn btn-success" data-confirm="Approve this enrollment?" data-confirm-label="Approve" data-confirm-tone="success">Approve</button>
         </form>
-        <form method="post" class="d-inline">
+        <form method="post" class="mt-3">
             <input type="hidden" name="action" value="reject">
             <input type="hidden" name="enrollment_id" value="<?= $enrollmentId ?>">
-            <button type="submit" class="btn btn-outline-danger" data-confirm="Reject this enrollment?" data-confirm-label="Reject" data-confirm-tone="danger">Reject</button>
+            <label for="reason" class="form-label">Reason for rejecting (shown to the student)</label>
+            <div class="input-group">
+                <input type="text" class="form-control" id="reason" name="reason" maxlength="255" required>
+                <button type="submit" class="btn btn-outline-danger" data-confirm="Reject this enrollment?" data-confirm-label="Reject" data-confirm-tone="danger">Reject</button>
+            </div>
         </form>
 
         <div class="mt-3"><a href="<?= BASE_URL ?>/registrar/irregular-enrollments.php">&larr; Back to list</a></div>

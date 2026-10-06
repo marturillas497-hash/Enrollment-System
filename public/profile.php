@@ -11,10 +11,16 @@ $usernameSuccess = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'change_username') {
     $newUsername = trim($_POST['new_username'] ?? '');
 
-    if ($newUsername === '') {
+    if ($user['role'] === 'student') {
+        $usernameError = 'Your username is your student ID number and cannot be changed.';
+    } elseif ($newUsername === '') {
         $usernameError = 'Username cannot be empty.';
     } elseif (strlen($newUsername) < 4) {
         $usernameError = 'Username must be at least 4 characters.';
+    } elseif (strlen($newUsername) > 100) {
+        $usernameError = 'Username must be 100 characters or fewer.';
+    } elseif (preg_match('/^\d{4}-\d{5}$/', $newUsername) || stripos($newUsername, 'PENDING-') === 0) {
+        $usernameError = 'That username format is reserved for student ID numbers. Choose a different one.';
     } elseif ($newUsername === $user['username']) {
         $usernameError = 'That is already your username.';
     } else {
@@ -157,6 +163,7 @@ switch ($user['role']) {
         </div>
     </div>
 
+    <?php if ($user['role'] !== 'student'): ?>
     <div class="card mt-3">
         <div class="card-header">Change Username</div>
         <div class="card-body">
@@ -168,17 +175,11 @@ switch ($user['role']) {
                            value="<?= htmlspecialchars($user['username']) ?>" minlength="4" required>
                     <button type="submit" class="btn btn-primary text-nowrap">Update</button>
                 </div>
-                <div class="form-text">
-                    <?php if ($user['role'] === 'student'): ?>
-                        Heads up: your username is normally your student ID number. Changing it won't
-                        change your student ID number itself, so the two will no longer match.
-                    <?php else: ?>
-                        You'll use this the next time you log in — your current session stays active.
-                    <?php endif; ?>
-                </div>
+                <div class="form-text">You'll use this the next time you log in. Your current session stays active.</div>
             </form>
         </div>
     </div>
+    <?php endif; ?>
 
     <?php if ($user['role'] === 'admin'): ?>
     <div class="card mt-3">

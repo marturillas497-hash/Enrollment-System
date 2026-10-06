@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/academic_helper.php';
+require_once __DIR__ . '/../../src/helpers/picker_helper.php';
 
 $user = requireRole(['student']);
 $pdo = getDbConnection();
@@ -14,7 +16,7 @@ $currentTerm = $pdo->query("SELECT * FROM School_term WHERE status = 'ongoing' O
 $stmt = $pdo->prepare(
     'SELECT e.*, st.school_year AS prev_school_year, st.semester AS prev_semester
      FROM Enrollment e JOIN School_term st ON st.term_id = e.term_id
-     WHERE e.student_id = :sid ORDER BY e.enrollment_id DESC LIMIT 1'
+     WHERE e.student_id = :sid AND e.status <> \'rejected\' ORDER BY e.enrollment_id DESC LIMIT 1'
 );
 $stmt->execute(['sid' => $student['student_id']]);
 $previous = $stmt->fetch();
@@ -48,13 +50,15 @@ if (!$currentTerm) {
 
 // What this enrollment will contain. The same query feeds the preview and the save, so they can't disagree.
 $preview = null;
+$yearLevel = 0;
 if ($error === '') {
-    // Year level advances only when crossing into semester 1 of a new school year.
-    $yearLevel = (int)$previous['year_level'];
-    if ($currentTerm['semester'] == 1 && $currentTerm['school_year'] !== $previous['prev_school_year']) {
-        $yearLevel++;
+    $yearLevel = nextYearLevel((int)$previous['year_level'], $currentTerm, (string)$previous['prev_school_year']);
+    if ($yearLevel > curriculumMaxYear($pdo, (int)$previous['curriculum_id'])) {
+        $error = 'You have gone through every year of your curriculum. Ask the registrar about your graduation.';
     }
+}
 
+if ($error === '') {
     $stmt = $pdo->prepare(
         'SELECT cs.subject_id, s.subject_code, s.subject_name, s.units, co.offering_id,
                 co.day_of_week, co.start_time, co.end_time, co.room
@@ -90,6 +94,8 @@ if ($error === '') {
     }
     if (empty($scheduled)) {
         $error = 'No classes are scheduled for you this term yet. Ask the registrar to set up the class offerings, then try again.';
+    } elseif (findSubjectTeacherConflict($pdo, array_column($scheduled, 'offering_id')) !== null) {
+        $error = 'One of your subjects is set up with two teachers in your section. Ask the registrar to fix the class offerings, then try again.';
     }
     $preview = [
         'year_level' => $yearLevel, 'scheduled' => $scheduled, 'unscheduled' => array_values($unscheduled),

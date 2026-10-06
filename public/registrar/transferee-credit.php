@@ -22,7 +22,7 @@ $stmt = $pdo->prepare(
     'SELECT s.*, e.enrollment_id, e.term_id, e.section_id, e.curriculum_id, st.school_year, st.semester
      FROM Student s
      JOIN Enrollment e ON e.enrollment_id = (
-         SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
+         SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id AND e2.status <> \'rejected\'
          ORDER BY e2.enrollment_id DESC LIMIT 1
      )
      JOIN School_term st ON st.term_id = e.term_id
@@ -104,6 +104,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (empty($toInsert)) {
             $error = 'Tick at least one subject that is available to add.';
         } elseif (($clash = findScheduleConflict($pdo, array_merge(array_column(rosterSlots($pdo, (int)$student['enrollment_id']), 'offering_id'), $toInsert))) !== null) {
+            $error = $clash;
+        } elseif (($clash = findSubjectTeacherConflict($pdo, array_merge(array_column(rosterSlots($pdo, (int)$student['enrollment_id']), 'offering_id'), $toInsert))) !== null) {
             $error = $clash;
         } else {
             try {

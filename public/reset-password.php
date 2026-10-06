@@ -15,6 +15,7 @@ $rawToken = $isPost ? ($_POST['token'] ?? '') : ($_GET['token'] ?? '');
 $token = is_string($rawToken) ? trim($rawToken) : '';
 
 $reset = findValidPasswordReset($pdo, $token);
+$isInvite = $reset !== null && $reset['activated_at'] === null;
 $error = '';
 
 if ($isPost && $reset !== null) {
@@ -38,7 +39,7 @@ if ($isPost && $reset !== null) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
-    <title>Reset Password — MIST Enrollment System</title>
+    <title><?= $isInvite ? 'Set Your Password' : 'Reset Password' ?> — MIST Enrollment System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
     <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/tokens.css">
@@ -49,12 +50,12 @@ if ($isPost && $reset !== null) {
         <?php if ($reset === null): ?>
             <h1 class="h4 mb-2">Link Not Valid</h1>
             <div class="alert alert-danger mb-0">
-                This reset link is invalid, has expired, or has already been used.
+                This link is invalid, has expired, or has already been used.
             </div>
             <a href="<?= BASE_URL ?>/forgot-password.php" class="btn btn-neu-primary w-100 mt-3">Request a New Link</a>
         <?php else: ?>
-            <h1 class="h4 mb-2">Reset Your Password</h1>
-            <p class="text-muted">Choose a new password for <strong><?= htmlspecialchars($reset['username']) ?></strong>.</p>
+            <h1 class="h4 mb-2"><?= $isInvite ? 'Welcome to MIST' : 'Reset Your Password' ?></h1>
+            <p class="text-muted"><?= $isInvite ? 'Choose a password for' : 'Choose a new password for' ?> <strong><?= htmlspecialchars($reset['username']) ?></strong>.</p>
 
             <?php if ($error): ?>
                 <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
@@ -84,7 +85,7 @@ if ($isPost && $reset !== null) {
                     </div>
                     <div class="form-text" id="match-text"></div>
                 </div>
-                <button type="submit" class="btn btn-neu-primary w-100">Reset Password</button>
+                <button type="submit" class="btn btn-neu-primary w-100"><?= $isInvite ? 'Set Password' : 'Reset Password' ?></button>
             </form>
 
             <script src="<?= BASE_URL ?>/assets/js/password-form.js"></script>

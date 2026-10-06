@@ -90,6 +90,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <script src="<?= BASE_URL ?>/assets/js/password-form.js"></script>
         <?php endif; ?>
+
+        <form method="post" action="<?= BASE_URL ?>/logout.php" class="text-center mt-3">
+            <button type="submit" class="btn btn-link text-muted p-0"><i class="bi bi-box-arrow-right"></i> Log out</button>
+        </form>
     </div>
 </body>
 </html>

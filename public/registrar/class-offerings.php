@@ -10,12 +10,17 @@ $stmt->execute(['aid' => $user['account_id']]);
 $myDepartmentId = $stmt->fetchColumn();
 
 $error = '';
-$message = '';
+$message = flashGet('offering_msg') ?? '';
 
 // Subjects are shared across every department (e.g. GE1 is taken by multiple programs) — not scoped.
 $subjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_id DESC')->fetchAll();
 
-$teachers = $pdo->prepare('SELECT teacher_id, last_name, first_name FROM Teacher WHERE department_id = :dept ORDER BY teacher_id DESC');
+$teachers = $pdo->prepare(
+    'SELECT t.teacher_id, t.last_name, t.first_name
+     FROM Teacher t JOIN Accounts a ON a.account_id = t.account_id
+     WHERE t.department_id = :dept AND a.is_active = 1
+     ORDER BY t.teacher_id DESC'
+);
 $teachers->execute(['dept' => $myDepartmentId]);
 $teachers = $teachers->fetchAll();
 $myTeacherIds = array_column($teachers, 'teacher_id');
@@ -33,7 +38,38 @@ $mySectionIds = array_column($sections, 'section_id');
 
 $terms = $pdo->query("SELECT term_id, school_year, semester FROM School_term WHERE status = 'ongoing' ORDER BY term_id DESC")->fetchAll();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$deleteError = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_offering') {
+    $stmt = $pdo->prepare(
+        'SELECT st.status AS term_status, p.department_id,
+                (SELECT COUNT(*) FROM Enrolled_subject es WHERE es.offering_id = co.offering_id) AS enrolled_count
+         FROM Class_Offering co
+         JOIN Section sec ON sec.section_id = co.section_id
+         JOIN Program p ON p.program_id = sec.program_id
+         JOIN School_term st ON st.term_id = co.term_id
+         WHERE co.offering_id = :id'
+    );
+    $stmt->execute(['id' => ctype_digit((string)($_POST['offering_id'] ?? '')) ? (int)$_POST['offering_id'] : 0]);
+    $target = $stmt->fetch();
+
+    if (!$target || (int)$target['department_id'] !== (int)$myDepartmentId) {
+        $deleteError = 'That class is not in your department.';
+    } elseif ($target['term_status'] !== 'ongoing') {
+        $deleteError = 'Only classes in an open term can be deleted.';
+    } elseif ((int)$target['enrolled_count'] > 0) {
+        $deleteError = $target['enrolled_count'] . ' student(s) are enrolled in this class, so it cannot be deleted. Move them to another class from the section roster first.';
+    } else {
+        try {
+            $pdo->prepare('DELETE FROM Class_Offering WHERE offering_id = :id')->execute(['id' => (int)$_POST['offering_id']]);
+            flashSet('offering_msg', 'Class offering deleted.');
+            header('Location: ' . $_SERVER['REQUEST_URI']);
+            exit;
+        } catch (Exception $e) {
+            $deleteError = errorMessage($e, 'Could not delete the class offering.');
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $subjectId = $_POST['subject_id'] ?? '';
     $teacherId = $_POST['teacher_id'] ?? '';
     $sectionId = $_POST['section_id'] ?? '';
@@ -77,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Start time must be before end time.';
     } elseif (!in_array((int)$teacherId, $myTeacherIds, true) || !in_array((int)$sectionId, $mySectionIds, true)) {
         // Defense in depth — the dropdowns only list your department's own teachers/sections.
-        $error = 'That teacher or section is not in your department.';
+        $error = 'That teacher is inactive or not in your department, or that section is not in your department.';
     } elseif (!in_array((int)$termId, array_map('intval', array_column($terms, 'term_id')), true)) {
         $error = 'That term is not open.';
     } else {
@@ -122,6 +158,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $roomConflict = (bool)$conflict;
         }
 
+        /*
+         * One teacher per subject in a section for the term. A second meeting of the same subject
+         * is fine, but only with the same teacher. Changing the teacher on a subject that meets
+         * more than once moves every meeting of that subject in the section to the new teacher.
+         */
+        $teacherRuleError = '';
+        $propagateIds = [];
+        if (!$conflict) {
+            $sameGroup = $existing
+                && (int)$existing['subject_id'] === (int)$subjectId
+                && (int)$existing['section_id'] === (int)$sectionId
+                && (int)$existing['term_id'] === (int)$termId;
+            if ($sameGroup) {
+                if ((int)$existing['teacher_id'] !== (int)$teacherId) {
+                    $sib = $pdo->prepare(
+                        'SELECT offering_id, day_of_week, start_time, end_time FROM Class_Offering
+                         WHERE term_id = :t AND section_id = :sec AND subject_id = :sub AND offering_id <> :self'
+                    );
+                    $sib->execute(['t' => $termId, 'sec' => $sectionId, 'sub' => $subjectId, 'self' => $offeringId]);
+                    $busy = $pdo->prepare(
+                        'SELECT 1 FROM Class_Offering
+                         WHERE term_id = :t AND teacher_id = :teacher AND day_of_week = :day
+                           AND offering_id <> :sib AND start_time < :end_time AND end_time > :start_time LIMIT 1'
+                    );
+                    foreach ($sib->fetchAll() as $sibling) {
+                        $busy->execute([
+                            't' => $termId, 'teacher' => $teacherId, 'day' => $sibling['day_of_week'], 'sib' => $sibling['offering_id'],
+                            'end_time' => $sibling['end_time'], 'start_time' => $sibling['start_time'],
+                        ]);
+                        if ($busy->fetch() !== false) {
+                            $teacherRuleError = 'This subject also meets on '
+                                . formatSchedule($sibling['day_of_week'], $sibling['start_time'], $sibling['end_time'])
+                                . ', and the new teacher is busy then. Every meeting of a subject shares one teacher.';
+                            break;
+                        }
+                        $propagateIds[] = (int)$sibling['offering_id'];
+                    }
+                }
+            } else {
+                $stmt = $pdo->prepare(
+                    'SELECT t.last_name, s.subject_code, sec.section_name
+                     FROM Class_Offering co
+                     JOIN Teacher t ON t.teacher_id = co.teacher_id
+                     JOIN Subject s ON s.subject_id = co.subject_id
+                     JOIN Section sec ON sec.section_id = co.section_id
+                     WHERE co.term_id = :t AND co.section_id = :sec AND co.subject_id = :sub
+                       AND co.teacher_id <> :teacher AND co.offering_id <> :self LIMIT 1'
+                );
+                $stmt->execute(['t' => $termId, 'sec' => $sectionId, 'sub' => $subjectId, 'teacher' => $teacherId, 'self' => $offeringId]);
+                $other = $stmt->fetch();
+                if ($other) {
+                    $teacherRuleError = $other['subject_code'] . ' in section ' . $other['section_name'] . ' already has teacher '
+                        . $other['last_name'] . ' this term. A subject can only have one teacher per section, so use '
+                        . $other['last_name'] . ' for this meeting too.';
+                }
+            }
+        }
+
         $conflictWhen = $conflict ? formatSchedule($conflict['day_of_week'], $conflict['start_time'], $conflict['end_time']) : '';
         if ($conflict && $roomConflict) {
             $error = "Room conflict: \"{$conflict['room']}\" is already booked for {$conflict['subject_code']} "
@@ -131,6 +225,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Schedule conflict: {$conflict['subject_code']} already runs "
                 . "{$conflictWhen} "
                 . "with teacher {$conflict['last_name']} / section {$conflict['section_name']} in this term.";
+        } elseif ($teacherRuleError !== '') {
+            $error = $teacherRuleError;
         } elseif ($offeringId) {
             $clash = $pdo->prepare(
                 'SELECT sub.subject_code, st.last_name, COUNT(*) OVER () AS total
@@ -151,15 +247,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     . ((int)$hit['total'] > 1 ? ' and ' . ((int)$hit['total'] - 1) . ' other enrolled student(s)' : '')
                     . '. Pick a time that fits their schedules.';
             } else {
-                $pdo->prepare(
-                    'UPDATE Class_Offering SET subject_id = :subject_id, teacher_id = :teacher_id, section_id = :section_id,
-                        term_id = :term_id, room = :room, day_of_week = :day, start_time = :start_time, end_time = :end_time
-                     WHERE offering_id = :self'
-                )->execute([
-                    'subject_id' => $subjectId, 'teacher_id' => $teacherId, 'section_id' => $sectionId, 'term_id' => $termId,
-                    'room' => $room ?: null, 'day' => $day, 'start_time' => $startTime, 'end_time' => $endTime, 'self' => $offeringId,
-                ]);
-                $message = 'Class offering updated.';
+                try {
+                    $pdo->beginTransaction();
+                    $pdo->prepare(
+                        'UPDATE Class_Offering SET subject_id = :subject_id, teacher_id = :teacher_id, section_id = :section_id,
+                            term_id = :term_id, room = :room, day_of_week = :day, start_time = :start_time, end_time = :end_time
+                         WHERE offering_id = :self'
+                    )->execute([
+                        'subject_id' => $subjectId, 'teacher_id' => $teacherId, 'section_id' => $sectionId, 'term_id' => $termId,
+                        'room' => $room ?: null, 'day' => $day, 'start_time' => $startTime, 'end_time' => $endTime, 'self' => $offeringId,
+                    ]);
+                    if ($propagateIds) {
+                        $in = implode(',', array_fill(0, count($propagateIds), '?'));
+                        $pdo->prepare("UPDATE Class_Offering SET teacher_id = ? WHERE offering_id IN ($in)")
+                            ->execute(array_merge([(int)$teacherId], $propagateIds));
+                    }
+                    $pdo->commit();
+                    $message = 'Class offering updated.';
+                    if ($propagateIds) {
+                        $message .= ' The same teacher now covers the subject\'s ' . count($propagateIds) . ' other meeting' . (count($propagateIds) === 1 ? '' : 's') . '.';
+                    }
+                } catch (Exception $e) {
+                    if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                    $error = errorMessage($e, 'Could not update the class offering.');
+                }
             }
         } else {
             $stmt = $pdo->prepare(
@@ -243,11 +354,12 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
     <h1 class="h4 mb-3">Class Offerings</h1>
 
     <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
+    <?php if ($deleteError): ?><div class="alert alert-danger"><?= htmlspecialchars($deleteError) ?></div><?php endif; ?>
     <?php $reopenForm = $error !== '' && $_SERVER['REQUEST_METHOD'] === 'POST'; ?>
     <?php if ($error && !$reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <?php if (empty($terms)): ?>
-        <div class="alert alert-warning">No ongoing term. Open one in <a href="<?= BASE_URL ?>/registrar/terms.php">School Terms</a> first.</div>
+        <div class="alert alert-warning">No ongoing term. Ask the administrator to open one first.</div>
     <?php else: ?>
     <div class="mb-3">
         <button type="button" class="btn btn-primary" onclick="openOfferingModal({})"><i class="bi bi-plus-lg"></i> Schedule a Class</button>
@@ -384,6 +496,17 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                                     'room' => $o['room'] ?? '', 'locked' => (int)$o['enrolled_count'] > 0, 'enrolled' => (int)$o['enrolled_count'],
                                 ]), ENT_QUOTES) ?>"
                                 onclick="openOfferingModal(JSON.parse(this.dataset.offering))">Edit</button>
+                        <form method="post" class="d-inline">
+                            <input type="hidden" name="action" value="delete_offering">
+                            <input type="hidden" name="offering_id" value="<?= (int)$o['offering_id'] ?>">
+                            <?php if ((int)$o['enrolled_count'] > 0): ?>
+                                <button type="button" class="btn btn-sm btn-outline-danger js-delete-blocked" data-enrolled="<?= (int)$o['enrolled_count'] ?>"
+                                        data-roster="<?= BASE_URL ?>/registrar/section-roster.php?id=<?= (int)$o['section_id'] ?>">Delete</button>
+                            <?php else: ?>
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        data-confirm="Delete this class offering? No students are enrolled in it." data-confirm-label="Delete" data-confirm-tone="danger">Delete</button>
+                            <?php endif; ?>
+                        </form>
                     <?php endif; ?>
                 </td>
             </tr>
@@ -399,6 +522,37 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
     </table>
 </div>
 </div>
+<div class="modal fade" id="deleteBlockedModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">This class cannot be deleted</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p><strong id="dbCount"></strong> student(s) are enrolled in this class. Move them to another class first:</p>
+        <ul class="mb-2">
+            <li><strong>Irregular students:</strong> open the section roster and use <em>Change classes</em> to swap this subject to another class.</li>
+            <li><strong>Regular students:</strong> use <em>Move section</em> on the roster.</li>
+        </ul>
+        <p class="mb-0 text-muted small">To change only the teacher, room, day or time, use <em>Edit</em> instead. Students keep their seat.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <a href="#" class="btn btn-primary" id="dbRoster">Open section roster</a>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.querySelectorAll('.js-delete-blocked').forEach(function (b) {
+    b.addEventListener('click', function () {
+        document.getElementById('dbCount').textContent = b.dataset.enrolled;
+        document.getElementById('dbRoster').href = b.dataset.roster;
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteBlockedModal')).show();
+    });
+});
+</script>
 <script>
 function fillModalForm(form, values) {
     Object.keys(values).forEach(function (name) {

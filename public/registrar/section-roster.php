@@ -110,9 +110,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $termId) {
 
             $all = $pdo->prepare('SELECT offering_id FROM Enrolled_subject WHERE enrollment_id = :e');
             $all->execute(['e' => $eid]);
-            $clash = findScheduleConflict($pdo, $all->fetchAll(PDO::FETCH_COLUMN));
+            $allIds = $all->fetchAll(PDO::FETCH_COLUMN);
+            $clash = findScheduleConflict($pdo, $allIds);
             if ($clash !== null) {
                 throw new RuntimeException('The move would put two classes at the same time. ' . $clash);
+            }
+            $teacherClash = findSubjectTeacherConflict($pdo, $allIds);
+            if ($teacherClash !== null) {
+                throw new RuntimeException($teacherClash);
             }
 
             $occupancy = sectionOccupancy($pdo, (int)$target['section_id']);
@@ -194,6 +199,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $termId) {
             if (count($final) !== count(array_unique($final))) {
                 throw new RuntimeException('The same class would be on the roster twice.');
             }
+            $teacherClash = findSubjectTeacherConflict($pdo, $final);
+            if ($teacherClash !== null) {
+                throw new RuntimeException($teacherClash);
+            }
             if ($final) {
                 $in = implode(',', array_fill(0, count($final), '?'));
                 $times = $pdo->prepare("SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, sub.subject_code FROM Class_Offering co JOIN Subject sub ON sub.subject_id = co.subject_id WHERE co.offering_id IN ($in)");
@@ -255,7 +264,7 @@ if ($termId) {
         "SELECT s.student_id_number, s.first_name, s.last_name, e.status, st.school_year, st.semester
          FROM Student s
          JOIN Enrollment e ON e.enrollment_id = (
-             SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id ORDER BY e2.enrollment_id DESC LIMIT 1
+             SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id AND e2.status <> 'rejected' ORDER BY e2.enrollment_id DESC LIMIT 1
          )
          JOIN School_term st ON st.term_id = e.term_id
          WHERE e.section_id = :sid AND s.overall_status = 'active'

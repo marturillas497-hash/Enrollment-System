@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($username !== '') {
         $pdo = getDbConnection();
-        $stmt = $pdo->prepare('SELECT account_id, username, role, email FROM Accounts WHERE username = :u');
+        $stmt = $pdo->prepare('SELECT account_id, username, role, email FROM Accounts WHERE username = :u AND is_active = 1');
         $stmt->execute(['u' => $username]);
         $account = $stmt->fetch();
 

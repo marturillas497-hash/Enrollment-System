@@ -1,19 +1,11 @@
 <?php
 /**
- * Random temp password for newly-created accounts (registrar, student, etc.).
- * Excludes 0/O and 1/l/I — this often gets read off a printed slip, so
- * ambiguous characters cause real support tickets.
+ * Stored for an account that has not chosen a password yet. It is not a valid hash, so
+ * password_verify() always fails and nobody can log in until the invite link is used.
  */
-function generateTempPassword(int $length = 10): string
+function placeholderPasswordHash(): string
 {
-    $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
-    $max = strlen($chars) - 1;
-
-    $password = '';
-    for ($i = 0; $i < $length; $i++) {
-        $password .= $chars[random_int(0, $max)];
-    }
-    return $password;
+    return '!' . bin2hex(random_bytes(32));
 }
 
 /** Shared rule set for change-password and reset-password. Null means OK. */

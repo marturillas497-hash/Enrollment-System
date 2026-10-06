@@ -23,6 +23,7 @@ if (!function_exists('statusBadge')) {
             'failed'    => 'danger',  'incomplete' => 'danger',
             'graduated' => 'info',    'credited'  => 'info',    'irregular' => 'warning',
             'closed'    => 'neutral', 'retired'   => 'neutral', 'regular'   => 'neutral',
+            'inactive'  => 'neutral',
         ];
         static $allowed = ['success', 'warning', 'danger', 'info', 'neutral'];
 
@@ -105,7 +106,7 @@ if (!function_exists('termBanner')) {
      * rows (school_year, semester) that are currently 'ongoing'. Turns into a
      * warning when there is no open term or more than one.
      */
-    function termBanner(array $ongoingTerms): string
+    function termBanner(array $ongoingTerms, bool $canManage = false): string
     {
         $label = function (array $t): string {
             $sem = (int) $t['semester'] === 3 ? 'Summer' : 'Semester ' . (int) $t['semester'];
@@ -113,13 +114,17 @@ if (!function_exists('termBanner')) {
         };
         if (count($ongoingTerms) === 0) {
             return '<div class="term-banner term-banner-warning"><i class="bi bi-exclamation-triangle"></i>'
-                 . '<span>No term is open right now. Open one below before scheduling classes or placing students.</span></div>';
+                 . '<span>No term is open right now. '
+                 . ($canManage ? 'Open one below' : 'Ask the administrator to open one')
+                 . ' before scheduling classes or placing students.</span></div>';
         }
         if (count($ongoingTerms) > 1) {
             $names = implode(' and ', array_map(fn($t) => htmlspecialchars($label($t)), $ongoingTerms));
             return '<div class="term-banner term-banner-warning"><i class="bi bi-exclamation-triangle"></i>'
                  . '<span>' . count($ongoingTerms) . ' terms are open at once: <strong>' . $names . '</strong>. '
-                 . 'Usually only one should be, so close the old one unless the overlap is intended.</span></div>';
+                 . 'Usually only one should be, so '
+                 . ($canManage ? 'close' : 'ask the administrator to close')
+                 . ' the old one unless the overlap is intended.</span></div>';
         }
         return '<div class="term-banner"><i class="bi bi-calendar-check"></i>'
              . '<span>Current term: <strong>' . htmlspecialchars($label($ongoingTerms[0])) . '</strong></span></div>';
@@ -210,5 +215,13 @@ if (!function_exists('formatSchedule')) {
         }
         $text = implode(' ', $parts);
         return ($room !== null && $room !== '') ? $text . ' · ' . $room : $text;
+    }
+}
+
+if (!function_exists('semesterLabel')) {
+    /** Semester 3 is the summer term. */
+    function semesterLabel($semester): string
+    {
+        return (int) $semester === 3 ? 'Summer' : (string) (int) $semester;
     }
 }

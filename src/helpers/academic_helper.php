@@ -1,8 +1,8 @@
 <?php
 /**
  * True if this student has ever passed the given subject, in any enrollment.
- * Uses the same pass/fail rule as term-close: remarks='Passed' wins if set,
- * otherwise falls back to grade <= 3.00 (the conventional passing line).
+ * The grade is the only authority: 3.00 or better passes, anything above fails,
+ * and a row with no grade (Dropped, Incomplete or not yet graded) never passes.
  */
 function hasPassedSubject(PDO $pdo, int $studentId, int $subjectId): bool
 {
@@ -12,7 +12,7 @@ function hasPassedSubject(PDO $pdo, int $studentId, int $subjectId): bool
          JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
          JOIN Class_Offering co ON co.offering_id = es.offering_id
          WHERE e.student_id = :sid AND co.subject_id = :subid
-           AND (es.remarks = 'Passed' OR (es.grade IS NOT NULL AND es.grade <= 3.00))
+           AND es.grade IS NOT NULL AND es.grade <= 3.00
          LIMIT 1"
     );
     $stmt->execute(['sid' => $studentId, 'subid' => $subjectId]);
@@ -33,7 +33,7 @@ function hasTakenOrCreditedSubject(PDO $pdo, int $studentId, int $subjectId): bo
          UNION
          SELECT 1 FROM Shift_credit sc
          JOIN Program_shift_request psr ON psr.request_id = sc.request_id
-         WHERE psr.student_id = :sid2 AND sc.credited_subject_id = :subid2
+         WHERE psr.student_id = :sid2 AND sc.credited_subject_id = :subid2 AND psr.status = 'approved'
          UNION
          SELECT 1 FROM Transferee_credit tc
          WHERE tc.student_id = :sid3 AND tc.credited_subject_id = :subid3
@@ -71,7 +71,7 @@ function hasFailedAttempt(PDO $pdo, int $studentId, int $subjectId): bool
          JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
          JOIN Class_Offering co ON co.offering_id = es.offering_id
          WHERE e.student_id = :sid AND co.subject_id = :subid
-           AND (es.remarks IN ('Failed','Dropped','Incomplete') OR (es.grade IS NOT NULL AND es.grade > 3.00))
+           AND (es.grade > 3.00 OR (es.grade IS NULL AND es.remarks IN ('Failed','Dropped','Incomplete')))
          LIMIT 1"
     );
     $stmt->execute(['sid' => $studentId, 'subid' => $subjectId]);
@@ -90,7 +90,7 @@ function sectionOccupancy(PDO $pdo, int $sectionId): int
     $stmt = $pdo->prepare(
         "SELECT COUNT(*) FROM Student s
          JOIN Enrollment e ON e.enrollment_id = (
-             SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
+             SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id AND e2.status <> 'rejected'
              ORDER BY e2.enrollment_id DESC LIMIT 1
          )
          WHERE e.section_id = :sid AND s.overall_status = 'active'"
@@ -104,8 +104,8 @@ function sectionOccupancy(PDO $pdo, int $sectionId): int
  * as a prerequisite — an actual MIST grade (hasPassedSubject), an internal shift
  * credit (which only ever references an already-passed subject per the PRD), or a
  * transferee credit graded 3.00 or better at their previous school. hasPassedSubject
- * alone misses the latter two, which matters for shift-add-subjects.php and
- * transferee-credit.php's "add remaining subject" pickers.
+ * alone misses the latter two, which matters for the irregular enrollment picker and
+ * transferee-credit.php's "add remaining subject" picker.
  */
 function hasCompletedSubject(PDO $pdo, int $studentId, int $subjectId): bool
 {
@@ -116,7 +116,7 @@ function hasCompletedSubject(PDO $pdo, int $studentId, int $subjectId): bool
     $stmt = $pdo->prepare(
         "SELECT 1 FROM Shift_credit sc
          JOIN Program_shift_request psr ON psr.request_id = sc.request_id
-         WHERE psr.student_id = :sid1 AND sc.credited_subject_id = :subid1
+         WHERE psr.student_id = :sid1 AND sc.credited_subject_id = :subid1 AND psr.status = 'approved'
          UNION
          SELECT 1 FROM Transferee_credit tc
          WHERE tc.student_id = :sid2 AND tc.credited_subject_id = :subid2 AND tc.previous_grade <= 3.00
@@ -183,10 +183,52 @@ function shiftRequestStatus(PDO $pdo, array $student): array
     $stmt->execute(['sid' => $student['student_id'], 'tid' => $term['term_id']]);
     $enrollment = $stmt->fetch();
     if ($enrollment) {
+        if ($enrollment['status'] === 'rejected') {
+            return ['available' => false, 'reason' => 'Your last subject selection was rejected. Start over from your dashboard first.'];
+        }
         if ($enrollment['status'] === 'pending' && !$enrollment['source_shift_request_id']) {
             return ['available' => true, 'reason' => 'You have a pending subject selection. Withdraw it to request a shift instead.'];
         }
         return ['available' => false, 'reason' => 'Available before you enroll in the open term.'];
     }
     return ['available' => true, 'reason' => ''];
+}
+
+/** Highest year level the curriculum has subjects for. */
+function curriculumMaxYear(PDO $pdo, int $curriculumId): int
+{
+    $stmt = $pdo->prepare('SELECT COALESCE(MAX(year_level), 0) FROM Curriculum_subject WHERE curriculum_id = :cid');
+    $stmt->execute(['cid' => $curriculumId]);
+    return (int)$stmt->fetchColumn();
+}
+
+/** Year level a regular student lands in: it advances only when crossing into semester 1 of a new school year. */
+function nextYearLevel(int $currentYear, array $term, string $previousSchoolYear): int
+{
+    if ((int)$term['semester'] === 1 && $term['school_year'] !== $previousSchoolYear) {
+        return $currentYear + 1;
+    }
+    return $currentYear;
+}
+
+/**
+ * Subject codes in the curriculum that the student has not completed yet, by a passing grade,
+ * an approved shift credit or a passing transferee credit. Empty means ready to graduate.
+ */
+function missingCurriculumSubjects(PDO $pdo, int $studentId, int $curriculumId): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT s.subject_id, s.subject_code
+         FROM Curriculum_subject cs JOIN Subject s ON s.subject_id = cs.subject_id
+         WHERE cs.curriculum_id = :cid ORDER BY s.subject_code'
+    );
+    $stmt->execute(['cid' => $curriculumId]);
+
+    $missing = [];
+    foreach ($stmt->fetchAll() as $row) {
+        if (!hasCompletedSubject($pdo, $studentId, (int)$row['subject_id'])) {
+            $missing[] = $row['subject_code'];
+        }
+    }
+    return $missing;
 }

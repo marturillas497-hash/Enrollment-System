@@ -19,7 +19,7 @@ if ($student === false) {
 $stmt = $pdo->prepare(
     'SELECT e.*, c.program_id, c.curriculum_name
      FROM Enrollment e JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
-     WHERE e.student_id = :sid ORDER BY e.enrollment_id DESC LIMIT 1'
+     WHERE e.student_id = :sid AND e.status <> \'rejected\' ORDER BY e.enrollment_id DESC LIMIT 1'
 );
 $stmt->execute(['sid' => $student['student_id']]);
 $currentEnrollment = $stmt->fetch();

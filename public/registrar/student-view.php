@@ -1,9 +1,9 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
-require_once __DIR__ . '/../../src/helpers/password_helper.php';
-require_once __DIR__ . '/../../src/helpers/mail_helper.php';
+require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/schedule_helper.php';
+require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -15,13 +15,13 @@ $myDepartmentId = $stmt->fetchColumn();
 $studentId = $_GET['id'] ?? ($_POST['id'] ?? null);
 
 $stmt = $pdo->prepare(
-    "SELECT s.*, a.username, a.email AS account_email,
-            e.enrollment_id AS latest_enrollment_id, e.year_level, e.student_standing,
+    "SELECT s.*, a.username, a.email AS account_email, a.is_active AS account_active, a.activated_at AS account_activated_at,
+            e.enrollment_id AS latest_enrollment_id, e.curriculum_id, e.year_level, e.student_standing,
             sec.section_name, p.program_code, p.program_name, term.school_year, term.semester
      FROM Student s
      JOIN Accounts a ON a.account_id = s.account_id
      JOIN Enrollment e ON e.enrollment_id = (
-         SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
+         SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id AND e2.status <> 'rejected'
          ORDER BY e2.enrollment_id DESC LIMIT 1
      )
      JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
@@ -42,38 +42,156 @@ if ($student === false) {
 
 $studentId = (int)$student['student_id'];
 $error = '';
-$regenerated = null;
-$mailWarning = '';
+$emailError = '';
+$accountPage = BASE_URL . '/registrar/student-view.php?id=' . $studentId . '&tab=password';
 
-$flash = flashGet('regenerated');
-if ($flash) {
-    $regenerated = $flash['regenerated'];
-    $mailWarning = $flash['mailWarning'];
+$statusMessage = flashGet('student_status_msg');
+$linkMessage = flashGet('student_link_msg');
+$linkWarning = flashGet('student_link_warn');
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'send_link') {
+    [$ok, $text] = accountLinkMessage(sendAccountLink($pdo, (int)$student['account_id']));
+    flashSet($ok ? 'student_link_msg' : 'student_link_warn', $text);
+    header('Location: ' . $accountPage);
+    exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'regenerate_password') {
-    $newPassword = generateTempPassword();
-    $pdo->prepare(
-        'UPDATE Accounts SET password_hash = :hash, must_change_password = 1, session_version = session_version + 1 WHERE account_id = :id'
-    )->execute(['hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $student['account_id']]);
+/*
+ * Changing the email moves control of the account, so every earlier link is cancelled, the old
+ * address is told, the change is logged, and a never-activated account gets a fresh invite.
+ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'change_email') {
+    $newEmail = trim($_POST['email'] ?? '');
+    $oldEmail = trim((string)($student['account_email'] ?? ''));
+    $accountId = (int)$student['account_id'];
 
-    $regenerated = ['username' => $student['username'], 'password' => $newPassword, 'email' => $student['account_email']];
-    if ($student['account_email']) {
-        $mailSent = sendPasswordResetEmail($student['account_email'], $student['first_name'] . ' ' . $student['last_name'], $student['username'], $newPassword);
-        if (!$mailSent) {
-            $mailWarning = 'The password was reset, but the email could not be sent. Share the credentials below manually.';
-        }
+    if ($newEmail === '' || !filter_var($newEmail, FILTER_VALIDATE_EMAIL) || strlen($newEmail) > 255) {
+        $emailError = 'Enter a valid email address.';
+    } elseif (strcasecmp($newEmail, $oldEmail) === 0) {
+        $emailError = 'That is already the email on file.';
     } else {
-        $mailWarning = 'No email is on file for this student. Share the credentials below manually.';
+        try {
+            $pdo->beginTransaction();
+            $pdo->prepare('UPDATE Accounts SET email = :e WHERE account_id = :id')->execute(['e' => $newEmail, 'id' => $accountId]);
+            $pdo->prepare('UPDATE Student SET email_address = :e WHERE student_id = :id')->execute(['e' => $newEmail, 'id' => $studentId]);
+            voidOpenPasswordResets($pdo, $accountId);
+            $pdo->prepare('INSERT INTO Account_email_change (account_id, changed_by, old_email, new_email) VALUES (:a, :by, :old, :new)')
+                ->execute(['a' => $accountId, 'by' => $user['account_id'], 'old' => $oldEmail !== '' ? $oldEmail : null, 'new' => $newEmail]);
+            $pdo->commit();
+
+            $msg = 'Email changed to ' . $newEmail . '. Earlier password links were cancelled.';
+            $warnings = [];
+            if ($student['account_activated_at'] === null && (int)$student['account_active'] === 1) {
+                [$ok, $text] = accountLinkMessage(sendAccountLink($pdo, $accountId));
+                if ($ok) {
+                    $msg .= ' ' . $text;
+                } else {
+                    $warnings[] = $text . ' Use Resend invite.';
+                }
+            }
+            if ($oldEmail !== '') {
+                sendEmailChangedNotice($oldEmail, $student['first_name'] . ' ' . $student['last_name'], $student['username'], maskEmail($newEmail));
+            }
+            $dup = $pdo->prepare("SELECT 1 FROM Accounts WHERE LOWER(email) = LOWER(:e) AND account_id <> :id AND role = 'student' LIMIT 1");
+            $dup->execute(['e' => $newEmail, 'id' => $accountId]);
+            if ($dup->fetch() !== false) {
+                $warnings[] = 'Another student account already uses this email address.';
+            }
+
+            flashSet('student_link_msg', $msg);
+            if ($warnings) {
+                flashSet('student_link_warn', implode(' ', $warnings));
+            }
+            header('Location: ' . $accountPage);
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            $emailError = errorMessage($e, 'Could not change the email.');
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_status') {
+    $newStatus = $_POST['status'] ?? '';
+    $statusLabels = ['active' => 'Active', 'on_leave' => 'On Leave', 'dropped' => 'Dropped', 'graduated' => 'Graduated'];
+
+    if (!isset($statusLabels[$newStatus])) {
+        $error = 'Choose a valid status.';
+    } elseif ($newStatus === $student['overall_status']) {
+        $error = 'The student already has that status.';
+    } else {
+        $missing = $newStatus === 'graduated'
+            ? missingCurriculumSubjects($pdo, $studentId, (int)$student['curriculum_id'])
+            : [];
+
+        if ($missing) {
+            $shown = implode(', ', array_slice($missing, 0, 8));
+            $more = count($missing) > 8 ? ' and ' . (count($missing) - 8) . ' more' : '';
+            $error = 'Cannot mark this student as graduated yet. Not completed: ' . $shown . $more . '.';
+        } else {
+            $pdo->prepare('UPDATE Student SET overall_status = :status WHERE student_id = :id')
+                ->execute(['status' => $newStatus, 'id' => $studentId]);
+            flashSet('student_status_msg', 'Status changed to ' . $statusLabels[$newStatus] . '.');
+            header('Location: ' . BASE_URL . '/registrar/student-view.php?id=' . $studentId . '&tab=general');
+            exit;
+        }
+    }
+}
+
+/*
+ * Updates the document checklist after placement, for example when a late report card arrives.
+ * Only rows that belong to this student's own application can change.
+ */
+$docMessage = flashGet('student_doc_msg');
+$docError = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_documents' && $student['application_id']) {
+    $posted = $_POST['doc_status'] ?? [];
+    $stmt = $pdo->prepare('SELECT document_id, status FROM Enrollment_Document WHERE application_id = :id');
+    $stmt->execute(['id' => $student['application_id']]);
+    $currentDocs = array_column($stmt->fetchAll(), 'status', 'document_id');
+
+    $changes = [];
+    if (is_array($posted)) {
+        foreach ($posted as $docId => $status) {
+            if (isset($currentDocs[$docId]) && in_array($status, ['verified', 'missing'], true) && $currentDocs[$docId] !== $status) {
+                $changes[(int)$docId] = $status;
+            }
+        }
     }
 
-    flashSet('regenerated', ['regenerated' => $regenerated, 'mailWarning' => $mailWarning]);
-    header('Location: ' . BASE_URL . '/registrar/student-view.php?id=' . $studentId . '&tab=password');
-    exit;
+    if (!$changes) {
+        $docError = 'No document was changed.';
+    } else {
+        try {
+            $pdo->beginTransaction();
+            $update = $pdo->prepare(
+                'UPDATE Enrollment_Document SET status = :status, verified_by = :by WHERE document_id = :id AND application_id = :app'
+            );
+            foreach ($changes as $docId => $status) {
+                $update->execute([
+                    'status' => $status,
+                    'by'     => $status === 'verified' ? $user['account_id'] : null,
+                    'id'     => $docId,
+                    'app'    => $student['application_id'],
+                ]);
+            }
+            $pdo->commit();
+            flashSet('student_doc_msg', 'Documents updated.');
+            header('Location: ' . BASE_URL . '/registrar/student-view.php?id=' . $studentId . '&tab=general');
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            $docError = errorMessage($e, 'Could not update the documents.');
+        }
+    }
 }
 
 $tabs = ['general', 'schedule', 'subjects', 'password'];
 $tab = in_array($_GET['tab'] ?? '', $tabs, true) ? $_GET['tab'] : 'general';
+if (in_array($_POST['action'] ?? '', ['send_link', 'change_email'], true)) {
+    $tab = 'password';
+}
 $isTransferee = $student['student_type'] === 'transferee';
 
 $application = null;
@@ -83,7 +201,7 @@ if ($student['application_id']) {
     $stmt->execute(['id' => $student['application_id']]);
     $application = $stmt->fetch() ?: null;
 
-    $stmt = $pdo->prepare('SELECT document_type, status FROM Enrollment_Document WHERE application_id = :id ORDER BY document_id');
+    $stmt = $pdo->prepare('SELECT document_id, document_type, status FROM Enrollment_Document WHERE application_id = :id ORDER BY document_id');
     $stmt->execute(['id' => $student['application_id']]);
     $documents = $stmt->fetchAll();
 }
@@ -142,13 +260,14 @@ if ($tab === 'subjects') {
          JOIN Program_shift_request r ON r.request_id = sc.request_id
          JOIN Subject sub ON sub.subject_id = sc.credited_subject_id
          LEFT JOIN Enrolled_subject es ON es.enrolled_subject_id = sc.enrolled_subject_id
-         WHERE r.student_id = :sid ORDER BY sub.subject_code'
+         WHERE r.student_id = :sid AND r.status = \'approved\' ORDER BY sub.subject_code'
     );
     $stmt->execute(['sid' => $studentId]);
     $shiftCredits = $stmt->fetchAll();
 }
 
-$row = fn($label, $value) => '<dt class="col-sm-4">' . htmlspecialchars($label) . '</dt><dd class="col-sm-8">'
+/* Not $row: navbar.php reuses that name and would overwrite this closure. */
+$infoRow = fn($label, $value) => '<dt class="col-sm-4">' . htmlspecialchars($label) . '</dt><dd class="col-sm-8">'
     . ($value !== null && trim((string)$value) !== '' ? htmlspecialchars((string)$value) : '<span class="text-muted">&mdash;</span>') . '</dd>';
 $join = fn(array $parts, string $sep = ' ') => trim(implode($sep, array_filter($parts, fn($p) => $p !== null && trim((string)$p) !== '')));
 $units = fn($u) => rtrim(rtrim(number_format((float)$u, 2), '0'), '.');
@@ -178,41 +297,86 @@ $base = '?id=' . $studentId . '&tab=';
         <?= $isTransferee ? '<span class="badge text-bg-info">Transferee</span>' : '' ?>
     </p>
 
-    <?= tabBar([
+    <?php
+    $tabItems = [
         'general' => ['label' => 'General', 'href' => $base . 'general'],
         'schedule' => ['label' => 'Schedule', 'href' => $base . 'schedule'],
         'subjects' => ['label' => 'Subjects', 'href' => $base . 'subjects'],
-        'password' => ['label' => 'Password', 'href' => $base . 'password'],
-    ], $tab) ?>
+        'password' => ['label' => 'Account', 'href' => $base . 'password'],
+    ];
+    if ($isTransferee) {
+        $creditBase = BASE_URL . '/registrar/transferee-credit.php?student_id=' . $studentId . '&view=';
+        $tabItems['credit'] = ['label' => 'Credit Evaluation', 'href' => $creditBase . 'credits'];
+        $tabItems['addsubjects'] = ['label' => 'Add Subjects', 'href' => $creditBase . 'add'];
+    }
+    ?>
+    <?= tabBar($tabItems, $tab) ?>
 
     <?php if ($tab === 'general'): ?>
+        <?php if ($docMessage): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($docMessage) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
+        <?php if ($docError): ?><div class="alert alert-danger"><?= htmlspecialchars($docError) ?></div><?php endif; ?>
+        <?php if ($statusMessage): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($statusMessage) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
+        <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
         <div class="row g-3">
+            <div class="col-12">
+                <div class="card"><div class="card-header">Student status</div><div class="card-body">
+                    <form method="post" class="row g-2 align-items-end">
+                        <input type="hidden" name="action" value="set_status">
+                        <input type="hidden" name="id" value="<?= $studentId ?>">
+                        <div class="col-sm-6 col-md-4">
+                            <label for="status" class="form-label">Status</label>
+                            <select class="form-select" id="status" name="status">
+                                <?php foreach (['active' => 'Active', 'on_leave' => 'On Leave', 'dropped' => 'Dropped', 'graduated' => 'Graduated'] as $value => $label): ?>
+                                    <option value="<?= $value ?>"<?= $student['overall_status'] === $value ? ' selected' : '' ?>><?= $label ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-primary" data-confirm="Change this student's status? Only active students can enroll." data-confirm-label="Update">Update status</button>
+                        </div>
+                    </form>
+                    <div class="form-text mt-2">Graduated is only allowed once every subject in the student's curriculum is completed.</div>
+                </div></div>
+            </div>
             <div class="col-lg-6">
                 <div class="card h-100"><div class="card-header">Enrollment</div><div class="card-body"><dl class="row mb-0">
-                    <?= $row('ID number', $student['student_id_number']) ?>
-                    <?= $row('Username', $student['username']) ?>
-                    <?= $row('Account email', $student['account_email']) ?>
-                    <?= $row('Program', $student['program_code'] . ' — ' . $student['program_name']) ?>
-                    <?= $row('Year level', $student['year_level']) ?>
-                    <?= $row('Section', $student['section_name']) ?>
-                    <?= $row('Latest term', $student['school_year'] ? $student['school_year'] . ' Semester ' . $student['semester'] : null) ?>
-                    <?= $row('Student type', ucfirst($student['student_type'])) ?>
+                    <?= $infoRow('ID number', $student['student_id_number']) ?>
+                    <?= $infoRow('Username', $student['username']) ?>
+                    <?= $infoRow('Account email', $student['account_email']) ?>
+                    <?= $infoRow('Program', $student['program_code'] . ' - ' . $student['program_name']) ?>
+                    <?= $infoRow('Year level', $student['year_level']) ?>
+                    <?= $infoRow('Section', $student['section_name']) ?>
+                    <?= $infoRow('Latest term', $student['school_year'] ? $student['school_year'] . ' Semester ' . $student['semester'] : null) ?>
+                    <?= $infoRow('Student type', ucfirst($student['student_type'])) ?>
                 </dl></div></div>
             </div>
             <div class="col-lg-6">
                 <div class="card h-100"><div class="card-header">Application</div><div class="card-body"><dl class="row mb-0">
                     <?php if ($application): ?>
-                        <?= $row('Application #', $application['application_id']) ?>
-                        <?= $row('Submitted', $application['application_date']) ?>
-                        <?= $row('Validated', $application['date_validated']) ?>
-                        <?= $row('Evaluated year level', $application['evaluated_year_level']) ?>
-                        <?php if ($isTransferee): ?><?= $row('Applicant reported year', $application['applicant_year_level'] ?? null) ?><?php endif; ?>
+                        <?= $infoRow('Application #', $application['application_id']) ?>
+                        <?= $infoRow('Submitted', $application['application_date']) ?>
+                        <?= $infoRow('Validated', $application['date_validated']) ?>
+                        <?= $infoRow('Evaluated year level', $application['evaluated_year_level']) ?>
+                        <?php if ($isTransferee): ?><?= $infoRow('Applicant reported year', $application['applicant_year_level'] ?? null) ?><?php endif; ?>
                         <dt class="col-sm-4">Documents</dt>
                         <dd class="col-sm-8">
-                            <?php foreach ($documents as $d): ?>
-                                <div><?= htmlspecialchars($d['document_type']) ?> <?= statusBadge($d['status']) ?></div>
-                            <?php endforeach; ?>
-                            <?php if (!$documents): ?><span class="text-muted">&mdash;</span><?php endif; ?>
+                            <?php if ($documents): ?>
+                                <form method="post">
+                                    <input type="hidden" name="action" value="set_documents">
+                                    <input type="hidden" name="id" value="<?= $studentId ?>">
+                                    <?php foreach ($documents as $d): ?>
+                                        <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+                                            <span><?= htmlspecialchars($d['document_type']) ?></span>
+                                            <select class="form-select form-select-sm w-auto" name="doc_status[<?= (int)$d['document_id'] ?>]">
+                                                <option value="verified" <?= $d['status'] === 'verified' ? 'selected' : '' ?>>Verified</option>
+                                                <option value="missing" <?= $d['status'] === 'missing' ? 'selected' : '' ?>>Missing</option>
+                                                <?php if ($d['status'] === 'submitted'): ?><option value="submitted" selected>Submitted</option><?php endif; ?>
+                                            </select>
+                                        </div>
+                                    <?php endforeach; ?>
+                                    <button type="submit" class="btn btn-outline-primary btn-sm mt-2">Save documents</button>
+                                </form>
+                            <?php else: ?><span class="text-muted">&mdash;</span><?php endif; ?>
                         </dd>
                     <?php else: ?>
                         <dd class="col-12 text-muted mb-0">No application is linked to this student.</dd>
@@ -221,22 +385,22 @@ $base = '?id=' . $studentId . '&tab=';
             </div>
             <div class="col-lg-6">
                 <div class="card h-100"><div class="card-header">Personal</div><div class="card-body"><dl class="row mb-0">
-                    <?= $row('Full name', $fullName) ?>
-                    <?= $row('Birthdate', $student['birthdate']) ?>
-                    <?= $row('Address', $join([$student['purok'], $student['barangay'], $student['municipality'], $student['province']], ', ')) ?>
-                    <?= $row('Contact no.', $student['contact_no']) ?>
-                    <?= $row('Email', $student['email_address']) ?>
+                    <?= $infoRow('Full name', $fullName) ?>
+                    <?= $infoRow('Birthdate', $student['birthdate']) ?>
+                    <?= $infoRow('Address', $join([$student['purok'], $student['barangay'], $student['municipality'], $student['province']], ', ')) ?>
+                    <?= $infoRow('Contact no.', $student['contact_no']) ?>
+                    <?= $infoRow('Email', $student['email_address']) ?>
                 </dl></div></div>
             </div>
             <div class="col-lg-6">
                 <div class="card h-100"><div class="card-header">Family and guardian</div><div class="card-body"><dl class="row mb-0">
-                    <?= $row('Father', $join([$student['father_first_name'], $student['father_middle_name'], $student['father_last_name'], $student['father_suffix']])) ?>
-                    <?= $row('Father occupation', $student['father_occupation']) ?>
-                    <?= $row('Mother', $join([$student['mother_first_name'], $student['mother_middle_name'], $student['mother_maiden_name']])) ?>
-                    <?= $row('Mother occupation', $student['mother_occupation']) ?>
-                    <?= $row('Guardian', $student['guardian_name']) ?>
-                    <?= $row('Relationship', $student['guardian_relationship']) ?>
-                    <?= $row('Guardian contact', $student['guardian_contact_no']) ?>
+                    <?= $infoRow('Father', $join([$student['father_first_name'], $student['father_middle_name'], $student['father_last_name'], $student['father_suffix']])) ?>
+                    <?= $infoRow('Father occupation', $student['father_occupation']) ?>
+                    <?= $infoRow('Mother', $join([$student['mother_first_name'], $student['mother_middle_name'], $student['mother_maiden_name']])) ?>
+                    <?= $infoRow('Mother occupation', $student['mother_occupation']) ?>
+                    <?= $infoRow('Guardian', $student['guardian_name']) ?>
+                    <?= $infoRow('Relationship', $student['guardian_relationship']) ?>
+                    <?= $infoRow('Guardian contact', $student['guardian_contact_no']) ?>
                 </dl></div></div>
             </div>
         </div>
@@ -246,13 +410,6 @@ $base = '?id=' . $studentId . '&tab=';
         <?= $events ? renderScheduleGrid($events) : '<div class="alert alert-info">No classes on this enrollment yet.</div>' ?>
 
     <?php elseif ($tab === 'subjects'): ?>
-        <?php if ($isTransferee): ?>
-            <div class="mb-3 d-flex gap-2">
-                <a href="<?= BASE_URL ?>/registrar/transferee-credit.php?student_id=<?= $studentId ?>&view=credits" class="btn btn-outline-info btn-sm">Credit evaluation</a>
-                <a href="<?= BASE_URL ?>/registrar/transferee-credit.php?student_id=<?= $studentId ?>&view=add" class="btn btn-outline-primary btn-sm">Add subjects</a>
-            </div>
-        <?php endif; ?>
-
         <?php foreach ($byEnrollment as $block): $h = $block['head']; ?>
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between">
@@ -301,31 +458,105 @@ $base = '?id=' . $studentId . '&tab=';
         <?php endif; ?>
 
     <?php else: ?>
+        <?php
+        $linkState = accountActivationStatuses($pdo, [(int)$student['account_id']])[(int)$student['account_id']] ?? 'active';
+        $stateBadges = ['active' => ['Active', 'success'], 'pending' => ['Invite pending', 'warning'], 'expired' => ['Invite expired', 'danger']];
+        [$stateLabel, $stateTone] = $stateBadges[$linkState] ?? $stateBadges['active'];
+        $emailOnFile = trim((string)$student['account_email']);
+        $canSendLink = $emailOnFile !== '' && (int)$student['account_active'] === 1;
+        $isActivated = $linkState === 'active';
+        $linkConfirm = $isActivated
+            ? 'Email a reset link, valid for 30 minutes, to ' . $emailOnFile . '? Their current password keeps working until they use it.'
+            : 'Email a fresh 24-hour invite to ' . $emailOnFile . '? Any earlier invite stops working.';
+        $linkLabel = $isActivated ? 'Send reset link' : 'Resend invite';
+        ?>
+        <?php if ($linkMessage): ?><div class="alert alert-success alert-dismissible fade show"><?= htmlspecialchars($linkMessage) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
+        <?php if ($linkWarning): ?><div class="alert alert-warning alert-dismissible fade show"><?= htmlspecialchars($linkWarning) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
         <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-        <?php if ($mailWarning): ?><div class="alert alert-warning"><?= htmlspecialchars($mailWarning) ?></div><?php endif; ?>
-        <?php if ($regenerated): ?>
-            <div class="alert alert-success alert-dismissible fade show">
-                <strong>New temporary password generated.</strong>
-                <?php if (!$mailWarning): ?>Email has been sent to <strong><?= htmlspecialchars($regenerated['email']) ?></strong>.<?php endif; ?>
-                Their old password no longer works.
-                <dl class="row mb-0 mt-2">
-                    <dt class="col-sm-2">Username</dt><dd class="col-sm-10"><code><?= htmlspecialchars($regenerated['username']) ?></code></dd>
-                    <dt class="col-sm-2">New Password</dt><dd class="col-sm-10"><code><?= htmlspecialchars($regenerated['password']) ?></code></dd>
-                </dl>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        <?php endif; ?>
         <div class="card"><div class="card-body">
-            <p class="mb-1">Username: <code><?= htmlspecialchars($student['username']) ?></code></p>
-            <p class="text-muted">Email on file: <?= $student['account_email'] ? htmlspecialchars($student['account_email']) : 'none' ?></p>
-            <form method="post">
-                <input type="hidden" name="action" value="regenerate_password">
-                <input type="hidden" name="id" value="<?= $studentId ?>">
-                <button type="submit" class="btn btn-outline-warning"
-                        data-confirm="Generate a new temporary password for this student? Their current password will stop working immediately."
-                        data-confirm-label="Regenerate" data-confirm-tone="warning">Regenerate Password</button>
-            </form>
+            <dl class="row mb-3">
+                <dt class="col-sm-3">Username</dt><dd class="col-sm-9"><code><?= htmlspecialchars($student['username']) ?></code></dd>
+                <dt class="col-sm-3">Email on file</dt><dd class="col-sm-9"><?= $emailOnFile !== '' ? htmlspecialchars($emailOnFile) : '<span class="text-muted">none</span>' ?></dd>
+                <dt class="col-sm-3">Account status</dt><dd class="col-sm-9"><span class="badge text-bg-<?= $stateTone ?>"><?= $stateLabel ?></span></dd>
+            </dl>
+            <p class="small text-muted">
+                Passwords are never shown. <?= $isActivated
+                    ? 'The student chose their own password. If they forgot it, send a reset link.'
+                    : 'The student has not chosen a password yet. The invite link is only ever emailed.' ?>
+            </p>
+            <div class="d-flex flex-wrap gap-2">
+                <form method="post">
+                    <input type="hidden" name="action" value="send_link">
+                    <input type="hidden" name="id" value="<?= $studentId ?>">
+                    <button type="submit" class="btn btn-outline-warning"<?= $canSendLink ? '' : ' disabled' ?>
+                            data-confirm="<?= htmlspecialchars($linkConfirm) ?>"
+                            data-confirm-label="<?= $linkLabel ?>" data-confirm-tone="warning"><?= $linkLabel ?></button>
+                </form>
+                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#changeEmailModal">Change email</button>
+            </div>
+            <?php if (!$canSendLink): ?><div class="form-text mt-2">No link can be sent until a valid email is on file.</div><?php endif; ?>
         </div></div>
+
+        <div class="modal fade" id="changeEmailModal" tabindex="-1" aria-labelledby="changeEmailTitle" aria-hidden="true">
+            <div class="modal-dialog"><div class="modal-content">
+                <form method="post" id="changeEmailForm">
+                    <input type="hidden" name="action" value="change_email">
+                    <input type="hidden" name="id" value="<?= $studentId ?>">
+                    <div class="modal-header">
+                        <h2 class="modal-title h5" id="changeEmailTitle">Change email</h2>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <?php if ($emailError): ?><div class="alert alert-danger js-modal-alert"><?= htmlspecialchars($emailError) ?></div><?php endif; ?>
+                        <p class="small text-muted mb-2">Current email: <?= $emailOnFile !== '' ? htmlspecialchars($emailOnFile) : 'none' ?></p>
+                        <label class="form-label" for="newEmail">New email</label>
+                        <input type="email" class="form-control" id="newEmail" name="email" maxlength="255" required
+                               value="<?= htmlspecialchars((string)($_POST['email'] ?? '')) ?>">
+                        <div class="alert alert-warning small mt-3 mb-0 d-none" id="emailWarn">
+                            <div class="fw-semibold mb-1">Change this student's email?</div>
+                            <div class="mb-1"><span id="emailOld"></span> &rarr; <span id="emailNew"></span></div>
+                            <div class="mb-2">Whoever controls the new address can reset this account's password. Earlier password links stop working and the old address is notified.<?= $isActivated ? '' : ' A fresh invite goes to the new address.' ?></div>
+                            <button type="submit" class="btn btn-sm btn-warning">Confirm change</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="emailBack">Go back</button>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="emailContinue">Continue</button>
+                    </div>
+                </form>
+            </div></div>
+        </div>
+        <script>
+        (function () {
+            var modalEl = document.getElementById('changeEmailModal');
+            var form = document.getElementById('changeEmailForm');
+            var input = document.getElementById('newEmail');
+            var warn = document.getElementById('emailWarn');
+            var cont = document.getElementById('emailContinue');
+            var current = <?= json_encode($emailOnFile, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+
+            function reset() { warn.classList.add('d-none'); cont.classList.remove('d-none'); }
+
+            cont.addEventListener('click', function () {
+                if (!form.reportValidity()) { return; }
+                var next = input.value.trim();
+                if (next.toLowerCase() === current.toLowerCase()) { form.submit(); return; }
+                document.getElementById('emailOld').textContent = current || '(none)';
+                document.getElementById('emailNew').textContent = next;
+                cont.classList.add('d-none');
+                warn.classList.remove('d-none');
+            });
+            document.getElementById('emailBack').addEventListener('click', reset);
+            modalEl.addEventListener('hidden.bs.modal', function () {
+                reset();
+                modalEl.querySelectorAll('.js-modal-alert').forEach(function (a) { a.remove(); });
+            });
+<?php if ($emailError): ?>
+            document.addEventListener('DOMContentLoaded', function () { bootstrap.Modal.getOrCreateInstance(modalEl).show(); });
+<?php endif; ?>
+        })();
+        </script>
     <?php endif; ?>
 </div>
 </body>

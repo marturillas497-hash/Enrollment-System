@@ -1,14 +1,10 @@
--- MIST Enrollment System: database schema
--- 23 tables, all InnoDB utf8mb4. Current through Batch 9 (October 2026): unique subject code and unique
--- term (school year + semester), Admission_Application.applicant_year_level, grade CHECK constraints,
--- Password_reset, Account_email_change, and Accounts.email / session_version / is_active / activated_at.
---
--- Import into an existing EMPTY database. FOREIGN_KEY_CHECKS stays on so a bad FK fails the import.
--- This file holds structure only. To wipe an existing database back to a clean slate, run MIST_Full_Reset.sql instead.
---
--- phpMyAdmin 4.9 underlines CHECK in red and leaves CHECK constraints out of its exports. Both are cosmetic;
--- the server enforces them. After an import, MIST_Full_Reset.sql's last query should report 22 tables,
--- 0 non-InnoDB, 45 foreign keys and 2 check constraints.
+-- MIST Enrollment System: fresh import
+-- Structure (23 tables, InnoDB utf8mb4) plus 6 departments, 6 programs and the Admin account.
+-- Import into an existing EMPTY database. Do not import over a database that already has data.
+-- Login: username Admin, password Admin123 (change it after first login).
+
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
 
 CREATE TABLE `Accounts` (
   `account_id` INT NOT NULL AUTO_INCREMENT,
@@ -409,3 +405,23 @@ CREATE TABLE `Account_email_change` (
   CONSTRAINT `fk_account_email_change_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_account_email_change_changed_by` FOREIGN KEY (`changed_by`) REFERENCES `Accounts` (`account_id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+
+INSERT INTO `Department` (`department_id`, `department_name`, `max_units_per_term`) VALUES
+(1, 'COLLEGE OF TECHNOLOGY AND INFORMATION SYSTEMS', 25),
+(2, 'COLLEGE OF CRIMINAL JUSTICE AND EDUCATION', 25),
+(3, 'COLLEGE OF PUBLIC ADMINISTRATION', 25),
+(4, 'COLLEGE OF BUSINESS', 25),
+(5, 'COLLEGE OF AGRICULTURE', 25),
+(6, 'COLLEGE OF MEDICINE', 25);
+
+INSERT INTO `Program` (`program_id`, `department_id`, `program_code`, `program_name`) VALUES
+(1, 1, 'BSIS', 'BACHELOR OF SCIENCE IN INFORMATION SYSTEMS'),
+(2, 2, 'BSCRIM', 'BACHELOR OF SCIENCE IN CRIMINOLOGY'),
+(3, 3, 'BPA', 'BACHELOR OF SCIENCE IN PUBLIC ADMINISTRATION'),
+(4, 4, 'BSE', 'BACHELOR OF SCIENCE IN ENTREPRENEURSHIP'),
+(5, 5, 'BSA', 'BACHELOR OF SCIENCE IN AGRICULTURE'),
+(6, 6, 'BSM', 'BACHELOR OF SCIENCE IN MIDWIFERY');
+
+INSERT INTO `Accounts` (`username`, `email`, `password_hash`, `role`, `must_change_password`, `session_version`, `is_active`, `activated_at`) VALUES
+('Admin', NULL, '$2y$12$5hVNTIINFeHT/HH9TagYZerqbQTaIruDNEaqgcZBRV0870I.Jszi.', 'admin', 0, 0, 1, CURRENT_TIMESTAMP);

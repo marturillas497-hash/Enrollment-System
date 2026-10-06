@@ -9,6 +9,46 @@ $error = '';
 $message = '';
 $dupNameWarning = '';
 
+/**
+ * Where a subject is referenced. Subjects are shared by every department, so editing or deleting
+ * one reaches curricula, offerings, prerequisites and credits well beyond the registrar's own.
+ */
+function subjectUsage(PDO $pdo, int $subjectId): array
+{
+    $one = function (string $sql) use ($pdo, $subjectId): int {
+        preg_match_all('/:(\w+)/', $sql, $found);
+        $params = array_fill_keys(array_unique($found[1]), $subjectId);
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return (int)$stmt->fetchColumn();
+    };
+
+    $usage = [
+        'curricula' => $one('SELECT COUNT(DISTINCT curriculum_id) FROM Curriculum_subject WHERE subject_id = :id'),
+        'departments' => $one(
+            'SELECT COUNT(DISTINCT p.department_id) FROM Curriculum_subject cs
+             JOIN Curriculum c ON c.curriculum_id = cs.curriculum_id JOIN Program p ON p.program_id = c.program_id
+             WHERE cs.subject_id = :id'
+        ),
+        'offerings' => $one('SELECT COUNT(*) FROM Class_Offering WHERE subject_id = :id'),
+        'prerequisites' => $one('SELECT COUNT(*) FROM Prerequisite WHERE subject_id = :as_subject OR prerequisite_subject_id = :as_required'),
+        'credits' => $one('SELECT (SELECT COUNT(*) FROM Shift_credit WHERE credited_subject_id = :shift_id) + (SELECT COUNT(*) FROM Transferee_credit WHERE credited_subject_id = :transfer_id)'),
+    ];
+    $usage['total'] = $usage['curricula'] + $usage['offerings'] + $usage['prerequisites'] + $usage['credits'];
+
+    $parts = [];
+    if ($usage['curricula'] > 0) {
+        $parts[] = $usage['curricula'] . ' curricul' . ($usage['curricula'] === 1 ? 'um' : 'a')
+            . ' in ' . $usage['departments'] . ' department' . ($usage['departments'] === 1 ? '' : 's');
+    }
+    if ($usage['offerings'] > 0) { $parts[] = $usage['offerings'] . ' class offering' . ($usage['offerings'] === 1 ? '' : 's'); }
+    if ($usage['prerequisites'] > 0) { $parts[] = $usage['prerequisites'] . ' prerequisite link' . ($usage['prerequisites'] === 1 ? '' : 's'); }
+    if ($usage['credits'] > 0) { $parts[] = $usage['credits'] . ' credit record' . ($usage['credits'] === 1 ? '' : 's'); }
+    $usage['summary'] = $parts ? implode(', ', $parts) . '.' : '';
+
+    return $usage;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
@@ -49,11 +89,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'delete') {
         $id = $_POST['subject_id'] ?? '';
-        try {
-            $pdo->prepare('DELETE FROM Subject WHERE subject_id = :id')->execute(['id' => $id]);
-            $message = "Subject #$id deleted.";
-        } catch (Exception $e) {
-            $error = "Can't delete this subject — it's still referenced by a curriculum, offering, or prerequisite.";
+        $usage = subjectUsage($pdo, ctype_digit((string)$id) ? (int)$id : 0);
+        if ($usage['total'] > 0) {
+            $error = 'This subject is still in use: ' . $usage['summary'] . ' Remove it from those first.';
+        } else {
+            try {
+                $pdo->prepare('DELETE FROM Subject WHERE subject_id = :id')->execute(['id' => $id]);
+                $message = "Subject #$id deleted.";
+            } catch (Exception $e) {
+                $error = errorMessage($e, 'Could not delete this subject.');
+            }
         }
     }
 }
@@ -75,6 +120,9 @@ if ($search !== '') {
     $subjects = $stmt->fetchAll();
 } else {
     $subjects = $pdo->query('SELECT * FROM Subject ORDER BY subject_code')->fetchAll();
+}
+foreach ($subjects as $i => $s) {
+    $subjects[$i]['usage'] = subjectUsage($pdo, (int)$s['subject_id']);
 }
 ?>
 <!DOCTYPE html>
@@ -108,7 +156,7 @@ if ($search !== '') {
 
     <div class="table-responsive">
 <table class="table table-hover bg-white">
-        <thead><tr><th>Code</th><th>Name</th><th>Description</th><th>Units</th><th></th></tr></thead>
+        <thead><tr><th>Code</th><th>Name</th><th>Description</th><th>Units</th><th>Used by</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($subjects as $s): ?>
             <tr>
@@ -116,21 +164,26 @@ if ($search !== '') {
                 <td><?= htmlspecialchars($s['subject_name']) ?></td>
                 <td class="text-muted"><?= htmlspecialchars($s['subject_description'] ?? '') ?></td>
                 <td><?= $s['units'] ?></td>
+                <td class="small"><?= $s['usage']['total'] > 0 ? htmlspecialchars($s['usage']['summary']) : '<span class="text-muted">Not used</span>' ?></td>
                 <td>
                     <button type="button" class="btn btn-sm btn-outline-primary"
-                            data-subject="<?= htmlspecialchars(json_encode(['subject_id' => $s['subject_id'], 'subject_code' => $s['subject_code'], 'subject_name' => $s['subject_name'], 'subject_description' => $s['subject_description'] ?? '', 'units' => $s['units']]), ENT_QUOTES) ?>"
+                            data-subject="<?= htmlspecialchars(json_encode(['subject_id' => $s['subject_id'], 'subject_code' => $s['subject_code'], 'subject_name' => $s['subject_name'], 'subject_description' => $s['subject_description'] ?? '', 'units' => $s['units'], 'usage_note' => $s['usage']['curricula'] > 0 ? 'Shared subject: used by ' . $s['usage']['summary'] . ' Any change to the code, name or units applies everywhere it is used.' : '']), ENT_QUOTES) ?>"
                             onclick="openSubjectModal(JSON.parse(this.dataset.subject))">Edit</button>
                     <form method="post" class="d-inline">
                         <input type="hidden" name="action" value="delete">
                         <input type="hidden" name="subject_id" value="<?= $s['subject_id'] ?>">
-                        <button type="submit" class="btn btn-sm btn-outline-danger"
-                                data-confirm="Delete this subject?" data-confirm-label="Delete" data-confirm-tone="danger">Delete</button>
+                        <?php if ($s['usage']['total'] > 0): ?>
+                            <button type="button" class="btn btn-sm btn-outline-danger" disabled title="In use, so it cannot be deleted">Delete</button>
+                        <?php else: ?>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    data-confirm="Delete this subject? It is not used anywhere yet." data-confirm-label="Delete" data-confirm-tone="danger">Delete</button>
+                        <?php endif; ?>
                     </form>
                 </td>
             </tr>
         <?php endforeach; ?>
         <?php if (empty($subjects)): ?>
-            <tr><td colspan="5" class="text-muted"><?= $search !== '' ? 'No subjects match that search.' : 'No subjects yet.' ?></td></tr>
+            <tr><td colspan="6" class="text-muted"><?= $search !== '' ? 'No subjects match that search.' : 'No subjects yet.' ?></td></tr>
         <?php endif; ?>
         </tbody>
     </table>
@@ -148,6 +201,7 @@ if ($search !== '') {
       </div>
       <div class="modal-body">
         <?php if ($reopenForm && $error !== ''): ?><div class="alert alert-danger js-modal-alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+        <div class="alert alert-info" id="subjectUsageNote" hidden></div>
         <?php if ($dupNameWarning !== ''): ?><div class="alert alert-warning js-modal-alert"><?= htmlspecialchars($dupNameWarning) ?> Save anyway?<input type="hidden" name="confirm_dup_name" value="1"></div><?php endif; ?>
         <div class="row">
             <div class="col-8 mb-3">
@@ -184,6 +238,9 @@ function openSubjectModal(d) {
     document.getElementById('subjectName').value = d.subject_name || '';
     document.getElementById('subjectDescription').value = d.subject_description || '';
     document.getElementById('subjectUnits').value = d.units || '';
+    var note = document.getElementById('subjectUsageNote');
+    note.textContent = d.usage_note || '';
+    note.hidden = !d.usage_note;
     document.getElementById('subjectModalTitle').textContent = editing ? 'Edit Subject' : 'Add Subject';
     document.getElementById('subjectSave').textContent = editing ? 'Save Changes' : 'Add Subject';
     bootstrap.Modal.getOrCreateInstance(document.getElementById('subjectModal')).show();

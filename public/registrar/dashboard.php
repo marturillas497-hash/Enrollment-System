@@ -42,7 +42,7 @@ $pendingIrregular = (int)$stmt->fetchColumn();
 $stmt = $pdo->prepare(
     "SELECT COUNT(DISTINCT s.student_id) FROM Student s
      JOIN Enrollment e ON e.enrollment_id = (
-         SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
+         SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id AND e2.status <> 'rejected'
          ORDER BY e2.enrollment_id DESC LIMIT 1
      )
      JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
@@ -55,7 +55,7 @@ $activeStudentCount = (int)$stmt->fetchColumn();
 $stmt = $pdo->prepare(
     "SELECT COUNT(DISTINCT s.student_id) FROM Student s
      JOIN Enrollment e ON e.enrollment_id = (
-         SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id
+         SELECT e2.enrollment_id FROM Enrollment e2 WHERE e2.student_id = s.student_id AND e2.status <> 'rejected'
          ORDER BY e2.enrollment_id DESC LIMIT 1
      )
      JOIN Curriculum c ON c.curriculum_id = e.curriculum_id
@@ -101,7 +101,7 @@ if ($currentTerm) {
                 Current term: <strong><?= htmlspecialchars($currentTerm['school_year'] . ' — Semester ' . $currentTerm['semester']) ?></strong> (ongoing)
             </div>
         <?php else: ?>
-            <div class="alert alert-warning">No term is currently open. <a href="<?= BASE_URL ?>/registrar/terms.php">Open one</a>.</div>
+            <div class="alert alert-warning">No term is currently open. The administrator opens terms.</div>
         <?php endif; ?>
 
         <h2 class="h6 text-muted mt-4 mb-2">Needs Your Attention</h2>

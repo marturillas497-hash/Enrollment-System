@@ -6,6 +6,22 @@ require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
 
+/** Every subject the student has passed, across their whole history (3.00 or better). */
+function shiftPassedSubjects(PDO $pdo, int $studentId): array
+{
+    $stmt = $pdo->prepare(
+        "SELECT es.enrolled_subject_id, es.grade, es.remarks, sub.subject_code, sub.subject_name
+         FROM Enrolled_subject es
+         JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
+         JOIN Class_Offering co ON co.offering_id = es.offering_id
+         JOIN Subject sub ON sub.subject_id = co.subject_id
+         WHERE e.student_id = :sid AND es.grade IS NOT NULL AND es.grade <= 3.00
+         ORDER BY sub.subject_code"
+    );
+    $stmt->execute(['sid' => $studentId]);
+    return $stmt->fetchAll();
+}
+
 $stmt = $pdo->prepare('SELECT department_id FROM Registrar WHERE account_id = :aid');
 $stmt->execute(['aid' => $user['account_id']]);
 $myDepartmentId = $stmt->fetchColumn();
@@ -53,7 +69,51 @@ if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!ctype_digit((string)$targetYearLevel) || (int)$targetYearLevel < 1 || (int)$targetYearLevel > 4) {
             $error = 'Year level must be between 1 and 4.';
         } else {
-            try {
+            /*
+             * Never trust the posted ids: the section must belong to the target program and
+             * year level, every credited row must be a subject this student passed, and every
+             * credited subject must be in the target curriculum and used only once.
+             */
+            $sectionCheck = $pdo->prepare('SELECT 1 FROM Section WHERE section_id = :id AND program_id = :pid AND year_level = :yl');
+            $sectionCheck->execute([
+                'id' => ctype_digit((string)$targetSectionId) ? $targetSectionId : 0,
+                'pid' => $request['to_program_id'], 'yl' => $targetYearLevel,
+            ]);
+
+            $cleanCredits = [];
+            $creditError = '';
+            if ($sectionCheck->fetch() === false) {
+                $creditError = 'The target section must belong to the target program and the chosen year level.';
+            } else {
+                $passedIds = array_map('intval', array_column(shiftPassedSubjects($pdo, (int)$request['student_id']), 'enrolled_subject_id'));
+                $curriculumSubjects = $pdo->prepare('SELECT subject_id FROM Curriculum_subject WHERE curriculum_id = :cid');
+                $curriculumSubjects->execute(['cid' => $request['to_curriculum_id']]);
+                $targetIds = array_map('intval', array_column($curriculumSubjects->fetchAll(), 'subject_id'));
+
+                foreach (is_array($credits) ? $credits : [] as $enrolledSubjectId => $creditedSubjectId) {
+                    if ($creditedSubjectId === '') {
+                        continue;
+                    }
+                    if (!ctype_digit((string)$enrolledSubjectId) || !ctype_digit((string)$creditedSubjectId)
+                        || !in_array((int)$enrolledSubjectId, $passedIds, true)) {
+                        $creditError = 'One of the selected subjects is not a passed subject of this student.';
+                        break;
+                    }
+                    if (!in_array((int)$creditedSubjectId, $targetIds, true)) {
+                        $creditError = 'One of the credited subjects is not in the target curriculum.';
+                        break;
+                    }
+                    if (in_array((int)$creditedSubjectId, $cleanCredits, true)) {
+                        $creditError = 'A target subject can only be credited once.';
+                        break;
+                    }
+                    $cleanCredits[(int)$enrolledSubjectId] = (int)$creditedSubjectId;
+                }
+            }
+
+            if ($creditError !== '') {
+                $error = $creditError;
+            } else try {
                 $pdo->beginTransaction();
 
                 // Replace any previous evaluation for this request with the fresh selections.
@@ -63,13 +123,11 @@ if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
                     'INSERT INTO Shift_credit (request_id, enrolled_subject_id, credited_subject_id, evaluated_by)
                      VALUES (:rid, :esid, :csid, :by)'
                 );
-                foreach ($credits as $enrolledSubjectId => $creditedSubjectId) {
-                    if ($creditedSubjectId !== '') {
-                        $insertCredit->execute([
-                            'rid' => $requestId, 'esid' => $enrolledSubjectId,
-                            'csid' => $creditedSubjectId, 'by' => $user['account_id'],
-                        ]);
-                    }
+                foreach ($cleanCredits as $enrolledSubjectId => $creditedSubjectId) {
+                    $insertCredit->execute([
+                        'rid' => $requestId, 'esid' => $enrolledSubjectId,
+                        'csid' => $creditedSubjectId, 'by' => $user['account_id'],
+                    ]);
                 }
 
                 $pdo->prepare(
@@ -85,8 +143,17 @@ if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif ($action === 'approve') {
+        $termStatus = $pdo->prepare('SELECT status FROM School_term WHERE term_id = :id');
+        $termStatus->execute(['id' => $request['effective_term_id']]);
+        $alreadyEnrolled = $pdo->prepare('SELECT 1 FROM Enrollment WHERE student_id = :sid AND term_id = :tid');
+        $alreadyEnrolled->execute(['sid' => $request['student_id'], 'tid' => $request['effective_term_id']]);
+
         if ($request['credit_evaluation_status'] !== 'completed') {
             $error = 'Save the credit evaluation before approving.';
+        } elseif ($termStatus->fetchColumn() !== 'ongoing') {
+            $error = 'The term for this request is no longer open, so it cannot be approved. Reject it and ask the student to file a new request.';
+        } elseif ($alreadyEnrolled->fetch() !== false) {
+            $error = 'This student already has an enrollment for that term.';
         } else {
             try {
                 $pdo->beginTransaction();
@@ -120,11 +187,19 @@ if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($reason === '') {
             $error = 'A rejection reason is required.';
         } else {
-            $pdo->prepare(
-                "UPDATE Program_shift_request SET status = 'rejected', approved_by = :by, remarks = :reason WHERE request_id = :id"
-            )->execute(['by' => $user['account_id'], 'reason' => $reason, 'id' => $requestId]);
-            $message = 'Request rejected.';
-            $request = null;
+            try {
+                $pdo->beginTransaction();
+                $pdo->prepare(
+                    "UPDATE Program_shift_request SET status = 'rejected', approved_by = :by, remarks = :reason WHERE request_id = :id"
+                )->execute(['by' => $user['account_id'], 'reason' => $reason, 'id' => $requestId]);
+                $pdo->prepare('DELETE FROM Shift_credit WHERE request_id = :id')->execute(['id' => $requestId]);
+                $pdo->commit();
+                $message = 'Request rejected.';
+                $request = null;
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                $error = errorMessage($e, 'Could not reject.');
+            }
         }
     }
 
@@ -142,18 +217,7 @@ $existingCredits = [];
 $targetSections = [];
 $targetSubjects = [];
 if ($request) {
-    // Every subject the student has actually passed, across their whole history.
-    $stmt = $pdo->prepare(
-        "SELECT es.enrolled_subject_id, es.grade, es.remarks, sub.subject_code, sub.subject_name
-         FROM Enrolled_subject es
-         JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
-         JOIN Class_Offering co ON co.offering_id = es.offering_id
-         JOIN Subject sub ON sub.subject_id = co.subject_id
-         WHERE e.student_id = :sid AND (es.remarks = 'Passed' OR (es.grade IS NOT NULL AND es.grade <= 3.00))
-         ORDER BY sub.subject_code"
-    );
-    $stmt->execute(['sid' => $request['student_id']]);
-    $passedSubjects = $stmt->fetchAll();
+    $passedSubjects = shiftPassedSubjects($pdo, (int)$request['student_id']);
 
     $stmt = $pdo->prepare('SELECT enrolled_subject_id, credited_subject_id FROM Shift_credit WHERE request_id = :id');
     $stmt->execute(['id' => $requestId]);

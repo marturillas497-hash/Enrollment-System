@@ -12,7 +12,7 @@ $stmt->execute(['aid' => $user['account_id']]);
 $student = $stmt->fetch();
 
 $stmt = $pdo->prepare(
-    'SELECT * FROM Enrollment WHERE student_id = :sid ORDER BY enrollment_id DESC LIMIT 1'
+    "SELECT * FROM Enrollment WHERE student_id = :sid AND status <> 'rejected' ORDER BY enrollment_id DESC LIMIT 1"
 );
 $stmt->execute(['sid' => $student['student_id']]);
 $latestEnrollment = $stmt->fetch();
@@ -41,9 +41,11 @@ elseif ($latestEnrollment['student_standing'] !== 'irregular') { $eligible = fal
 elseif ($student['overall_status'] !== 'active') { $eligible = false; $error = 'Your account is not active for enrollment.'; }
 
 if ($eligible) {
-    $check = $pdo->prepare('SELECT 1 FROM Enrollment WHERE student_id = :sid AND term_id = :tid');
+    $check = $pdo->prepare('SELECT status FROM Enrollment WHERE student_id = :sid AND term_id = :tid');
     $check->execute(['sid' => $student['student_id'], 'tid' => $currentTerm['term_id']]);
-    if (!$shiftMode && $check->fetch() !== false) { $eligible = false; $error = 'You are already enrolled for this term.'; }
+    $termStatus = $check->fetchColumn();
+    if (!$shiftMode && $termStatus === 'rejected') { $eligible = false; $error = 'Your last selection for this term was rejected. Start over from your dashboard to choose again.'; }
+    elseif (!$shiftMode && $termStatus !== false) { $eligible = false; $error = 'You are already enrolled for this term.'; }
 
     $shiftCheck = $pdo->prepare("SELECT 1 FROM Program_shift_request WHERE student_id = :sid AND status = 'pending'");
     $shiftCheck->execute(['sid' => $student['student_id']]);
@@ -60,6 +62,8 @@ if ($eligible && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($toInsert)) {
         $error = 'Select at least one subject.';
     } elseif (($clash = findScheduleConflict($pdo, $toInsert)) !== null) {
+        $error = $clash;
+    } elseif (($clash = findSubjectTeacherConflict($pdo, $toInsert)) !== null) {
         $error = $clash;
     } else {
             try {

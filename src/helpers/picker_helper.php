@@ -134,3 +134,32 @@ function rosterSlots(PDO $pdo, int $enrollmentId): array
     $stmt->execute(['e' => $enrollmentId]);
     return $stmt->fetchAll();
 }
+
+/** A subject may only have one teacher within an enrollment. Returns the problem, or null. */
+function findSubjectTeacherConflict(PDO $pdo, array $offeringIds): ?string
+{
+    $offeringIds = array_values(array_unique(array_map('intval', $offeringIds)));
+    if (count($offeringIds) < 2) {
+        return null;
+    }
+    $in = implode(',', array_fill(0, count($offeringIds), '?'));
+    $stmt = $pdo->prepare(
+        "SELECT co.subject_id, co.teacher_id, s.subject_code, t.last_name
+         FROM Class_Offering co
+         JOIN Subject s ON s.subject_id = co.subject_id
+         JOIN Teacher t ON t.teacher_id = co.teacher_id
+         WHERE co.offering_id IN ($in)"
+    );
+    $stmt->execute($offeringIds);
+    $seen = [];
+    foreach ($stmt->fetchAll() as $r) {
+        $sid = (int)$r['subject_id'];
+        if (!isset($seen[$sid])) {
+            $seen[$sid] = ['teacher_id' => (int)$r['teacher_id'], 'last_name' => $r['last_name']];
+        } elseif ($seen[$sid]['teacher_id'] !== (int)$r['teacher_id']) {
+            return $r['subject_code'] . ' would have two teachers (' . $seen[$sid]['last_name'] . ' and ' . $r['last_name']
+                . '). A subject can only have one teacher. Nothing was saved.';
+        }
+    }
+    return null;
+}

@@ -52,97 +52,6 @@ function sendMail(string $toEmail, string $toName, string $subject, string $html
     return true;
 }
 
-/**
- * Standard "your account is ready" email, same content shape for every
- * role (student, teacher, registrar, admission_staff).
- */
-function sendAccountCredentialsEmail(string $toEmail, string $toName, string $username, string $tempPassword): bool
-{
-    $subject = 'Your MIST Enrollment System account is ready';
-    $body = renderCredentialsEmailHtml(
-        $toName,
-        'Your account has been created. Use the credentials below to log in:',
-        $username,
-        $tempPassword
-    );
-    return sendMail($toEmail, $toName, $subject, $body);
-}
-
-/**
- * Password was regenerated (admin resetting staff, registrar resetting a
- * student). Same credentials layout, different intro copy since there is
- * no new account being introduced here.
- */
-function sendPasswordResetEmail(string $toEmail, string $toName, string $username, string $tempPassword): bool
-{
-    $subject = 'Your MIST Enrollment System password has been reset';
-    $body = renderCredentialsEmailHtml(
-        $toName,
-        'Your password has been reset. Use the temporary password below to log in:',
-        $username,
-        $tempPassword
-    );
-    return sendMail($toEmail, $toName, $subject, $body);
-}
-
-/**
- * Table-based, inline-styled HTML so this renders consistently across
- * Gmail, Outlook, Apple Mail, etc. No external CSS, no flexbox/grid, no JS,
- * all styling is inline per the constraints of HTML email.
- */
-function renderCredentialsEmailHtml(string $toName, string $introLine, string $username, string $tempPassword): string
-{
-    $navy = '#1e3a8a';
-    $gold = '#c9a227';
-    $logoUrl = SITE_URL . '/assets/mist-logo.png';
-    $loginUrl = SITE_URL . '/login.php';
-
-    return '
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e8edf5;padding:32px 16px;">
-        <tr>
-            <td align="center">
-                <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-                    <tr>
-                        <td align="center" style="background:' . $navy . ';padding:28px 24px;">
-                            <img src="' . $logoUrl . '" width="64" height="64" alt="MIST" style="display:block;border:0;margin-bottom:8px;">
-                            <div style="color:#ffffff;font-size:18px;font-weight:bold;">MIST Enrollment System</div>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding:32px 28px;color:#212529;font-size:15px;line-height:1.5;">
-                            <p style="margin:0 0 16px;">Hi ' . htmlspecialchars($toName) . ',</p>
-                            <p style="margin:0 0 20px;">' . htmlspecialchars($introLine) . '</p>
-                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ' . $gold . ';border-radius:6px;margin-bottom:20px;">
-                                <tr>
-                                    <td style="padding:16px 20px;border-left:4px solid ' . $gold . ';">
-                                        <div style="font-size:13px;color:#6c757d;text-transform:uppercase;letter-spacing:.03em;">Username</div>
-                                        <div style="font-size:16px;font-weight:bold;color:' . $navy . ';margin-bottom:12px;">' . htmlspecialchars($username) . '</div>
-                                        <div style="font-size:13px;color:#6c757d;text-transform:uppercase;letter-spacing:.03em;">Temporary Password</div>
-                                        <div style="font-size:16px;font-weight:bold;color:' . $navy . ';">' . htmlspecialchars($tempPassword) . '</div>
-                                    </td>
-                                </tr>
-                            </table>
-                            <p style="margin:0 0 20px;">You will be asked to change this password on your first login.</p>
-                            <table role="presentation" cellpadding="0" cellspacing="0">
-                                <tr>
-                                    <td style="background:' . $navy . ';border-radius:6px;">
-                                        <a href="' . $loginUrl . '" style="display:inline-block;padding:12px 28px;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;">Log In</a>
-                                    </td>
-                                </tr>
-                            </table>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td align="center" style="padding:18px;background:#f4f6fa;color:#8a94a3;font-size:12px;">
-                            Makilala Institute of Science and Technology &mdash; BSIS Department
-                        </td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>';
-}
-
 /** Self-service "forgot password" email: a single-use link, no password in the mail. */
 function sendPasswordResetLinkEmail(string $toEmail, string $toName, string $username, string $resetUrl, int $minutes): bool
 {
@@ -188,11 +97,97 @@ function renderResetLinkEmailHtml(string $toName, string $username, string $rese
                     </tr>
                     <tr>
                         <td align="center" style="padding:18px;background:#f4f6fa;color:#8a94a3;font-size:12px;">
-                            Makilala Institute of Science and Technology &mdash; BSIS Department
+                            Makilala Institute of Science and Technology
                         </td>
                     </tr>
                 </table>
             </td>
         </tr>
     </table>';
+}
+
+/** First-time "set your password" email for a new account. The link is single-use. */
+function sendInviteEmail(string $toEmail, string $toName, string $username, string $inviteUrl, int $hours): bool
+{
+    $subject = 'Welcome to the MIST Enrollment System: set your password';
+    return sendMail($toEmail, $toName, $subject, renderInviteEmailHtml($toName, $username, $inviteUrl, $hours));
+}
+
+function renderInviteEmailHtml(string $toName, string $username, string $inviteUrl, int $hours): string
+{
+    $navy = '#1e3a8a';
+    $gold = '#c9a227';
+    $logoUrl = SITE_URL . '/assets/mist-logo.png';
+    $safeUrl = htmlspecialchars($inviteUrl);
+
+    return '
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e8edf5;padding:32px 16px;">
+        <tr>
+            <td align="center">
+                <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+                    <tr>
+                        <td align="center" style="background:' . $navy . ';padding:28px 24px;">
+                            <img src="' . $logoUrl . '" width="64" height="64" alt="MIST" style="display:block;border:0;margin-bottom:8px;">
+                            <div style="color:#ffffff;font-size:18px;font-weight:bold;">MIST Enrollment System</div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:32px 28px;color:#212529;font-size:15px;line-height:1.5;">
+                            <p style="margin:0 0 16px;">Hi ' . htmlspecialchars($toName) . ',</p>
+                            <p style="margin:0 0 16px;">An account has been created for you. Your username is:</p>
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ' . $gold . ';border-radius:6px;margin-bottom:20px;">
+                                <tr>
+                                    <td style="padding:14px 20px;border-left:4px solid ' . $gold . ';">
+                                        <div style="font-size:16px;font-weight:bold;color:' . $navy . ';">' . htmlspecialchars($username) . '</div>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin:0 0 20px;">Choose your own password to start using it:</p>
+                            <table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+                                <tr>
+                                    <td style="background:' . $navy . ';border-radius:6px;">
+                                        <a href="' . $safeUrl . '" style="display:inline-block;padding:12px 28px;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;">Set Your Password</a>
+                                    </td>
+                                </tr>
+                            </table>
+                            <p style="margin:0 0 16px;border-left:4px solid ' . $gold . ';padding-left:12px;color:#495057;">This link expires in ' . $hours . ' hours and can only be used once.</p>
+                            <p style="margin:0 0 8px;font-size:13px;color:#6c757d;">If the button does not work, copy and paste this link into your browser:</p>
+                            <p style="margin:0 0 20px;font-size:12px;color:#6c757d;word-break:break-all;">' . $safeUrl . '</p>
+                            <p style="margin:0;font-size:13px;color:#6c757d;">If you were not expecting this, you can ignore this email.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding:18px;background:#f4f6fa;color:#8a94a3;font-size:12px;">
+                            Makilala Institute of Science and Technology
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>';
+}
+
+/** Tells the old address that the account email changed. The new address is masked. */
+function sendEmailChangedNotice(string $toEmail, string $toName, string $username, string $maskedNewEmail): bool
+{
+    $subject = 'The email on your MIST account was changed';
+    $body = '
+    <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#212529;max-width:480px;">
+        <p>Hi ' . htmlspecialchars($toName) . ',</p>
+        <p>The email address on the account <strong>' . htmlspecialchars($username) . '</strong> was changed to <strong>' . htmlspecialchars($maskedNewEmail) . '</strong>.
+        Password links will now go to the new address, and any link sent to this address earlier no longer works.</p>
+        <p>If you did not expect this change, contact your school administrator.</p>
+        <p style="color:#6c757d;font-size:13px;">Makilala Institute of Science and Technology</p>
+    </div>';
+    return sendMail($toEmail, $toName, $subject, $body);
+}
+
+/** j***@example.com */
+function maskEmail(string $email): string
+{
+    $at = strrpos($email, '@');
+    if ($at === false || $at < 1) {
+        return '***';
+    }
+    return substr($email, 0, 1) . '***' . substr($email, $at);
 }

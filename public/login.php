@@ -12,7 +12,9 @@ $error = '';
 $notice = '';
 
 if (isset($_GET['reset'])) {
-    $notice = 'Your password has been updated. Please log in with your new password.';
+    $notice = 'Your password has been saved. Please log in with it.';
+} elseif (($_GET['ended'] ?? '') === 'inactive') {
+    $notice = 'Your account has been deactivated. Contact the administrator.';
 } elseif (isset($_GET['ended'])) {
     $notice = 'You were signed out because your password changed. Please log in again.';
 }
@@ -29,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $pdo = getDbConnection();
         $stmt = $pdo->prepare(
-            'SELECT account_id, username, password_hash, role, must_change_password, session_version
+            'SELECT account_id, username, password_hash, role, must_change_password, session_version, is_active
              FROM Accounts WHERE username = :username'
         );
         $stmt->execute(['username' => $username]);
@@ -41,6 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($account['role'] !== $selectedRole) {
             // Don't say what the real role is — just that this portal is wrong.
             $error = 'This account is not a ' . str_replace('_', ' ', $selectedRole) . ' account.';
+        } elseif ((int)$account['is_active'] !== 1) {
+            $error = 'This account has been deactivated. Contact the administrator.';
         } else {
             // Prevent session fixation: get a fresh session ID on privilege change.
             session_regenerate_id(true);

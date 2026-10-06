@@ -21,6 +21,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($evaluatedYearLevel === '' || !ctype_digit($evaluatedYearLevel) || (int)$evaluatedYearLevel < 1 || (int)$evaluatedYearLevel > 4) {
             $error = 'Evaluated year level is required and must be between 1 and 4.';
             $applicationId = $id;
+        } elseif ($f('email_address') === '' || !filter_var($f('email_address'), FILTER_VALIDATE_EMAIL) || strlen($f('email_address')) > 255) {
+            $error = 'A valid email address is required before an application can be validated. It is where the account setup link is sent.';
+            $applicationId = $id;
         } else {
             $stmt = $pdo->prepare(
                 'UPDATE Admission_Application SET
@@ -325,7 +328,7 @@ if (!$application) {
                     <div class="col-md-6 mb-3"><label class="form-label">Contact No.</label>
                         <input class="form-control" name="contact_no" value="<?= $v('contact_no') ?>"></div>
                     <div class="col-md-6 mb-3"><label class="form-label">Email</label>
-                        <input class="form-control" name="email_address" value="<?= $v('email_address') ?>"></div>
+                        <input type="email" class="form-control" name="email_address" value="<?= $v('email_address') ?>" maxlength="255" required></div>
                     <div class="col-md-4 mb-3"><label class="form-label">Guardian Name</label>
                         <input class="form-control" name="guardian_name" value="<?= $v('guardian_name') ?>"></div>
                     <div class="col-md-4 mb-3"><label class="form-label">Relationship</label>

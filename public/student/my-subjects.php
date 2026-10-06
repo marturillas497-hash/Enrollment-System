@@ -10,7 +10,7 @@ $stmt->execute(['aid' => $user['account_id']]);
 $student = $stmt->fetch();
 
 $stmt = $pdo->prepare(
-    'SELECT * FROM Enrollment WHERE student_id = :sid ORDER BY enrollment_id DESC LIMIT 1'
+    "SELECT * FROM Enrollment WHERE student_id = :sid AND status <> 'rejected' ORDER BY enrollment_id DESC LIMIT 1"
 );
 $stmt->execute(['sid' => $student['student_id']]);
 $latestEnrollment = $stmt->fetch();

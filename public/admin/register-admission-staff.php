@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/username_helper.php';
 require_once __DIR__ . '/../../src/helpers/password_helper.php';
 require_once __DIR__ . '/../../src/helpers/mail_helper.php';
+require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 
 $user = requireRole(['admin']);
 $pdo = getDbConnection();
@@ -28,6 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($lastName === '' || $firstName === '' || $email === '') {
         $error = 'Last name, first name, and email are required.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
+        $error = 'Enter a valid email address.';
     } elseif (!isset($_POST['confirm_duplicate']) && ($duplicates = findDuplicateStaff($pdo, $firstName, $lastName, $email))) {
         // form re-renders below with the warning
     } else {
@@ -35,13 +38,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->beginTransaction();
 
             $username = generateUniqueUsername($pdo, $lastName, $firstName);
-            $tempPassword = generateTempPassword();
+            $placeholder = placeholderPasswordHash();
 
             $stmt = $pdo->prepare(
                 "INSERT INTO Accounts (username, email, password_hash, role, must_change_password)
-                 VALUES (:username, :email, :hash, 'admission_staff', 1)"
+                 VALUES (:username, :email, :hash, 'admission_staff', 0)"
             );
-            $stmt->execute(['username' => $username, 'email' => $email, 'hash' => password_hash($tempPassword, PASSWORD_DEFAULT)]);
+            $stmt->execute(['username' => $username, 'email' => $email, 'hash' => $placeholder]);
             $newAccountId = (int)$pdo->lastInsertId();
 
             $stmt = $pdo->prepare(
@@ -55,11 +58,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             $pdo->commit();
-            $created = ['username' => $username, 'password' => $tempPassword, 'email' => $email];
-
-            $mailSent = sendAccountCredentialsEmail($email, $firstName . ' ' . $lastName, $username, $tempPassword);
-            if (!$mailSent) {
-                $mailWarning = 'The account was created, but the credentials email could not be sent. Share the credentials below manually.';
+            $invite = sendAccountLink($pdo, $newAccountId);
+            $created = ['username' => $username, 'email' => $email];
+            if ($invite['result'] !== 'sent') {
+                $mailWarning = 'The account was created, but the invite email could not be sent. Open Staff Accounts and use Resend invite once the address is confirmed.';
             }
 
             flashSet('staff_created', ['created' => $created, 'mailWarning' => $mailWarning]);
@@ -99,18 +101,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <h2 class="h5 card-title text-success">Admission staff account created</h2>
                     <?php if (!$mailWarning): ?>
                         <p class="card-text text-success">
-                            Email has been sent to <strong><?= htmlspecialchars($created['email']) ?></strong>.
+                            An invite was emailed to <strong><?= htmlspecialchars($created['email']) ?></strong>. They have 24 hours to open it and choose their own password.
                         </p>
                     <?php endif; ?>
-                    <p class="card-text text-muted">
-                        This password will not be shown again — if it's lost, it has to be reset,
-                        not retrieved.
-                    </p>
                     <dl class="row mb-0">
                         <dt class="col-sm-4">Username</dt>
                         <dd class="col-sm-8"><code><?= htmlspecialchars($created['username']) ?></code></dd>
-                        <dt class="col-sm-4">Temporary Password</dt>
-                        <dd class="col-sm-8"><code><?= htmlspecialchars($created['password']) ?></code></dd>
                     </dl>
                 </div>
             </div>

@@ -45,7 +45,12 @@ $history = $stmt->fetchAll();
                 <td><?= htmlspecialchars($h['section_name']) ?></td>
                 <td><?= $h['year_level'] ?></td>
                 <td><?= statusBadge($h['student_standing']) ?></td>
-                <td><?= statusBadge($h['status']) ?></td>
+                <td>
+                    <?= statusBadge($h['status']) ?>
+                    <?php if ($h['status'] === 'rejected' && (string)$h['rejection_reason'] !== ''): ?>
+                        <div class="small text-muted"><?= htmlspecialchars($h['rejection_reason']) ?></div>
+                    <?php endif; ?>
+                </td>
             </tr>
         <?php endforeach; ?>
         <?php if (empty($history)): ?><tr><td colspan="6" class="text-muted">No enrollment history yet.</td></tr><?php endif; ?>

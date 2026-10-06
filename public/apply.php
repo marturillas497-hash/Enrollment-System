@@ -59,7 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Never trust the raw program_id — the dropdown only ever lists real
         // programs, but a tampered request could send anything.
         $error = 'Please select a valid program.';
-    } elseif ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    } elseif ($email === '') {
+        $error = 'An email address is required. Your account setup link is sent there.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
         $error = 'That email address doesn\'t look valid.';
     } else {
         try {
@@ -276,7 +278,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">Email Address</label>
-                    <input type="email" class="form-control neu-input" name="email_address" value="<?= $v('email_address') ?>">
+                    <input type="email" class="form-control neu-input" name="email_address" value="<?= $v('email_address') ?>" maxlength="255" required>
+                    <div class="form-text">Required. Your account setup link is emailed here.</div>
                 </div>
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Guardian Name</label>
