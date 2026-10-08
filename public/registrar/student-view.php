@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/schedule_helper.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
+require_once __DIR__ . '/../../src/helpers/student_email_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -69,6 +70,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'chang
         $emailError = 'Enter a valid email address.';
     } elseif (strcasecmp($newEmail, $oldEmail) === 0) {
         $emailError = 'That is already the email on file.';
+    } elseif (studentEmailConflict($pdo, $newEmail, null, (int)$studentId) !== '') {
+        $emailError = 'Another student or a pending application already uses that email address. Each student needs their own.';
     } else {
         try {
             $pdo->beginTransaction();
@@ -91,11 +94,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'chang
             }
             if ($oldEmail !== '') {
                 sendEmailChangedNotice($oldEmail, $student['first_name'] . ' ' . $student['last_name'], $student['username'], maskEmail($newEmail));
-            }
-            $dup = $pdo->prepare("SELECT 1 FROM Accounts WHERE LOWER(email) = LOWER(:e) AND account_id <> :id AND role = 'student' LIMIT 1");
-            $dup->execute(['e' => $newEmail, 'id' => $accountId]);
-            if ($dup->fetch() !== false) {
-                $warnings[] = 'Another student account already uses this email address.';
             }
 
             flashSet('student_link_msg', $msg);

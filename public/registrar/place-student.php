@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../src/helpers/password_helper.php';
 require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 require_once __DIR__ . '/../../src/helpers/picker_helper.php';
+require_once __DIR__ . '/../../src/helpers/student_email_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -47,11 +48,18 @@ if ($applicationId) {
 }
 
 /** A student cannot be placed without an address to send the account invite to. */
-function applicationEmailError(array $application): string
+function applicationEmailError(PDO $pdo, array $application): string
 {
     $email = trim((string)($application['email_address'] ?? ''));
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
         return 'This application has no valid email address. Add one in the review panel and save it, then place the student.';
+    }
+    $conflict = studentEmailConflict($pdo, $email, (int)$application['application_id']);
+    if ($conflict === 'student') {
+        return 'Another student already uses this email address. Change it in the review panel and save it, then place the student.';
+    }
+    if ($conflict === 'application') {
+        return 'Another pending or validated application already uses this email address. Change it in the review panel and save it, then place the student.';
     }
     return '';
 }
@@ -68,6 +76,10 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         $error = 'Year level must be between 1 and 4.';
     } elseif ($f('email_address') === '' || !filter_var($f('email_address'), FILTER_VALIDATE_EMAIL) || strlen($f('email_address')) > 255) {
         $error = 'A valid email address is required. It is where the student\'s account invite is sent.';
+    } elseif (($emailConflict = studentEmailConflict($pdo, $f('email_address'), (int)$applicationId)) !== '') {
+        $error = $emailConflict === 'student'
+            ? 'Another student already uses this email address. Each student needs their own.'
+            : 'Another pending or validated application already uses this email address. Each applicant needs their own.';
     } else {
         $stmt = $pdo->prepare(
             'UPDATE Admission_Application SET
@@ -164,7 +176,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     $choiceError = validatePlacementChoice($pdo, $application, $chosenTermId, $chosenCurriculumId, $chosenSectionId);
     if ($choiceError !== '') {
         $error = $choiceError;
-    } elseif (($emailError = applicationEmailError($application)) !== '') {
+    } elseif (($emailError = applicationEmailError($pdo, $application)) !== '') {
         $error = $emailError;
     } else {
         $term = $pdo->prepare('SELECT * FROM School_term WHERE term_id = :id');
@@ -255,7 +267,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     $choiceError = validatePlacementChoice($pdo, $application, $termId, $curriculumId, $sectionId);
     if ($choiceError !== '') {
         $error = $choiceError;
-    } elseif (($emailError = applicationEmailError($application)) !== '') {
+    } elseif (($emailError = applicationEmailError($pdo, $application)) !== '') {
         $error = $emailError;
     } elseif (empty($offeringIds) && !$isTransferee) {
         $error = 'Tick at least one scheduled class before placing the student. Create the class offerings first if none are listed.';

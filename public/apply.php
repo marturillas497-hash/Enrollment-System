@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../src/helpers/ui_helper.php';
+require_once __DIR__ . '/../src/helpers/student_email_helper.php';
 require_once __DIR__ . '/../config/app.php';
 require_once __DIR__ . '/../config/database.php';
 
@@ -63,6 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'An email address is required. Your account setup link is sent there.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
         $error = 'That email address doesn\'t look valid.';
+    } elseif (studentEmailConflict($pdo, $email) !== '') {
+        $error = 'That email address is already used by another student or application. Use a different email, or ask the admission office for help.';
     } else {
         try {
             $stmt = $pdo->prepare(

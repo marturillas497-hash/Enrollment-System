@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/student_email_helper.php';
 
 $user = requireRole(['admission_staff']);
 $pdo = getDbConnection();
@@ -23,6 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $applicationId = $id;
         } elseif ($f('email_address') === '' || !filter_var($f('email_address'), FILTER_VALIDATE_EMAIL) || strlen($f('email_address')) > 255) {
             $error = 'A valid email address is required before an application can be validated. It is where the account setup link is sent.';
+            $applicationId = $id;
+        } elseif (($emailConflict = studentEmailConflict($pdo, $f('email_address'), ctype_digit((string)$id) ? (int)$id : null)) !== '') {
+            $error = $emailConflict === 'student'
+                ? 'Another student already uses this email address. Each student needs their own.'
+                : 'Another pending or validated application already uses this email address. Each applicant needs their own.';
             $applicationId = $id;
         } else {
             $stmt = $pdo->prepare(

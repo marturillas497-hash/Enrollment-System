@@ -201,6 +201,7 @@ CREATE TABLE `Student` (
   UNIQUE KEY `account_id_UNIQUE` (`account_id`),
   UNIQUE KEY `application_id_UNIQUE` (`application_id`),
   UNIQUE KEY `student_id_number_UNIQUE` (`student_id_number`),
+  UNIQUE KEY `uq_student_email` (`email_address`),
   KEY `account_id_idx` (`account_id`),
   KEY `application_id_idx` (`application_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
