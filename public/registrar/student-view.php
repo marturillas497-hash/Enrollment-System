@@ -4,7 +4,7 @@ require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/schedule_helper.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
-require_once __DIR__ . '/../../src/helpers/student_email_helper.php';
+require_once __DIR__ . '/../../src/helpers/account_email_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -70,13 +70,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'chang
         $emailError = 'Enter a valid email address.';
     } elseif (strcasecmp($newEmail, $oldEmail) === 0) {
         $emailError = 'That is already the email on file.';
-    } elseif (studentEmailConflict($pdo, $newEmail, null, (int)$studentId) !== '') {
-        $emailError = 'Another student or a pending application already uses that email address. Each student needs their own.';
+    } elseif (accountEmailConflict($pdo, $newEmail, $accountId) !== '') {
+        $emailError = 'That email address is already used by another account or a pending application. Every account needs its own.';
     } else {
         try {
             $pdo->beginTransaction();
             $pdo->prepare('UPDATE Accounts SET email = :e WHERE account_id = :id')->execute(['e' => $newEmail, 'id' => $accountId]);
-            $pdo->prepare('UPDATE Student SET email_address = :e WHERE student_id = :id')->execute(['e' => $newEmail, 'id' => $studentId]);
             voidOpenPasswordResets($pdo, $accountId);
             $pdo->prepare('INSERT INTO Account_email_change (account_id, changed_by, old_email, new_email) VALUES (:a, :by, :old, :new)')
                 ->execute(['a' => $accountId, 'by' => $user['account_id'], 'old' => $oldEmail !== '' ? $oldEmail : null, 'new' => $newEmail]);
@@ -387,7 +386,6 @@ $base = '?id=' . $studentId . '&tab=';
                     <?= $infoRow('Birthdate', $student['birthdate']) ?>
                     <?= $infoRow('Address', $join([$student['purok'], $student['barangay'], $student['municipality'], $student['province']], ', ')) ?>
                     <?= $infoRow('Contact no.', $student['contact_no']) ?>
-                    <?= $infoRow('Email', $student['email_address']) ?>
                 </dl></div></div>
             </div>
             <div class="col-lg-6">

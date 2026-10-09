@@ -3,6 +3,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 require_once __DIR__ . '/../../src/helpers/invite_helper.php';
+require_once __DIR__ . '/../../src/helpers/account_email_helper.php';
 
 $user = requireRole(['admin']);
 $pdo = getDbConnection();
@@ -58,17 +59,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['
         $suffix = trim($_POST['suffix'] ?? '');
         $email = trim($_POST['email'] ?? '');
 
-        $dup = $pdo->prepare("SELECT 1 FROM Accounts WHERE LOWER(email) = LOWER(:e) AND account_id <> :id AND role IN ('registrar','teacher','admission_staff')");
-        $dup->execute(['e' => $email, 'id' => $accountId]);
-
         if ($first === '' || $last === '') {
             $modalError = 'First name and last name are required.';
         } elseif (max(strlen($first), strlen($middle), strlen($last), strlen($suffix)) > 100) {
             $modalError = 'Names must be 100 characters or fewer.';
         } elseif ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
             $modalError = 'Enter a valid email address.';
-        } elseif ($dup->fetch() !== false) {
-            $modalError = 'Another staff account already uses that email.';
+        } elseif (($emailConflict = accountEmailConflict($pdo, $email, $accountId)) !== '') {
+            $modalError = accountEmailConflictMessage($emailConflict) . ' Every account needs its own email address.';
         } else {
             try {
                 $emailChanged = strcasecmp($email, (string)($target['email'] ?? '')) !== 0;

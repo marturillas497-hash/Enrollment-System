@@ -18,7 +18,8 @@ CREATE TABLE `Accounts` (
   `activated_at` DATETIME NULL DEFAULT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`account_id`),
-  UNIQUE KEY `username_UNIQUE` (`username`)
+  UNIQUE KEY `username_UNIQUE` (`username`),
+  UNIQUE KEY `uq_account_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Department` (
@@ -34,6 +35,7 @@ CREATE TABLE `Subject` (
   `subject_name` VARCHAR(255) NOT NULL,
   `subject_description` VARCHAR(255) NULL DEFAULT NULL,
   `units` INT NOT NULL,
+  `year_level` INT NOT NULL DEFAULT 1,
   PRIMARY KEY (`subject_id`),
   UNIQUE KEY `uq_subject_code` (`subject_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -191,7 +193,6 @@ CREATE TABLE `Student` (
   `father_occupation` VARCHAR(255) NULL DEFAULT NULL,
   `mother_occupation` VARCHAR(255) NULL DEFAULT NULL,
   `contact_no` VARCHAR(15) NULL DEFAULT NULL,
-  `email_address` VARCHAR(255) NULL DEFAULT NULL,
   `guardian_name` VARCHAR(255) NULL DEFAULT NULL,
   `guardian_relationship` VARCHAR(45) NULL DEFAULT NULL,
   `guardian_contact_no` VARCHAR(15) NULL DEFAULT NULL,
@@ -201,7 +202,6 @@ CREATE TABLE `Student` (
   UNIQUE KEY `account_id_UNIQUE` (`account_id`),
   UNIQUE KEY `application_id_UNIQUE` (`application_id`),
   UNIQUE KEY `student_id_number_UNIQUE` (`student_id_number`),
-  UNIQUE KEY `uq_student_email` (`email_address`),
   KEY `account_id_idx` (`account_id`),
   KEY `application_id_idx` (`application_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

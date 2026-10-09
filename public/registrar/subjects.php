@@ -58,9 +58,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = trim($_POST['subject_name'] ?? '');
         $description = trim($_POST['subject_description'] ?? '');
         $units = $_POST['units'] ?? '';
+        $yearLevel = $_POST['year_level'] ?? '';
 
         if ($code === '' || $name === '' || $units === '' || !ctype_digit($units)) {
             $error = 'Subject code, name, and a numeric unit count are required.';
+        } elseif (!is_string($yearLevel) || !ctype_digit($yearLevel) || (int)$yearLevel < 1 || (int)$yearLevel > 4) {
+            $error = 'Pick a year level from 1 to 4.';
         } else {
             $codeCheck = $pdo->prepare('SELECT 1 FROM Subject WHERE LOWER(subject_code) = LOWER(:c) AND subject_id <> :id');
             $codeCheck->execute(['c' => $code, 'id' => $id ?: 0]);
@@ -73,17 +76,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $dupNameWarning = "A subject named \"$name\" already exists under a different code.";
             } elseif ($id) {
                 $stmt = $pdo->prepare(
-                    'UPDATE Subject SET subject_code=:code, subject_name=:name, subject_description=:desc, units=:units
+                    'UPDATE Subject SET subject_code=:code, subject_name=:name, subject_description=:desc, units=:units, year_level=:year
                      WHERE subject_id=:id'
                 );
-                $stmt->execute(['code' => $code, 'name' => $name, 'desc' => $description ?: null, 'units' => $units, 'id' => $id]);
+                $stmt->execute(['code' => $code, 'name' => $name, 'desc' => $description ?: null, 'units' => $units, 'year' => (int)$yearLevel, 'id' => $id]);
                 $message = "Subject #$id updated.";
             } else {
                 $stmt = $pdo->prepare(
-                    'INSERT INTO Subject (subject_code, subject_name, subject_description, units)
-                     VALUES (:code, :name, :desc, :units)'
+                    'INSERT INTO Subject (subject_code, subject_name, subject_description, units, year_level)
+                     VALUES (:code, :name, :desc, :units, :year)'
                 );
-                $stmt->execute(['code' => $code, 'name' => $name, 'desc' => $description ?: null, 'units' => $units]);
+                $stmt->execute(['code' => $code, 'name' => $name, 'desc' => $description ?: null, 'units' => $units, 'year' => (int)$yearLevel]);
                 $message = 'Subject added.';
             }
         }
@@ -104,23 +107,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $reopenForm = ($error !== '' || $dupNameWarning !== '') && ($_POST['action'] ?? '') === 'save';
-$form = ['subject_id' => '', 'subject_code' => '', 'subject_name' => '', 'subject_description' => '', 'units' => ''];
+$form = ['subject_id' => '', 'subject_code' => '', 'subject_name' => '', 'subject_description' => '', 'units' => '', 'year_level' => ''];
 if ($reopenForm) {
     foreach ($form as $k => $_) { $form[$k] = (string)($_POST[$k] ?? ''); }
 }
 
 $search = trim($_GET['q'] ?? '');
+$filterYear = (is_string($_GET['year'] ?? null) && ctype_digit($_GET['year']) && (int)$_GET['year'] >= 1 && (int)$_GET['year'] <= 4)
+    ? (int)$_GET['year'] : 0;
+$where = [];
+$params = [];
 if ($search !== '') {
-    $stmt = $pdo->prepare(
-        'SELECT * FROM Subject
-         WHERE subject_code LIKE :q1 OR subject_name LIKE :q2 OR subject_description LIKE :q3
-         ORDER BY subject_code'
-    );
-    $stmt->execute(['q1' => "%$search%", 'q2' => "%$search%", 'q3' => "%$search%"]);
-    $subjects = $stmt->fetchAll();
-} else {
-    $subjects = $pdo->query('SELECT * FROM Subject ORDER BY subject_code')->fetchAll();
+    $where[] = '(subject_code LIKE :q1 OR subject_name LIKE :q2 OR subject_description LIKE :q3)';
+    $params += ['q1' => "%$search%", 'q2' => "%$search%", 'q3' => "%$search%"];
 }
+if ($filterYear !== 0) {
+    $where[] = 'year_level = :yl';
+    $params['yl'] = $filterYear;
+}
+$stmt = $pdo->prepare('SELECT * FROM Subject' . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' ORDER BY subject_code');
+$stmt->execute($params);
+$subjects = $stmt->fetchAll();
 foreach ($subjects as $i => $s) {
     $subjects[$i]['usage'] = subjectUsage($pdo, (int)$s['subject_id']);
 }
@@ -148,15 +155,19 @@ foreach ($subjects as $i => $s) {
     <form method="get" class="d-flex mb-3 search-bar">
         <input type="text" class="form-control me-2" name="q" placeholder="Search by code, name, or description"
                value="<?= htmlspecialchars($search) ?>">
+        <select class="form-select me-2 w-auto" name="year" aria-label="Year level">
+            <option value="">All years</option>
+            <?php for ($y = 1; $y <= 4; $y++): ?><option value="<?= $y ?>"<?= $filterYear === $y ? ' selected' : '' ?>>Year <?= $y ?></option><?php endfor; ?>
+        </select>
         <button type="submit" class="btn btn-outline-primary">Search</button>
-        <?php if ($search !== ''): ?>
+        <?php if ($search !== '' || $filterYear !== 0): ?>
             <a href="<?= BASE_URL ?>/registrar/subjects.php" class="btn btn-outline-secondary ms-2">Clear</a>
         <?php endif; ?>
     </form>
 
     <div class="table-responsive">
 <table class="table table-hover bg-white">
-        <thead><tr><th>Code</th><th>Name</th><th>Description</th><th>Units</th><th>Used by</th><th></th></tr></thead>
+        <thead><tr><th>Code</th><th>Name</th><th>Description</th><th>Units</th><th>Year</th><th>Used by</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($subjects as $s): ?>
             <tr>
@@ -164,10 +175,11 @@ foreach ($subjects as $i => $s) {
                 <td><?= htmlspecialchars($s['subject_name']) ?></td>
                 <td class="text-muted"><?= htmlspecialchars($s['subject_description'] ?? '') ?></td>
                 <td><?= $s['units'] ?></td>
+                <td>Year <?= (int)$s['year_level'] ?></td>
                 <td class="small"><?= $s['usage']['total'] > 0 ? htmlspecialchars($s['usage']['summary']) : '<span class="text-muted">Not used</span>' ?></td>
                 <td>
                     <button type="button" class="btn btn-sm btn-outline-primary"
-                            data-subject="<?= htmlspecialchars(json_encode(['subject_id' => $s['subject_id'], 'subject_code' => $s['subject_code'], 'subject_name' => $s['subject_name'], 'subject_description' => $s['subject_description'] ?? '', 'units' => $s['units'], 'usage_note' => $s['usage']['curricula'] > 0 ? 'Shared subject: used by ' . $s['usage']['summary'] . ' Any change to the code, name or units applies everywhere it is used.' : '']), ENT_QUOTES) ?>"
+                            data-subject="<?= htmlspecialchars(json_encode(['subject_id' => $s['subject_id'], 'subject_code' => $s['subject_code'], 'subject_name' => $s['subject_name'], 'subject_description' => $s['subject_description'] ?? '', 'units' => $s['units'], 'year_level' => $s['year_level'], 'usage_note' => $s['usage']['curricula'] > 0 ? 'Shared subject: used by ' . $s['usage']['summary'] . ' Any change to the code, name or units applies everywhere it is used.' : '']), ENT_QUOTES) ?>"
                             onclick="openSubjectModal(JSON.parse(this.dataset.subject))">Edit</button>
                     <form method="post" class="d-inline">
                         <input type="hidden" name="action" value="delete">
@@ -183,7 +195,7 @@ foreach ($subjects as $i => $s) {
             </tr>
         <?php endforeach; ?>
         <?php if (empty($subjects)): ?>
-            <tr><td colspan="6" class="text-muted"><?= $search !== '' ? 'No subjects match that search.' : 'No subjects yet.' ?></td></tr>
+            <tr><td colspan="7" class="text-muted"><?= $search !== '' || $filterYear !== 0 ? 'No subjects match that search.' : 'No subjects yet.' ?></td></tr>
         <?php endif; ?>
         </tbody>
     </table>
@@ -204,13 +216,20 @@ foreach ($subjects as $i => $s) {
         <div class="alert alert-info" id="subjectUsageNote" hidden></div>
         <?php if ($dupNameWarning !== ''): ?><div class="alert alert-warning js-modal-alert"><?= htmlspecialchars($dupNameWarning) ?> Save anyway?<input type="hidden" name="confirm_dup_name" value="1"></div><?php endif; ?>
         <div class="row">
-            <div class="col-8 mb-3">
+            <div class="col-5 mb-3">
                 <label class="form-label">Code</label>
                 <input class="form-control" name="subject_code" id="subjectCode" required>
             </div>
-            <div class="col-4 mb-3">
+            <div class="col-3 mb-3">
                 <label class="form-label">Units</label>
                 <input type="number" min="1" class="form-control" name="units" id="subjectUnits" required>
+            </div>
+            <div class="col-4 mb-3">
+                <label class="form-label">Year level</label>
+                <select class="form-select" name="year_level" id="subjectYear" required>
+                    <option value="">Select</option>
+                    <?php for ($y = 1; $y <= 4; $y++): ?><option value="<?= $y ?>">Year <?= $y ?></option><?php endfor; ?>
+                </select>
             </div>
         </div>
         <div class="mb-3">
@@ -238,6 +257,7 @@ function openSubjectModal(d) {
     document.getElementById('subjectName').value = d.subject_name || '';
     document.getElementById('subjectDescription').value = d.subject_description || '';
     document.getElementById('subjectUnits').value = d.units || '';
+    document.getElementById('subjectYear').value = d.year_level || '';
     var note = document.getElementById('subjectUsageNote');
     note.textContent = d.usage_note || '';
     note.hidden = !d.usage_note;

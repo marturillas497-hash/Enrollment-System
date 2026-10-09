@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../src/helpers/password_helper.php';
 require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 require_once __DIR__ . '/../../src/helpers/picker_helper.php';
-require_once __DIR__ . '/../../src/helpers/student_email_helper.php';
+require_once __DIR__ . '/../../src/helpers/account_email_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -54,12 +54,9 @@ function applicationEmailError(PDO $pdo, array $application): string
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
         return 'This application has no valid email address. Add one in the review panel and save it, then place the student.';
     }
-    $conflict = studentEmailConflict($pdo, $email, (int)$application['application_id']);
-    if ($conflict === 'student') {
-        return 'Another student already uses this email address. Change it in the review panel and save it, then place the student.';
-    }
-    if ($conflict === 'application') {
-        return 'Another pending or validated application already uses this email address. Change it in the review panel and save it, then place the student.';
+    $conflict = accountEmailConflict($pdo, $email, null, (int)$application['application_id']);
+    if ($conflict !== '') {
+        return accountEmailConflictMessage($conflict) . ' Change it in the review panel and save it, then place the student.';
     }
     return '';
 }
@@ -76,10 +73,8 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         $error = 'Year level must be between 1 and 4.';
     } elseif ($f('email_address') === '' || !filter_var($f('email_address'), FILTER_VALIDATE_EMAIL) || strlen($f('email_address')) > 255) {
         $error = 'A valid email address is required. It is where the student\'s account invite is sent.';
-    } elseif (($emailConflict = studentEmailConflict($pdo, $f('email_address'), (int)$applicationId)) !== '') {
-        $error = $emailConflict === 'student'
-            ? 'Another student already uses this email address. Each student needs their own.'
-            : 'Another pending or validated application already uses this email address. Each applicant needs their own.';
+    } elseif (($emailConflict = accountEmailConflict($pdo, $f('email_address'), null, (int)$applicationId)) !== '') {
+        $error = accountEmailConflictMessage($emailConflict) . ' Every applicant needs their own email address.';
     } else {
         $stmt = $pdo->prepare(
             'UPDATE Admission_Application SET
@@ -297,14 +292,14 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
                 birthdate, province, municipality, barangay, purok,
                 father_last_name, father_first_name, father_middle_name, father_suffix,
                 mother_maiden_name, mother_first_name, mother_middle_name, father_occupation, mother_occupation,
-                contact_no, email_address, guardian_name, guardian_relationship, guardian_contact_no,
+                contact_no, guardian_name, guardian_relationship, guardian_contact_no,
                 student_type, overall_status
             ) VALUES (
                 :placeholder_number, :account_id, :application_id, :last_name, :first_name, :middle_name, :suffix,
                 :birthdate, :province, :municipality, :barangay, :purok,
                 :father_last_name, :father_first_name, :father_middle_name, :father_suffix,
                 :mother_maiden_name, :mother_first_name, :mother_middle_name, :father_occupation, :mother_occupation,
-                :contact_no, :email_address, :guardian_name, :guardian_relationship, :guardian_contact_no,
+                :contact_no, :guardian_name, :guardian_relationship, :guardian_contact_no,
                 :student_type, \'active\'
             )'
         );
@@ -320,7 +315,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
             'mother_maiden_name' => $application['mother_maiden_name'], 'mother_first_name' => $application['mother_first_name'],
             'mother_middle_name' => $application['mother_middle_name'],
             'father_occupation' => $application['father_occupation'], 'mother_occupation' => $application['mother_occupation'],
-            'contact_no' => $application['contact_no'], 'email_address' => $studentEmail,
+            'contact_no' => $application['contact_no'],
             'guardian_name' => $application['guardian_name'], 'guardian_relationship' => $application['guardian_relationship'],
             'guardian_contact_no' => $application['guardian_contact_no'],
             'student_type' => $application['student_type'],

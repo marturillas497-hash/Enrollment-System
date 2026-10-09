@@ -185,7 +185,7 @@ if ($expandId) {
         $stmt->execute(['id' => $expandId]);
         $curriculumSubjects = $stmt->fetchAll();
 
-        $allSubjects = $pdo->query('SELECT subject_id, subject_code, subject_name, units FROM Subject ORDER BY subject_id DESC')->fetchAll();
+        $allSubjects = $pdo->query('SELECT subject_id, subject_code, subject_name, units, year_level FROM Subject ORDER BY subject_id DESC')->fetchAll();
     }
 }
 
@@ -249,19 +249,26 @@ $curricula = $curricula->fetchAll();
                 <h5 class="modal-title">Add Subjects to Curriculum</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 <div class="row g-2 w-100">
-                    <div class="col-6 col-md-3">
+                    <div class="col-6 col-md-2">
                         <label class="form-label small mb-1" for="csYear">Year Level</label>
                         <select class="form-select" name="year_level" id="csYear">
                             <?php for ($y = 1; $y <= 4; $y++): ?><option value="<?= $y ?>"<?= $y === $defYear ? ' selected' : '' ?>>Year <?= $y ?></option><?php endfor; ?>
                         </select>
                     </div>
-                    <div class="col-6 col-md-3">
+                    <div class="col-6 col-md-2">
                         <label class="form-label small mb-1" for="csSem">Semester</label>
                         <select class="form-select" name="semester" id="csSem">
                             <?php for ($m = 1; $m <= 3; $m++): ?><option value="<?= $m ?>"<?= $m === $defSem ? ' selected' : '' ?>>Semester <?= $m ?></option><?php endfor; ?>
                         </select>
                     </div>
-                    <div class="col-12 col-md-6">
+                    <div class="col-6 col-md-3">
+                        <label class="form-label small mb-1" for="csUsual">Usually in</label>
+                        <select class="form-select" id="csUsual">
+                            <option value="">All years</option>
+                            <?php for ($y = 1; $y <= 4; $y++): ?><option value="<?= $y ?>">Year <?= $y ?></option><?php endfor; ?>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-5">
                         <label class="form-label small mb-1" for="csSearch">Search</label>
                         <input type="search" class="form-control" id="csSearch" placeholder="Code or name" autocomplete="off">
                     </div>
@@ -269,17 +276,19 @@ $curricula = $curricula->fetchAll();
               </div>
               <div class="modal-body">
                 <?php if ($reopenSubject): ?><div class="alert alert-danger js-modal-alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
+                <div class="alert alert-warning small d-none sticky-top" id="csYearWarn"></div>
                 <?php if (empty($allSubjects)): ?>
                     <p class="text-muted mb-0">No subjects exist yet. Add some on the Subjects page first.</p>
                 <?php else: ?>
                 <div class="list-group">
                     <?php foreach ($allSubjects as $s): ?>
                         <?php $sid = (int) $s['subject_id']; $isPlaced = isset($placed[$sid]); ?>
-                        <label class="list-group-item d-flex align-items-center gap-2 cs-row<?= $isPlaced ? ' text-muted' : '' ?>" data-search="<?= htmlspecialchars(strtolower($s['subject_code'] . ' ' . $s['subject_name'])) ?>">
+                        <label class="list-group-item d-flex align-items-center gap-2 cs-row<?= $isPlaced ? ' text-muted' : '' ?>" data-search="<?= htmlspecialchars(strtolower($s['subject_code'] . ' ' . $s['subject_name'])) ?>" data-year="<?= (int) $s['year_level'] ?>" data-code="<?= htmlspecialchars($s['subject_code']) ?>">
                             <input class="form-check-input mt-0" type="checkbox" name="subject_ids[]" value="<?= $sid ?>"<?= $isPlaced ? ' disabled' : '' ?><?= !$isPlaced && in_array($sid, $postedIds, true) ? ' checked' : '' ?>>
                             <span class="fw-semibold"><?= htmlspecialchars($s['subject_code']) ?></span>
                             <span class="flex-grow-1"><?= htmlspecialchars($s['subject_name']) ?></span>
                             <span class="small text-muted"><?= rtrim(rtrim(number_format((float) $s['units'], 2), '0'), '.') ?> units</span>
+                            <span class="badge text-bg-light border">Year <?= (int) $s['year_level'] ?></span>
                             <?php if ($isPlaced): ?><span class="badge text-bg-secondary"><?= htmlspecialchars($placed[$sid]) ?></span><?php endif; ?>
                         </label>
                     <?php endforeach; ?>
@@ -460,26 +469,40 @@ $curricula = $curricula->fetchAll();
     var count = document.getElementById('csCount');
     var empty = document.getElementById('csEmpty');
     var submit = document.getElementById('csSubmit');
+    var yearSel = document.getElementById('csYear');
+    var usual = document.getElementById('csUsual');
+    var warn = document.getElementById('csYearWarn');
     function refreshCount() {
-        var n = form.querySelectorAll('input[name="subject_ids[]"]:checked').length;
-        count.textContent = n + ' selected';
-        submit.disabled = n === 0;
+        var checked = form.querySelectorAll('input[name="subject_ids[]"]:checked');
+        count.textContent = checked.length + ' selected';
+        submit.disabled = checked.length === 0;
+        var off = [];
+        checked.forEach(function (c) {
+            var r = c.closest('.cs-row');
+            if (r.getAttribute('data-year') !== yearSel.value) {
+                off.push(r.getAttribute('data-code') + ' (usually Year ' + r.getAttribute('data-year') + ')');
+            }
+        });
+        warn.classList.toggle('d-none', off.length === 0);
+        warn.textContent = off.length ? 'Adding to Year ' + yearSel.value + ': ' + off.join(', ') + '. You can still continue.' : '';
     }
     function filter() {
-        var q = search.value.trim().toLowerCase(), shown = 0;
+        var q = search.value.trim().toLowerCase(), u = usual.value, shown = 0;
         rows.forEach(function (r) {
-            var hit = r.getAttribute('data-search').indexOf(q) !== -1;
+            var hit = r.getAttribute('data-search').indexOf(q) !== -1 && (u === '' || r.getAttribute('data-year') === u);
             r.classList.toggle('d-none', !hit);
             if (hit) { shown++; }
         });
         if (empty) { empty.classList.toggle('d-none', shown !== 0); }
     }
     search.addEventListener('input', filter);
+    usual.addEventListener('change', filter);
     form.addEventListener('change', refreshCount);
     modalEl.addEventListener('shown.bs.modal', function () { search.focus(); });
     refreshCount();
     window.openCurriculumSubjectModal = function (year) {
         document.getElementById('csYear').value = year;
+        refreshCount();
         bootstrap.Modal.getOrCreateInstance(modalEl).show();
     };
 <?php if ($reopenSubject && $expanded): ?>

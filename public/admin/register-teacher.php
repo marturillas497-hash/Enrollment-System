@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../src/helpers/username_helper.php';
 require_once __DIR__ . '/../../src/helpers/password_helper.php';
 require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 require_once __DIR__ . '/../../src/helpers/invite_helper.php';
+require_once __DIR__ . '/../../src/helpers/account_email_helper.php';
 
 $user = requireRole(['admin']);
 $pdo = getDbConnection();
@@ -34,7 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Last name, first name, department, and email are required.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 255) {
         $error = 'Enter a valid email address.';
-    } elseif (!isset($_POST['confirm_duplicate']) && ($duplicates = findDuplicateStaff($pdo, $firstName, $lastName, $email))) {
+    } elseif (($emailConflict = accountEmailConflict($pdo, $email)) !== '') {
+        $error = accountEmailConflictMessage($emailConflict) . ' Every account needs its own email address.';
+    } elseif (!isset($_POST['confirm_duplicate']) && ($duplicates = findDuplicateStaff($pdo, $firstName, $lastName))) {
         // form re-renders below with the warning
     } else {
         try {
@@ -140,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <form method="post" novalidate>
                 <?php if ($duplicates): ?>
                     <div class="alert alert-warning">
-                        <strong>Possible duplicate.</strong> A staff account with the same name or email already exists:
+                        <strong>Possible duplicate.</strong> A staff account with the same name already exists:
                         <ul class="mb-2">
                             <?php foreach ($duplicates as $d): ?>
                                 <li><code><?= htmlspecialchars($d['username']) ?></code> (<?= htmlspecialchars(str_replace('_', ' ', $d['role'])) ?>, <?= htmlspecialchars($d['email'] ?? 'no email') ?>)</li>

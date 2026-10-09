@@ -36,11 +36,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($username !== '') {
         $pdo = getDbConnection();
-        $stmt = $pdo->prepare('SELECT account_id, username, role, email FROM Accounts WHERE username = :u AND is_active = 1');
-        $stmt->execute(['u' => $username]);
+        $stmt = $pdo->prepare(
+            'SELECT account_id, username, role, email FROM Accounts
+             WHERE (username = :u OR email = :e) AND is_active = 1
+             ORDER BY (username = :x) DESC LIMIT 1'
+        );
+        $stmt->execute(['u' => $username, 'e' => $username, 'x' => $username]);
         $account = $stmt->fetch();
 
-        // Response is identical whether the username exists, has no email, or is throttled.
+        // Response is identical whether anything matches, the account has no email, or it is throttled.
         if ($account && $account['email'] !== null && trim($account['email']) !== '') {
             $token = createPasswordResetToken($pdo, (int)$account['account_id']);
 
@@ -96,20 +100,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <?php if ($submitted): ?>
                     <div class="alert alert-success">
-                        If that username has an email on file, a password reset link has been sent
-                        to it. The link expires in <?= (int)PASSWORD_RESET_TTL_MINUTES ?> minutes.
+                        If an account matches and has an email on file, a password reset link has been sent
+                        to that email. The link expires in <?= (int)PASSWORD_RESET_TTL_MINUTES ?> minutes.
                         Didn't get it? Check your spam folder, or contact your registrar/admin.
                     </div>
                     <a href="<?= BASE_URL ?>/login.php" class="btn btn-neu-primary w-100">Back to Login</a>
                 <?php else: ?>
                     <p class="text-muted mb-4">
-                        Enter your username. If it has an email on file, we'll send a link to
-                        that email so you can choose a new password.
+                        Enter your username or email. If an account matches, we'll send a link to
+                        its email so you can choose a new password.
                     </p>
 
                     <form method="post" novalidate>
                         <div class="mb-3">
-                            <label for="username" class="form-label">Username</label>
+                            <label for="username" class="form-label">Username or email</label>
                             <input type="text" class="form-control neu-input" id="username" name="username"
                                    value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" required autofocus>
                         </div>

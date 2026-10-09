@@ -23,8 +23,8 @@ function errorMessage(Throwable $e, string $prefix = 'Something went wrong.'): s
     return $prefix . ' Please try again. If it keeps happening, give the administrator this reference: ' . $ref . '.';
 }
 
-/** Existing staff accounts with the same email or the same first and last name. */
-function findDuplicateStaff(PDO $pdo, string $firstName, string $lastName, string $email): array
+/** Existing staff accounts with the same first and last name. */
+function findDuplicateStaff(PDO $pdo, string $firstName, string $lastName): array
 {
     $stmt = $pdo->prepare(
         "SELECT a.username, a.email, a.role
@@ -33,10 +33,9 @@ function findDuplicateStaff(PDO $pdo, string $firstName, string $lastName, strin
          LEFT JOIN Teacher t ON t.account_id = a.account_id AND a.role = 'teacher'
          LEFT JOIN Admission_Staff sa ON sa.account_id = a.account_id AND a.role = 'admission_staff'
          WHERE a.role IN ('registrar', 'teacher', 'admission_staff')
-           AND (LOWER(a.email) = LOWER(:email)
-                OR (LOWER(COALESCE(r.first_name, t.first_name, sa.first_name)) = LOWER(:first_name)
-                    AND LOWER(COALESCE(r.last_name, t.last_name, sa.last_name)) = LOWER(:last_name)))"
+           AND LOWER(COALESCE(r.first_name, t.first_name, sa.first_name)) = LOWER(:first_name)
+           AND LOWER(COALESCE(r.last_name, t.last_name, sa.last_name)) = LOWER(:last_name)"
     );
-    $stmt->execute(['email' => $email, 'first_name' => $firstName, 'last_name' => $lastName]);
+    $stmt->execute(['first_name' => $firstName, 'last_name' => $lastName]);
     return $stmt->fetchAll();
 }

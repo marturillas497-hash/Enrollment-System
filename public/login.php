@@ -27,19 +27,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $validRoles = ['student', 'teacher', 'registrar', 'admission_staff', 'admin'];
 
     if ($username === '' || $password === '' || !in_array($selectedRole, $validRoles, true)) {
-        $error = 'Please choose a role and enter both a username and password.';
+        $error = 'Please choose a role and enter your username or email and your password.';
     } else {
         $pdo = getDbConnection();
         $stmt = $pdo->prepare(
             'SELECT account_id, username, password_hash, role, must_change_password, session_version, is_active
-             FROM Accounts WHERE username = :username'
+             FROM Accounts WHERE username = :username OR email = :email
+             ORDER BY (username = :exact) DESC LIMIT 1'
         );
-        $stmt->execute(['username' => $username]);
+        $stmt->execute(['username' => $username, 'email' => $username, 'exact' => $username]);
         $account = $stmt->fetch();
 
         if ($account === false || !password_verify($password, $account['password_hash'])) {
             // Deliberately vague — don't reveal whether the username exists.
-            $error = 'Invalid username or password.';
+            $error = 'Invalid username, email or password.';
         } elseif ($account['role'] !== $selectedRole) {
             // Don't say what the real role is — just that this portal is wrong.
             $error = 'This account is not a ' . str_replace('_', ' ', $selectedRole) . ' account.';
@@ -137,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label for="username" class="form-label">Username</label>
+                        <label for="username" class="form-label">Username or email</label>
                         <input type="text" class="form-control neu-input" id="username" name="username"
                                value="<?= htmlspecialchars($_POST['username'] ?? '') ?>" required autofocus>
                     </div>

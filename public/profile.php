@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/session.php';
+require_once __DIR__ . '/../src/helpers/account_email_helper.php';
 
 $user = requireLogin();
 $pdo = getDbConnection();
@@ -19,6 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'chang
         $usernameError = 'Username must be at least 4 characters.';
     } elseif (strlen($newUsername) > 100) {
         $usernameError = 'Username must be 100 characters or fewer.';
+    } elseif (strpos($newUsername, '@') !== false) {
+        $usernameError = 'Usernames cannot contain "@".';
     } elseif (preg_match('/^\d{4}-\d{5}$/', $newUsername) || stripos($newUsername, 'PENDING-') === 0) {
         $usernameError = 'That username format is reserved for student ID numbers. Choose a different one.';
     } elseif ($newUsername === $user['username']) {
@@ -50,6 +53,8 @@ if ($user['role'] === 'admin' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POS
     $newEmail = trim($_POST['new_email'] ?? '');
     if ($newEmail === '' || !filter_var($newEmail, FILTER_VALIDATE_EMAIL) || strlen($newEmail) > 255) {
         $emailError = 'Enter a valid email address.';
+    } elseif (($emailConflict = accountEmailConflict($pdo, $newEmail, (int)$user['account_id'])) !== '') {
+        $emailError = accountEmailConflictMessage($emailConflict) . ' Every account needs its own email address.';
     } else {
         $pdo->prepare('UPDATE Accounts SET email = :e WHERE account_id = :id')
             ->execute(['e' => $newEmail, 'id' => $user['account_id']]);
