@@ -1,5 +1,5 @@
 -- MIST Enrollment System: database schema
--- 34 tables and the Class_Schedule view, all InnoDB utf8mb4, 69 foreign keys, 3 check constraints. Current through Batch 12.
+-- 34 tables, all InnoDB utf8mb4, 69 foreign keys, 3 check constraints. Current through Batch 12.
 -- Batch 12: Audit_log, Grade_correction, Grade_correction_flag and Enrolled_subject.corrected_at (grade corrections after a term closes).
 -- Older notes follow. Current through Batch 9 (October 2026): unique subject code and unique
 -- term (school year + semester), Admission_Application.applicant_year_level, grade CHECK constraints,
@@ -10,7 +10,7 @@
 -- Batch 10: Teacher.max_units (default 24) and Teacher.max_hours_per_week (default 30, empty means no cap).
 -- Batch 9: Tag, Subject_tag, Teacher_tag and Subject_requirement. 30 tables, 58 foreign keys.
 -- Batch 8: Room_type and Room replace the free-text room. Class_Meeting.room_id points at Room. 26 tables, 51 foreign keys.
--- Batch 7: a class (Class_Offering) has many meetings (Class_Meeting). View Class_Schedule gives one row per meeting.
+-- Batch 7: a class (Class_Offering) has many meetings (Class_Meeting).
 -- 24 tables, 49 foreign keys.
 -- Batch 5: Curriculum_subject.required_standing (2, 3 or 4, enforced in the application).
 -- Batch 4: Curriculum_prerequisite replaces the global Prerequisite table (still 23 tables, 48 foreign keys).
@@ -587,10 +587,3 @@ CREATE TABLE `Grade_correction_flag` (
   CONSTRAINT `fk_grade_flag_student` FOREIGN KEY (`student_id`) REFERENCES `Student` (`student_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_grade_flag_resolved_by` FOREIGN KEY (`resolved_by`) REFERENCES `Registrar` (`registrar_id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- One row per meeting of a class, and one row with empty times for a class with no meetings (TBA).
-CREATE VIEW `Class_Schedule` AS
-SELECT co.`offering_id`, co.`subject_id`, co.`teacher_id`, co.`section_id`, co.`term_id`,
-       cm.`meeting_id`, cm.`day_of_week`, cm.`start_time`, cm.`end_time`, cm.`room_id`, r.`room_code` AS `room`
-FROM `Class_Offering` co LEFT JOIN `Class_Meeting` cm ON cm.`offering_id` = co.`offering_id`
-LEFT JOIN `Room` r ON r.`room_id` = cm.`room_id`;

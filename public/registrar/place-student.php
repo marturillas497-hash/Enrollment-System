@@ -185,7 +185,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
                     co.offering_id, co.day_of_week, co.start_time, co.end_time, co.room
              FROM Curriculum_subject cs
              JOIN Subject s ON s.subject_id = cs.subject_id
-             LEFT JOIN Class_Schedule co
+             LEFT JOIN (SELECT o.offering_id, o.subject_id, o.teacher_id, o.section_id, o.term_id, cm.meeting_id, cm.day_of_week, cm.start_time, cm.end_time, cm.room_id, r.room_code AS room FROM Class_Offering o LEFT JOIN Class_Meeting cm ON cm.offering_id = o.offering_id LEFT JOIN Room r ON r.room_id = cm.room_id) co
                     ON co.subject_id = cs.subject_id AND co.section_id = :section_id AND co.term_id = :term_id
              WHERE cs.curriculum_id = :curriculum_id
                AND cs.year_level = :year_level

@@ -39,7 +39,7 @@ $stmt = $pdo->prepare(
     'SELECT co.offering_id, co.subject_id, co.section_id, co.term_id, co.room, co.day_of_week,
             co.start_time, co.end_time, sub.subject_code, sub.subject_name, sub.units,
             sec.section_name, sec.year_level, t.school_year, t.semester, t.status AS term_status
-     FROM Class_Schedule co
+     FROM (SELECT o.offering_id, o.subject_id, o.teacher_id, o.section_id, o.term_id, cm.meeting_id, cm.day_of_week, cm.start_time, cm.end_time, cm.room_id, r.room_code AS room FROM Class_Offering o LEFT JOIN Class_Meeting cm ON cm.offering_id = o.offering_id LEFT JOIN Room r ON r.room_id = cm.room_id) co
      JOIN Subject sub ON sub.subject_id = co.subject_id
      JOIN Section sec ON sec.section_id = co.section_id
      JOIN School_term t ON t.term_id = co.term_id

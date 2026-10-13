@@ -171,7 +171,7 @@ $siblings = $pdo->prepare(
     "SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, sec.section_name, sec.year_level, p.program_code,
             (SELECT COUNT(*) FROM Enrolled_subject es JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
              WHERE es.offering_id = co.offering_id AND e.status = 'approved') AS enrolled
-     FROM Class_Schedule co JOIN Section sec ON sec.section_id = co.section_id JOIN Program p ON p.program_id = sec.program_id
+     FROM (SELECT o.offering_id, o.subject_id, o.teacher_id, o.section_id, o.term_id, cm.meeting_id, cm.day_of_week, cm.start_time, cm.end_time, cm.room_id, r.room_code AS room FROM Class_Offering o LEFT JOIN Class_Meeting cm ON cm.offering_id = o.offering_id LEFT JOIN Room r ON r.room_id = cm.room_id) co JOIN Section sec ON sec.section_id = co.section_id JOIN Program p ON p.program_id = sec.program_id
      WHERE co.teacher_id = :tid AND co.subject_id = :sub AND co.term_id = :term
      ORDER BY sec.year_level, sec.section_name, FIELD(co.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), co.start_time"
 );

@@ -33,7 +33,7 @@ function buildPickerRows(PDO $pdo, int $studentId, int $curriculumId, int $termI
          JOIN Subject r ON r.subject_id = p.prerequisite_subject_id WHERE p.curriculum_id = :cid AND p.subject_id = :sid'
     );
     $offeringSql = 'SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, co.room, sec.section_name, sec.year_level
-                    FROM Class_Schedule co JOIN Section sec ON sec.section_id = co.section_id
+                    FROM (SELECT o.offering_id, o.subject_id, o.teacher_id, o.section_id, o.term_id, cm.meeting_id, cm.day_of_week, cm.start_time, cm.end_time, cm.room_id, r.room_code AS room FROM Class_Offering o LEFT JOIN Class_Meeting cm ON cm.offering_id = o.offering_id LEFT JOIN Room r ON r.room_id = cm.room_id) co JOIN Section sec ON sec.section_id = co.section_id
                     WHERE co.subject_id = :subid AND co.term_id = :tid'
                  . ($sectionId ? ' AND co.section_id = :secid' : '')
                  . ' ORDER BY sec.year_level, sec.section_name, co.start_time';
@@ -115,7 +115,7 @@ function findScheduleConflict(PDO $pdo, array $offeringIds): ?string
     $in = implode(',', array_fill(0, count($offeringIds), '?'));
     $stmt = $pdo->prepare(
         "SELECT co.day_of_week, co.start_time, co.end_time, s.subject_code
-         FROM Class_Schedule co JOIN Subject s ON s.subject_id = co.subject_id WHERE co.offering_id IN ($in)"
+         FROM (SELECT o.offering_id, o.subject_id, o.teacher_id, o.section_id, o.term_id, cm.meeting_id, cm.day_of_week, cm.start_time, cm.end_time, cm.room_id, r.room_code AS room FROM Class_Offering o LEFT JOIN Class_Meeting cm ON cm.offering_id = o.offering_id LEFT JOIN Room r ON r.room_id = cm.room_id) co JOIN Subject s ON s.subject_id = co.subject_id WHERE co.offering_id IN ($in)"
     );
     $stmt->execute($offeringIds);
     $slots = $stmt->fetchAll();
@@ -136,7 +136,7 @@ function rosterSlots(PDO $pdo, int $enrollmentId): array
 {
     $stmt = $pdo->prepare(
         'SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, s.subject_code
-         FROM Enrolled_subject es JOIN Class_Schedule co ON co.offering_id = es.offering_id
+         FROM Enrolled_subject es JOIN (SELECT o.offering_id, o.subject_id, o.teacher_id, o.section_id, o.term_id, cm.meeting_id, cm.day_of_week, cm.start_time, cm.end_time, cm.room_id, r.room_code AS room FROM Class_Offering o LEFT JOIN Class_Meeting cm ON cm.offering_id = o.offering_id LEFT JOIN Room r ON r.room_id = cm.room_id) co ON co.offering_id = es.offering_id
          JOIN Subject s ON s.subject_id = co.subject_id WHERE es.enrollment_id = :e'
     );
     $stmt->execute(['e' => $enrollmentId]);

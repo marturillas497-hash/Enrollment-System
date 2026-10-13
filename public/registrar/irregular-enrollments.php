@@ -66,7 +66,7 @@ if ($enrollment) {
         'SELECT es.enrolled_subject_id, sub.subject_code, sub.subject_name, sub.units, sec.section_name,
                 co.day_of_week, co.start_time, co.end_time, co.room
          FROM Enrolled_subject es
-         JOIN Class_Schedule co ON co.offering_id = es.offering_id
+         JOIN (SELECT o.offering_id, o.subject_id, o.teacher_id, o.section_id, o.term_id, cm.meeting_id, cm.day_of_week, cm.start_time, cm.end_time, cm.room_id, r.room_code AS room FROM Class_Offering o LEFT JOIN Class_Meeting cm ON cm.offering_id = o.offering_id LEFT JOIN Room r ON r.room_id = cm.room_id) co ON co.offering_id = es.offering_id
          JOIN Subject sub ON sub.subject_id = co.subject_id
          JOIN Section sec ON sec.section_id = co.section_id
          WHERE es.enrollment_id = :eid'

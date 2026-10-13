@@ -82,7 +82,7 @@ if ($detail) {
         'SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, co.room, s.subject_code, s.subject_name, s.units,
                 sec.section_name, sec.year_level, st.term_id, st.school_year, st.semester, st.status AS term_status,
                 (SELECT COUNT(*) FROM Enrolled_subject es WHERE es.offering_id = co.offering_id) AS enrolled_count
-         FROM Class_Schedule co
+         FROM (SELECT o.offering_id, o.subject_id, o.teacher_id, o.section_id, o.term_id, cm.meeting_id, cm.day_of_week, cm.start_time, cm.end_time, cm.room_id, r.room_code AS room FROM Class_Offering o LEFT JOIN Class_Meeting cm ON cm.offering_id = o.offering_id LEFT JOIN Room r ON r.room_id = cm.room_id) co
          JOIN Subject s ON s.subject_id = co.subject_id
          JOIN Section sec ON sec.section_id = co.section_id
          JOIN School_term st ON st.term_id = co.term_id
