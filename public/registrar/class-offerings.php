@@ -400,6 +400,56 @@ $showTermCol = $showTermFilter && $filterTerm === 0;
 $showSectionCol = $filterSection === 0;
 $colCount = 4 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
 
+$view = ($_GET['view'] ?? '') === 'week' ? 'week' : 'list';
+$by = in_array($_GET['by'] ?? '', ['teacher', 'room'], true) ? $_GET['by'] : 'section';
+$weekTerm = $filterTerm !== 0 ? $filterTerm : (int)($terms[0]['term_id'] ?? 0);
+$weekClasses = array_values(array_filter($offerings, fn($o) => (int)$o['term_id'] === $weekTerm));
+$weekOptions = [];
+foreach ($weekClasses as $o) {
+    if ($by === 'section') {
+        $weekOptions[(string)$o['section_id']] = sectionLabel($o['year_level'], $o['section_name'], $multiProgram ? $o['program_code'] : null);
+    } elseif ($by === 'teacher') {
+        $weekOptions[(string)$o['teacher_id']] = $o['last_name'] . ', ' . $o['first_name'];
+    } else {
+        foreach ($meetingsByClass[(int)$o['offering_id']] ?? [] as $m) {
+            if (!empty($m['room'])) {
+                $weekOptions[(string)$m['room']] = (string)$m['room'];
+            }
+        }
+    }
+}
+asort($weekOptions);
+$weekPick = is_string($_GET['pick'] ?? null) && isset($weekOptions[$_GET['pick']]) ? $_GET['pick'] : (string)(array_key_first($weekOptions) ?? '');
+$weekEvents = [];
+$weekTba = [];
+foreach ($weekClasses as $o) {
+    $sec = sectionLabel($o['year_level'], $o['section_name'], $multiProgram ? $o['program_code'] : null);
+    $teacher = $o['last_name'] . ', ' . $o['first_name'];
+    $mine = $by === 'section' ? (string)$o['section_id'] === $weekPick : ($by === 'teacher' ? (string)$o['teacher_id'] === $weekPick : false);
+    $classMeetings = $meetingsByClass[(int)$o['offering_id']] ?? [];
+    if (!$classMeetings) {
+        if ($mine) {
+            $weekTba[] = $o['subject_code'] . ' (' . ($by === 'section' ? $teacher : $sec) . ')';
+        }
+        continue;
+    }
+    foreach ($classMeetings as $m) {
+        if ($by === 'room' ? (string)($m['room'] ?? '') !== $weekPick : !$mine) {
+            continue;
+        }
+        $lines = $by === 'section' ? [$m['room'] ?? '', $teacher] : ($by === 'teacher' ? [$m['room'] ?? '', $sec] : [$sec, $teacher]);
+        $weekEvents[] = [
+            'day_of_week' => $m['day_of_week'], 'start_time' => $m['start_time'], 'end_time' => $m['end_time'],
+            'title' => $o['subject_code'], 'lines' => $lines,
+        ];
+    }
+}
+$byLabels = ['section' => 'Section', 'teacher' => 'Teacher', 'room' => 'Room'];
+$viewTabs = [
+    'list' => ['label' => 'List', 'href' => '?term=' . ($filterTerm !== 0 ? $filterTerm : 'all')],
+    'week' => ['label' => 'Week', 'href' => '?view=week&term=' . $weekTerm],
+];
+
 $reopenMeetings = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '' && ($_POST['action'] ?? '') !== 'delete_offering') {
     foreach ((array)($_POST['meeting_day'] ?? []) as $i => $day) {
@@ -417,10 +467,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '' && ($_POST['action'] 
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Class Offerings</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/schedule.css">
 </head>
 <body class="bg-light">
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
-<div class="container">
+<div class="container<?= $view === 'week' ? ' container-xl' : '' ?>">
     <h1 class="h4 mb-3">Class Offerings</h1>
     <?php
     $genDraft = $_SESSION['gen_draft'] ?? null;
@@ -509,6 +560,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '' && ($_POST['action'] 
     </div>
     <?php endif; ?>
 
+    <?= tabBar($viewTabs, $view) ?>
+    <?php if ($view === 'list'): ?>
     <?php if ($showTermFilter || $showSectionFilter): ?>
     <form method="get" class="toolbar">
         <?php if ($showTermFilter): ?>
@@ -594,6 +647,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '' && ($_POST['action'] 
         </tbody>
     </table>
 </div>
+<?php else: ?>
+    <?php if (empty($termOptions)): ?>
+        <p class="text-muted">No classes yet, so there is nothing to draw.</p>
+    <?php else: ?>
+    <form method="get" class="toolbar">
+        <input type="hidden" name="view" value="week">
+        <div class="toolbar-field toolbar-field-sm">
+            <label for="wterm">Term</label>
+            <select name="term" id="wterm" class="form-select" onchange="this.form.pick.value=''; this.form.submit()">
+                <?php foreach ($termOptions as $tid => $tlabel): ?>
+                    <option value="<?= $tid ?>" <?= $weekTerm === $tid ? 'selected' : '' ?>><?= htmlspecialchars($tlabel) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="toolbar-field toolbar-field-sm">
+            <label for="wby">Show by</label>
+            <select name="by" id="wby" class="form-select" onchange="this.form.pick.value=''; this.form.submit()">
+                <?php foreach ($byLabels as $key => $label): ?>
+                    <option value="<?= $key ?>" <?= $by === $key ? 'selected' : '' ?>><?= $label ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="toolbar-field">
+            <label for="wpick"><?= htmlspecialchars($byLabels[$by]) ?></label>
+            <select name="pick" id="wpick" class="form-select" onchange="this.form.submit()">
+                <?php foreach ($weekOptions as $value => $label): ?>
+                    <option value="<?= htmlspecialchars((string)$value) ?>" <?= $weekPick === (string)$value ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <noscript><button type="submit" class="btn btn-primary">View</button></noscript>
+    </form>
+    <?php if ($by === 'room'): ?>
+        <p class="text-muted small">Only your department's classes are drawn. Other departments may also use this room.</p>
+    <?php endif; ?>
+    <?php if (empty($weekOptions)): ?>
+        <p class="text-muted">No classes in this term yet.</p>
+    <?php else: ?>
+        <?= renderScheduleGrid($weekEvents) ?>
+        <?php if ($weekTba): ?>
+            <p class="small text-muted mt-2 mb-0">No set time (TBA): <?= htmlspecialchars(implode(', ', $weekTba)) ?></p>
+        <?php endif; ?>
+    <?php endif; ?>
+    <?php endif; ?>
+<?php endif; ?>
 </div>
 <div class="modal fade" id="deleteBlockedModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
