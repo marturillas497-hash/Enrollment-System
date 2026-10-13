@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/correction_helper.php';
 
 $user = requireRole(['teacher']);
 $pdo = getDbConnection();
@@ -50,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
          WHERE enrolled_subject_id = :id AND offering_id = :oid'
     );
 
-    $current = $pdo->prepare("SELECT es.enrolled_subject_id, es.grade, es.remarks FROM Enrolled_subject es JOIN Enrollment e ON e.enrollment_id = es.enrollment_id WHERE es.offering_id = :oid AND e.status = 'approved'");
+    $current = $pdo->prepare("SELECT es.enrolled_subject_id, es.grade, es.remarks, st.student_id_number FROM Enrolled_subject es JOIN Enrollment e ON e.enrollment_id = es.enrollment_id JOIN Student st ON st.student_id = e.student_id WHERE es.offering_id = :oid AND e.status = 'approved'");
     $current->execute(['oid' => $offeringId]);
     $currentRows = [];
     foreach ($current->fetchAll() as $row) {
@@ -104,6 +105,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
             'id' => $enrolledSubjectId,
             'oid' => $offeringId,
         ]);
+
+        $newRemarks = $remarkValue !== '' ? $remarkValue : null;
+        auditLog($pdo, $user, 'grade.edit', 'enrolled_subject', (int)$enrolledSubjectId,
+            'Grade for ' . $old['student_id_number'] . ' in ' . $offering['subject_code'] . ': '
+            . correctionResultLabel($old['grade'], $old['remarks']) . ' to ' . correctionResultLabel($gradeToSave, $newRemarks) . '.',
+            ['grade' => $old['grade'], 'remarks' => $old['remarks']], ['grade' => $gradeToSave, 'remarks' => $newRemarks]);
     }
 
     $problems = [];
@@ -121,8 +128,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     }
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'request_correction') {
+    [$ok, $text] = correctionCreate(
+        $pdo, $user, $teacher, (int)($_POST['enrolled_subject_id'] ?? 0),
+        (string)($_POST['new_grade'] ?? ''), (string)($_POST['new_remark'] ?? ''), (string)($_POST['reason'] ?? '')
+    );
+    if ($ok) { $message = $text; } else { $error = $text; }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'cancel_correction') {
+    [$ok, $text] = correctionCancel($pdo, $user, $teacher, (int)($_POST['correction_id'] ?? 0));
+    if ($ok) { $message = $text; } else { $error = $text; }
+}
+
 $stmt = $pdo->prepare(
-    'SELECT es.enrolled_subject_id, es.grade, es.remarks, s.student_id_number, s.last_name, s.first_name
+    'SELECT es.enrolled_subject_id, es.grade, es.remarks, es.corrected_at, s.student_id_number, s.last_name, s.first_name
      FROM Enrolled_subject es
      JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
      JOIN Student s ON s.student_id = e.student_id
@@ -132,16 +152,31 @@ $stmt = $pdo->prepare(
 $stmt->execute(['oid' => $offeringId]);
 $roster = $stmt->fetchAll();
 
+$stmt = $pdo->prepare(
+    'SELECT gc.* FROM Grade_correction gc JOIN Enrolled_subject es ON es.enrolled_subject_id = gc.enrolled_subject_id
+     WHERE es.offering_id = :oid ORDER BY gc.correction_id DESC'
+);
+$stmt->execute(['oid' => $offeringId]);
+$corrections = $stmt->fetchAll();
+$latestCorrection = [];
+foreach ($corrections as $c) {
+    $latestCorrection[(int)$c['enrolled_subject_id']] ??= $c;
+}
+$rosterNames = [];
+foreach ($roster as $r) {
+    $rosterNames[(int)$r['enrolled_subject_id']] = $r['first_name'] . ' ' . $r['last_name'] . ' (' . $r['student_id_number'] . ')';
+}
+
 $siblings = $pdo->prepare(
     "SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, sec.section_name, sec.year_level, p.program_code,
             (SELECT COUNT(*) FROM Enrolled_subject es JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
              WHERE es.offering_id = co.offering_id AND e.status = 'approved') AS enrolled
-     FROM Class_Offering co JOIN Section sec ON sec.section_id = co.section_id JOIN Program p ON p.program_id = sec.program_id
+     FROM Class_Schedule co JOIN Section sec ON sec.section_id = co.section_id JOIN Program p ON p.program_id = sec.program_id
      WHERE co.teacher_id = :tid AND co.subject_id = :sub AND co.term_id = :term
      ORDER BY sec.year_level, sec.section_name, FIELD(co.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), co.start_time"
 );
 $siblings->execute(['tid' => $teacher['teacher_id'], 'sub' => $offering['subject_id'], 'term' => $offering['term_id']]);
-$siblings = $siblings->fetchAll();
+$siblings = foldMeetings($siblings->fetchAll(), 'offering_id');
 
 $gradedCount = 0;
 foreach ($roster as $r) {
@@ -168,7 +203,7 @@ foreach ($roster as $r) {
             <select class="form-select" id="classSwitch" onchange="window.location.href = '?offering_id=' + this.value">
                 <?php foreach ($siblings as $sib): ?>
                     <option value="<?= (int)$sib['offering_id'] ?>"<?= (int)$sib['offering_id'] === (int)$offering['offering_id'] ? ' selected' : '' ?>>
-                        <?= htmlspecialchars(sectionLabel($sib['year_level'], $sib['section_name'], $sib['program_code']) . ' · ' . formatSchedule($sib['day_of_week'], $sib['start_time'], $sib['end_time']) . ' · ' . (int)$sib['enrolled'] . ' enrolled') ?>
+                        <?= htmlspecialchars(sectionLabel($sib['year_level'], $sib['section_name'], $sib['program_code']) . ' · ' . implode(' / ', $sib['schedule_lines']) . ' · ' . (int)$sib['enrolled'] . ' enrolled') ?>
                     </option>
                 <?php endforeach; ?>
             </select>
@@ -181,7 +216,7 @@ foreach ($roster as $r) {
 
     <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
     <?php if ($error): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-    <?php if ($termLocked): ?><div class="alert alert-secondary">This term is closed. Grades are locked and shown read-only.</div><?php endif; ?>
+    <?php if ($termLocked): ?><div class="alert alert-secondary">This term is closed. Grades are locked and shown read-only. To fix a wrong grade, or to give a grade to an Incomplete, use Request correction. The registrar decides, and the grade changes only if it is approved.</div><?php endif; ?>
 
     <?php if (!$termLocked): ?>
         <p class="text-muted small">The grade decides the remark: 3.00 or better is Passed, above 3.00 is Failed. For Dropped or Incomplete, leave the grade empty.</p>
@@ -192,7 +227,7 @@ foreach ($roster as $r) {
         <input type="hidden" name="offering_id" value="<?= $offeringId ?>">
         <div class="table-responsive">
 <table class="table bg-white">
-            <thead><tr><th>ID Number</th><th>Name</th><th class="col-w-120">Grade</th><th>Remarks</th></tr></thead>
+            <thead><tr><th>ID Number</th><th>Name</th><th class="col-w-120">Grade</th><th>Remarks</th><?php if ($termLocked): ?><th>Correction</th><?php endif; ?></tr></thead>
             <tbody>
             <?php foreach ($roster as $r): ?>
                 <tr>
@@ -213,9 +248,22 @@ foreach ($roster as $r) {
                             <option value="Incomplete" <?= ($r['remarks'] ?? '') === 'Incomplete' ? 'selected' : '' ?>>Incomplete</option>
                         </select>
                     </td>
+                    <?php if ($termLocked): $lc = $latestCorrection[(int)$r['enrolled_subject_id']] ?? null; ?>
+                    <td class="text-nowrap">
+                        <?= $r['corrected_at'] ? statusBadge('corrected', 'Corrected', 'info') . ' ' : '' ?>
+                        <?php if ($lc && $lc['status'] === 'pending'): ?>
+                            <?= statusBadge('pending', 'Correction pending') ?>
+                        <?php else: ?>
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#correctionModal"
+                                    data-es="<?= (int)$r['enrolled_subject_id'] ?>"
+                                    data-name="<?= htmlspecialchars($r['first_name'] . ' ' . $r['last_name'] . ' (' . $r['student_id_number'] . ')') ?>"
+                                    data-current="<?= htmlspecialchars(correctionResultLabel($r['grade'], $r['remarks'])) ?>">Request correction</button>
+                        <?php endif; ?>
+                    </td>
+                    <?php endif; ?>
                 </tr>
             <?php endforeach; ?>
-            <?php if (empty($roster)): ?><tr><td colspan="4" class="text-muted">No students enrolled in this offering.</td></tr><?php endif; ?>
+            <?php if (empty($roster)): ?><tr><td colspan="<?= $termLocked ? 5 : 4 ?>" class="text-muted">No students enrolled in this offering.</td></tr><?php endif; ?>
             </tbody>
         </table>
 </div>
@@ -224,7 +272,94 @@ foreach ($roster as $r) {
             <span class="text-muted small ms-2" id="unsaved-note" hidden>You have unsaved changes.</span>
         <?php endif; ?>
     </form>
+
+    <?php if ($corrections): ?>
+        <h2 class="h6 mt-4 mb-2">Correction requests for this class</h2>
+        <div class="table-responsive">
+        <table class="table table-sm bg-white align-middle">
+            <thead><tr><th>Student</th><th>Change</th><th>Reason</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            <?php foreach ($corrections as $c): ?>
+                <tr>
+                    <td><?= htmlspecialchars($rosterNames[(int)$c['enrolled_subject_id']] ?? 'Student') ?></td>
+                    <td class="text-nowrap"><?= htmlspecialchars(correctionResultLabel($c['old_grade'], $c['old_remarks'])) ?> &rarr; <strong><?= htmlspecialchars(correctionResultLabel($c['new_grade'], $c['new_remarks'])) ?></strong></td>
+                    <td class="small"><?= htmlspecialchars($c['reason']) ?></td>
+                    <td>
+                        <?= statusBadge($c['status']) ?>
+                        <?php if ($c['status'] === 'rejected' && $c['decision_reason']): ?><div class="small text-muted mt-1"><?= htmlspecialchars($c['decision_reason']) ?></div><?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ($c['status'] === 'pending'): ?>
+                            <form method="post" class="d-inline">
+                                <input type="hidden" name="action" value="cancel_correction">
+                                <input type="hidden" name="offering_id" value="<?= (int)$offeringId ?>">
+                                <input type="hidden" name="correction_id" value="<?= (int)$c['correction_id'] ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary" data-confirm="Withdraw this correction request?" data-confirm-label="Withdraw" data-confirm-tone="warning">Withdraw</button>
+                            </form>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+    <?php endif; ?>
 </div>
+
+<?php if ($termLocked): ?>
+<div class="modal fade" id="correctionModal" tabindex="-1" aria-labelledby="correctionModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <form method="post" class="modal-content">
+            <input type="hidden" name="action" value="request_correction">
+            <input type="hidden" name="offering_id" value="<?= (int)$offeringId ?>">
+            <input type="hidden" name="enrolled_subject_id" id="corrEs" value="">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="correctionModalLabel">Request a correction</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3"><strong id="corrName"></strong><br><span class="text-muted small">Recorded result: <span id="corrCurrent"></span></span></p>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small" for="corrGrade">Corrected grade</label>
+                        <input type="text" class="form-control" id="corrGrade" name="new_grade" placeholder="1.00–5.00" inputmode="decimal" autocomplete="off">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small" for="corrRemark">Or no grade</label>
+                        <select class="form-select" id="corrRemark" name="new_remark">
+                            <option value="">Use the grade</option>
+                            <option value="Dropped">Dropped</option>
+                            <option value="Incomplete">Incomplete</option>
+                        </select>
+                    </div>
+                </div>
+                <label class="form-label small" for="corrReason">Reason (the registrar sees this)</label>
+                <textarea class="form-control" id="corrReason" name="reason" rows="3" minlength="10" maxlength="500" required></textarea>
+                <div class="form-text">The remark follows the grade: 3.00 or better is Passed. The grade changes only if the registrar approves.</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Send to registrar</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+    (function () {
+        var modal = document.getElementById('correctionModal');
+        if (!modal) { return; }
+        modal.addEventListener('show.bs.modal', function (ev) {
+            var b = ev.relatedTarget;
+            document.getElementById('corrEs').value = b ? b.getAttribute('data-es') : '';
+            document.getElementById('corrName').textContent = b ? b.getAttribute('data-name') : '';
+            document.getElementById('corrCurrent').textContent = b ? b.getAttribute('data-current') : '';
+            document.getElementById('corrGrade').value = '';
+            document.getElementById('corrRemark').value = '';
+            document.getElementById('corrReason').value = '';
+        });
+    })();
+</script>
+<?php endif; ?>
 <script>
     /*
      * Range check and remark sync as the teacher types, plus a heads-up for unsaved edits.

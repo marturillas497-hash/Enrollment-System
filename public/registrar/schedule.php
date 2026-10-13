@@ -47,7 +47,7 @@ if ($mode === 'section') {
     }
 } else {
     // Rooms are shared across departments, so this lists every room in use.
-    $stmt = $pdo->prepare("SELECT DISTINCT room FROM Class_Offering WHERE room IS NOT NULL AND room <> '' AND term_id = :tid ORDER BY room");
+    $stmt = $pdo->prepare("SELECT DISTINCT r.room_code FROM Class_Meeting cm JOIN Room r ON r.room_id = cm.room_id JOIN Class_Offering co ON co.offering_id = cm.offering_id WHERE co.term_id = :tid ORDER BY r.room_code");
     $stmt->execute(['tid' => $termId]);
     foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $room) {
         $options[$room] = $room;
@@ -61,7 +61,7 @@ if ($selected !== '' && $termId !== '') {
     $stmt = $pdo->prepare(
         "SELECT s.subject_code, co.day_of_week, co.start_time, co.end_time, co.room,
                 sec.section_name, sec.year_level, p.program_code, t.last_name, t.first_name
-         FROM Class_Offering co
+         FROM Class_Schedule co
          JOIN Subject s ON s.subject_id = co.subject_id
          JOIN Section sec ON sec.section_id = co.section_id
          JOIN Program p ON p.program_id = sec.program_id

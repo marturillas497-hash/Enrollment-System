@@ -64,7 +64,7 @@ if ($error === '') {
                 co.day_of_week, co.start_time, co.end_time, co.room
          FROM Curriculum_subject cs
          JOIN Subject s ON s.subject_id = cs.subject_id
-         LEFT JOIN Class_Offering co
+         LEFT JOIN Class_Schedule co
                 ON co.subject_id = cs.subject_id AND co.section_id = :section_id AND co.term_id = :term_id
          WHERE cs.curriculum_id = :curriculum_id AND cs.year_level = :year_level AND cs.semester = :semester
          ORDER BY s.subject_code, co.start_time'
@@ -74,7 +74,7 @@ if ($error === '') {
         'curriculum_id' => $previous['curriculum_id'], 'year_level' => $yearLevel,
         'semester' => $currentTerm['semester'],
     ]);
-    $rows = $stmt->fetchAll();
+    $rows = foldMeetings($stmt->fetchAll(), 'subject_id');
 
     $sec = $pdo->prepare('SELECT section_name, year_level FROM Section WHERE section_id = :id');
     $sec->execute(['id' => $previous['section_id']]);
@@ -177,7 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $preview !== null && $error === '')
                 <tr>
                     <td><?= htmlspecialchars($m['subject_code'] . ' — ' . $m['subject_name']) ?></td>
                     <td><?= $m['units'] ?></td>
-                    <td><?= htmlspecialchars(formatSchedule($m['day_of_week'], $m['start_time'], $m['end_time'], $m['room'] ?? '')) ?></td>
+                    <td><?= scheduleLinesHtml($m) ?></td>
                 </tr>
             <?php endforeach; ?>
             <?php if (empty($preview['scheduled'])): ?><tr><td colspan="3" class="text-muted">No scheduled classes found for you yet.</td></tr><?php endif; ?>

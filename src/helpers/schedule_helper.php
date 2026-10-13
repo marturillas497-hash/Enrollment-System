@@ -61,3 +61,39 @@ function renderScheduleGrid(array $events): string
     }
     return $html . '</div></div>';
 }
+
+/**
+ * Query rows from Class_Schedule come one per meeting (a class with no meetings comes once, with empty times).
+ * Folds them into one row per $key (for example offering_id), adding 'meetings' and 'schedule_lines'
+ * (one text line per meeting, or ['TBA']).
+ */
+function foldMeetings(array $rows, string $key): array
+{
+    $out = [];
+    foreach ($rows as $r) {
+        $k = (string)$r[$key];
+        if (!isset($out[$k])) {
+            $out[$k] = $r;
+            $out[$k]['meetings'] = [];
+        }
+        if (!empty($r['day_of_week']) && !empty($r['start_time']) && !empty($r['end_time'])) {
+            $out[$k]['meetings'][] = [
+                'day_of_week' => $r['day_of_week'], 'start_time' => $r['start_time'],
+                'end_time' => $r['end_time'], 'room' => $r['room'] ?? '',
+            ];
+        }
+    }
+    foreach ($out as &$row) {
+        $row['schedule_lines'] = $row['meetings']
+            ? array_map(fn($m) => formatSchedule($m['day_of_week'], $m['start_time'], $m['end_time'], $m['room']), $row['meetings'])
+            : ['TBA'];
+    }
+    unset($row);
+    return array_values($out);
+}
+
+/** Escaped HTML for a folded row's meetings, one per line. */
+function scheduleLinesHtml(array $row): string
+{
+    return implode('<br>', array_map(fn($l) => htmlspecialchars((string)$l), $row['schedule_lines'] ?? ['TBA']));
+}

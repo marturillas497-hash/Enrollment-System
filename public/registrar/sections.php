@@ -26,8 +26,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $yearLevel = $_POST['year_level'] ?? '';
         $programId = $_POST['program_id'] ?? '';
         $maxSlots = $_POST['max_slots'] ?? '';
+        $curriculumId = $_POST['curriculum_id'] ?? '';
 
-        if ($name === '' || $yearLevel === '' || $programId === '' || $maxSlots === '') {
+        if ($name === '' || $yearLevel === '' || $programId === '' || $maxSlots === '' || $curriculumId === '') {
             $error = 'All fields are required.';
         } elseif (!ctype_digit((string)$yearLevel) || (int)$yearLevel < 1 || (int)$yearLevel > 4) {
             $error = 'Year level must be between 1 and 4.';
@@ -60,21 +61,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
+            /*
+             * A section follows exactly one curriculum of its program. New sections need a curriculum that
+             * is open for placement. An existing section keeps its curriculum, and may only be moved to
+             * another open one while nobody is enrolled in it.
+             */
+            if ($error === '') {
+                $cs = $pdo->prepare('SELECT curriculum_id, is_active FROM Curriculum WHERE curriculum_id = :c AND program_id = :p');
+                $cs->execute(['c' => ctype_digit((string)$curriculumId) ? $curriculumId : 0, 'p' => $programId]);
+                $chosenCurr = $cs->fetch();
+                $currentCurr = 0;
+                if ($id) {
+                    $q = $pdo->prepare('SELECT curriculum_id FROM Section WHERE section_id = :id');
+                    $q->execute(['id' => $id]);
+                    $currentCurr = (int)$q->fetchColumn();
+                }
+                if ($chosenCurr === false) {
+                    $error = 'Pick a curriculum that belongs to the chosen program.';
+                } elseif ($id && $currentCurr === (int)$chosenCurr['curriculum_id']) {
+                    // unchanged
+                } elseif ((int)$chosenCurr['is_active'] !== 1) {
+                    $error = 'Sections can only follow a curriculum that is open for placement.';
+                } elseif ($id) {
+                    $used = $pdo->prepare('SELECT COUNT(*) FROM Enrollment WHERE section_id = :id');
+                    $used->execute(['id' => $id]);
+                    if ((int)$used->fetchColumn() > 0) {
+                        $error = 'This section already has enrollments, so it cannot move to another curriculum.';
+                    }
+                }
+            }
+
             if ($error === '') {
             try {
                 if ($id) {
                     $stmt = $pdo->prepare(
-                        'UPDATE Section SET section_name=:name, year_level=:yl, program_id=:pid, max_slots=:slots
+                        'UPDATE Section SET section_name=:name, year_level=:yl, program_id=:pid, curriculum_id=:cid, max_slots=:slots
                          WHERE section_id=:id'
                     );
-                    $stmt->execute(['name' => $name, 'yl' => $yearLevel, 'pid' => $programId, 'slots' => $maxSlots, 'id' => $id]);
+                    $stmt->execute(['name' => $name, 'yl' => $yearLevel, 'pid' => $programId, 'cid' => $curriculumId, 'slots' => $maxSlots, 'id' => $id]);
                     $message = "Section #$id updated.";
                 } else {
                     $stmt = $pdo->prepare(
-                        'INSERT INTO Section (section_name, year_level, program_id, max_slots)
-                         VALUES (:name, :yl, :pid, :slots)'
+                        'INSERT INTO Section (section_name, year_level, program_id, curriculum_id, max_slots)
+                         VALUES (:name, :yl, :pid, :cid, :slots)'
                     );
-                    $stmt->execute(['name' => $name, 'yl' => $yearLevel, 'pid' => $programId, 'slots' => $maxSlots]);
+                    $stmt->execute(['name' => $name, 'yl' => $yearLevel, 'pid' => $programId, 'cid' => $curriculumId, 'slots' => $maxSlots]);
                     $message = 'Section added.';
                 }
             } catch (Exception $e) {
@@ -106,18 +137,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $reopenForm = $error !== '' && ($_POST['action'] ?? '') === 'save';
-$form = ['section_id' => '', 'section_name' => '', 'year_level' => '', 'program_id' => '', 'max_slots' => ''];
+$form = ['section_id' => '', 'section_name' => '', 'year_level' => '', 'program_id' => '', 'curriculum_id' => '', 'max_slots' => ''];
 if ($reopenForm) {
     foreach ($form as $k => $_) { $form[$k] = (string)($_POST[$k] ?? ''); }
 }
 
 $sections = $pdo->prepare(
-    'SELECT sec.*, p.program_code FROM Section sec JOIN Program p ON p.program_id = sec.program_id
+    'SELECT sec.*, p.program_code, c.curriculum_name, c.effective_year, c.is_active AS curriculum_active,
+            (SELECT COUNT(*) FROM Enrollment e WHERE e.section_id = sec.section_id) AS enrollment_count
+     FROM Section sec JOIN Program p ON p.program_id = sec.program_id
+     JOIN Curriculum c ON c.curriculum_id = sec.curriculum_id
      WHERE p.department_id = :dept
      ORDER BY p.program_code, sec.year_level, sec.section_name'
 );
 $sections->execute(['dept' => $myDepartmentId]);
 $sections = $sections->fetchAll();
+
+$curriculaForForm = $pdo->prepare(
+    'SELECT c.curriculum_id, c.program_id, c.curriculum_name, c.effective_year, c.is_active
+     FROM Curriculum c JOIN Program p ON p.program_id = c.program_id
+     WHERE p.department_id = :dept ORDER BY c.effective_year DESC, c.curriculum_id DESC'
+);
+$curriculaForForm->execute(['dept' => $myDepartmentId]);
+$curriculaForForm = $curriculaForForm->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -141,18 +183,19 @@ $sections = $sections->fetchAll();
 
     <div class="table-responsive">
 <table class="table table-hover bg-white">
-        <thead><tr><?php if (count($programs) !== 1): ?><th>Program</th><?php endif; ?><th>Section</th><th>Year</th><th>Max Slots</th><th></th></tr></thead>
+        <thead><tr><?php if (count($programs) !== 1): ?><th>Program</th><?php endif; ?><th>Section</th><th>Year</th><th>Curriculum</th><th>Max Slots</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($sections as $s): ?>
             <tr>
                 <?php if (count($programs) !== 1): ?><td><?= htmlspecialchars($s['program_code']) ?></td><?php endif; ?>
                 <td><?= htmlspecialchars($s['section_name']) ?></td>
                 <td><?= $s['year_level'] ?></td>
+                <td><?= htmlspecialchars($s['curriculum_name'] . ' (' . $s['effective_year'] . ')') ?><?= $s['curriculum_active'] ? '' : ' ' . statusBadge('retired', 'Retired') ?></td>
                 <td><?= $s['max_slots'] ?></td>
                 <td>
                     <a href="<?= BASE_URL ?>/registrar/section-roster.php?id=<?= $s['section_id'] ?>" class="btn btn-sm btn-outline-secondary">Roster</a>
                     <button type="button" class="btn btn-sm btn-outline-primary"
-                            data-section="<?= htmlspecialchars(json_encode(['section_id' => $s['section_id'], 'section_name' => $s['section_name'], 'year_level' => $s['year_level'], 'program_id' => $s['program_id'], 'max_slots' => $s['max_slots']]), ENT_QUOTES) ?>"
+                            data-section="<?= htmlspecialchars(json_encode(['section_id' => $s['section_id'], 'section_name' => $s['section_name'], 'year_level' => $s['year_level'], 'program_id' => $s['program_id'], 'curriculum_id' => $s['curriculum_id'], 'curriculum_locked' => (int)$s['enrollment_count'] > 0, 'max_slots' => $s['max_slots']]), ENT_QUOTES) ?>"
                             onclick="openSectionModal(JSON.parse(this.dataset.section))">Edit</button>
                     <form method="post" class="d-inline">
                         <input type="hidden" name="action" value="delete">
@@ -163,7 +206,7 @@ $sections = $sections->fetchAll();
                 </td>
             </tr>
         <?php endforeach; ?>
-        <?php if (empty($sections)): ?><tr><td colspan="5" class="text-muted">No sections yet.</td></tr><?php endif; ?>
+        <?php if (empty($sections)): ?><tr><td colspan="6" class="text-muted">No sections yet.</td></tr><?php endif; ?>
         </tbody>
     </table>
 </div>
@@ -197,6 +240,12 @@ $sections = $sections->fetchAll();
             <label class="form-label">Section Name</label>
             <input class="form-control" name="section_name" id="sectionName" placeholder="A" required>
         </div>
+        <div class="mb-3">
+            <label class="form-label">Curriculum</label>
+            <select class="form-select" name="curriculum_id" id="sectionCurriculum" required></select>
+            <input type="hidden" name="curriculum_id" id="sectionCurriculumKept" disabled>
+            <div class="form-text" id="sectionCurriculumHelp">Students placed in this section follow this curriculum. Only open curricula are listed.</div>
+        </div>
         <div class="row">
             <div class="col-6 mb-3">
                 <label class="form-label">Year Level</label>
@@ -218,10 +267,41 @@ $sections = $sections->fetchAll();
 
 <script>
 var singleProgram = <?= count($programs) === 1 ? 'true' : 'false' ?>;
+var allCurricula = <?= json_encode($curriculaForForm, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+function fillCurricula(currentId) {
+    var sel = document.getElementById('sectionCurriculum');
+    var program = document.getElementById('sectionProgram').value;
+    sel.innerHTML = '';
+    var placeholder = document.createElement('option');
+    placeholder.value = ''; placeholder.textContent = 'Select';
+    sel.appendChild(placeholder);
+    allCurricula.forEach(function (c) {
+        if (String(c.program_id) !== String(program)) { return; }
+        var isCurrent = String(c.curriculum_id) === String(currentId);
+        if (Number(c.is_active) !== 1 && !isCurrent) { return; }
+        var op = document.createElement('option');
+        op.value = c.curriculum_id;
+        op.textContent = c.curriculum_name + ' (' + c.effective_year + ')' + (Number(c.is_active) === 1 ? '' : ' - retired');
+        if (isCurrent) { op.selected = true; }
+        sel.appendChild(op);
+    });
+}
+if (!singleProgram) {
+    document.getElementById('sectionProgram').addEventListener('change', function () { fillCurricula(''); });
+}
 function openSectionModal(d) {
     var editing = !!d.section_id;
     document.getElementById('sectionId').value = d.section_id || '';
     if (!singleProgram) { document.getElementById('sectionProgram').value = d.program_id || ''; }
+    fillCurricula(d.curriculum_id || '');
+    var locked = editing && !!d.curriculum_locked;
+    var sel = document.getElementById('sectionCurriculum'), kept = document.getElementById('sectionCurriculumKept');
+    sel.disabled = locked;
+    kept.disabled = !locked;
+    kept.value = d.curriculum_id || '';
+    document.getElementById('sectionCurriculumHelp').textContent = locked
+        ? 'This section has enrollments, so its curriculum is fixed.'
+        : 'Students placed in this section follow this curriculum. Only open curricula are listed.';
     document.getElementById('sectionName').value = d.section_name || '';
     document.getElementById('sectionYear').value = d.year_level || '';
     document.getElementById('sectionSlots').value = d.max_slots || '';

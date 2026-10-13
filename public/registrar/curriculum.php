@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -17,6 +18,62 @@ $programs->execute(['dept' => $myDepartmentId]);
 $programs = $programs->fetchAll();
 $myProgramIds = array_column($programs, 'program_id');
 
+function curriculumNameTaken(PDO $pdo, int $programId, string $name): bool
+{
+    $stmt = $pdo->prepare('SELECT 1 FROM Curriculum WHERE program_id = :pid AND LOWER(curriculum_name) = LOWER(:name)');
+    $stmt->execute(['pid' => $programId, 'name' => $name]);
+    return $stmt->fetch() !== false;
+}
+
+/** Students who follow a curriculum: any non-rejected enrollment on it. */
+function curriculumFollowers(PDO $pdo, int $curriculumId): array
+{
+    $stmt = $pdo->prepare(
+        "SELECT DISTINCT st.student_id, st.student_id_number, st.last_name, st.first_name
+         FROM Enrollment e JOIN Student st ON st.student_id = e.student_id
+         WHERE e.curriculum_id = :cid AND e.status <> 'rejected'
+         ORDER BY st.last_name, st.first_name"
+    );
+    $stmt->execute(['cid' => $curriculumId]);
+    return $stmt->fetchAll();
+}
+
+/**
+ * Students who already hold a record for a subject under this curriculum: a graded or ongoing
+ * enrollment row, an approved shift credit into it, or a transferee credit while following it.
+ */
+function curriculumSubjectRecords(PDO $pdo, int $curriculumId, int $subjectId): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT st.student_id, st.student_id_number, st.last_name, st.first_name
+         FROM Enrolled_subject es
+         JOIN Enrollment e ON e.enrollment_id = es.enrollment_id AND e.curriculum_id = :c1
+         JOIN Class_Offering co ON co.offering_id = es.offering_id AND co.subject_id = :s1
+         JOIN Student st ON st.student_id = e.student_id
+         UNION
+         SELECT st.student_id, st.student_id_number, st.last_name, st.first_name
+         FROM Shift_credit sc
+         JOIN Program_shift_request r ON r.request_id = sc.request_id AND r.to_curriculum_id = :c2 AND r.status = \'approved\'
+         JOIN Student st ON st.student_id = r.student_id
+         WHERE sc.credited_subject_id = :s2
+         UNION
+         SELECT st.student_id, st.student_id_number, st.last_name, st.first_name
+         FROM Transferee_credit tc
+         JOIN Student st ON st.student_id = tc.student_id
+         WHERE tc.credited_subject_id = :s3
+           AND EXISTS (SELECT 1 FROM Enrollment e2 WHERE e2.student_id = tc.student_id AND e2.curriculum_id = :c3)'
+    );
+    $stmt->execute(['c1' => $curriculumId, 's1' => $subjectId, 'c2' => $curriculumId, 's2' => $subjectId, 's3' => $subjectId, 'c3' => $curriculumId]);
+    return $stmt->fetchAll();
+}
+
+function curriculumStudentList(array $students, int $limit = 8): string
+{
+    $names = array_map(fn($s) => $s['last_name'] . ', ' . $s['first_name'] . ' (' . $s['student_id_number'] . ')', array_slice($students, 0, $limit));
+    $more = count($students) - count($names);
+    return implode('; ', $names) . ($more > 0 ? " and $more more" : '');
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
@@ -32,6 +89,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Defense in depth: the dropdown only lists your own department's programs,
             // but a manipulated request could still try a different program_id.
             $error = 'That program is not in your department.';
+        } elseif (curriculumNameTaken($pdo, (int)$programId, $name)) {
+            $error = 'This program already has a curriculum with that name. Use a different name.';
         } else {
             try {
                 $pdo->beginTransaction();
@@ -52,10 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
-                // New curriculum becomes the active one; retire any other active curriculum for this program.
-                $pdo->prepare('UPDATE Curriculum SET is_active = 0 WHERE program_id = :pid')
-                    ->execute(['pid' => $programId]);
-
+                // A new curriculum opens for placement. Other open curricula of the program stay open.
                 $stmt = $pdo->prepare(
                     'INSERT INTO Curriculum (program_id, curriculum_name, effective_year, is_active)
                      VALUES (:pid, :name, :year, 1)'
@@ -65,8 +121,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 if ($cloneFrom !== '') {
                     $pdo->prepare(
-                        'INSERT INTO Curriculum_subject (curriculum_id, subject_id, year_level, semester)
-                         SELECT :new_id, subject_id, year_level, semester FROM Curriculum_subject WHERE curriculum_id = :old_id'
+                        'INSERT INTO Curriculum_subject (curriculum_id, subject_id, year_level, semester, required_standing)
+                         SELECT :new_id, subject_id, year_level, semester, required_standing FROM Curriculum_subject WHERE curriculum_id = :old_id'
+                    )->execute(['new_id' => $newCurriculumId, 'old_id' => $cloneFrom]);
+                    $pdo->prepare(
+                        'INSERT INTO Curriculum_prerequisite (curriculum_id, subject_id, prerequisite_subject_id)
+                         SELECT :new_id, subject_id, prerequisite_subject_id FROM Curriculum_prerequisite WHERE curriculum_id = :old_id'
                     )->execute(['new_id' => $newCurriculumId, 'old_id' => $cloneFrom]);
                 }
 
@@ -88,17 +148,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($target === false) {
             $error = 'That curriculum is not in your department.';
         } elseif ((int)$target['is_active'] === 1) {
-            $error = 'That curriculum is already active.';
+            $error = 'That curriculum is already open for placement.';
         } else {
             try {
-                $pdo->beginTransaction();
-                $pdo->prepare('UPDATE Curriculum SET is_active = 0 WHERE program_id = :pid')->execute(['pid' => $target['program_id']]);
                 $pdo->prepare('UPDATE Curriculum SET is_active = 1 WHERE curriculum_id = :id')->execute(['id' => $curriculumId]);
-                $pdo->commit();
-                $message = 'Curriculum reactivated. The previously active one is now retired.';
+                $message = 'Curriculum opened for new placements.';
             } catch (Exception $e) {
-                if ($pdo->inTransaction()) { $pdo->rollBack(); }
-                $error = errorMessage($e, 'Could not reactivate the curriculum.');
+                $error = errorMessage($e, 'Could not open the curriculum.');
+            }
+        }
+    } elseif ($action === 'retire') {
+        $curriculumId = $_POST['curriculum_id'] ?? '';
+        $ownCheck = $pdo->prepare(
+            'SELECT c.is_active FROM Curriculum c JOIN Program p ON p.program_id = c.program_id
+             WHERE c.curriculum_id = :id AND p.department_id = :dept'
+        );
+        $ownCheck->execute(['id' => $curriculumId, 'dept' => $myDepartmentId]);
+        $target = $ownCheck->fetch();
+        if ($target === false) {
+            $error = 'That curriculum is not in your department.';
+        } elseif ((int)$target['is_active'] !== 1) {
+            $error = 'That curriculum is already retired.';
+        } else {
+            try {
+                $pdo->prepare('UPDATE Curriculum SET is_active = 0 WHERE curriculum_id = :id')->execute(['id' => $curriculumId]);
+                $message = 'Curriculum retired. Students already on it are not affected.';
+            } catch (Exception $e) {
+                $error = errorMessage($e, 'Could not retire the curriculum.');
             }
         }
     } elseif ($action === 'remove_subject') {
@@ -108,10 +184,88 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ownCheck->execute(['id' => $curriculumId, 'dept' => $myDepartmentId]);
         if ($ownCheck->fetch() === false) {
             $error = 'That curriculum is not in your department.';
+        } elseif (!ctype_digit((string)$subjectId)) {
+            $error = 'Pick a subject to remove.';
         } else {
-            $pdo->prepare('DELETE FROM Curriculum_subject WHERE curriculum_id = :c AND subject_id = :s')
-                ->execute(['c' => $curriculumId, 's' => $subjectId]);
-            $message = 'Subject removed from curriculum.';
+            $holders = curriculumSubjectRecords($pdo, (int)$curriculumId, (int)$subjectId);
+            if ($holders) {
+                $error = 'This subject cannot be removed because ' . count($holders) . ' student(s) already have a record for it: '
+                    . curriculumStudentList($holders) . '.';
+            } else {
+                $pdo->prepare('DELETE FROM Curriculum_subject WHERE curriculum_id = :c AND subject_id = :s')
+                    ->execute(['c' => $curriculumId, 's' => $subjectId]);
+                $message = 'Subject removed from curriculum.';
+            }
+        }
+    } elseif ($action === 'save_prereqs') {
+        $curriculumId = $_POST['curriculum_id'] ?? '';
+        $subjectId = $_POST['subject_id'] ?? '';
+        $prereqIds = array_values(array_unique(array_filter(array_map('intval', (array) ($_POST['prereq_ids'] ?? [])), fn($v) => $v > 0)));
+        $standingPost = $_POST['required_standing'] ?? '';
+
+        $ownCheck = $pdo->prepare('SELECT 1 FROM Curriculum c JOIN Program p ON p.program_id = c.program_id WHERE c.curriculum_id = :id AND p.department_id = :dept');
+        $ownCheck->execute(['id' => $curriculumId, 'dept' => $myDepartmentId]);
+
+        if ($ownCheck->fetch() === false) {
+            $error = 'That curriculum is not in your department.';
+        } else {
+            /* A prerequisite must sit in an earlier year or semester. Order within a year: Sem 1, Sem 2, Summer. */
+            $placement = $pdo->prepare('SELECT subject_id, year_level, year_level * 10 + semester AS slot FROM Curriculum_subject WHERE curriculum_id = :c');
+            $placement->execute(['c' => $curriculumId]);
+            $slots = [];
+            $years = [];
+            foreach ($placement->fetchAll() as $row) {
+                $slots[(int)$row['subject_id']] = (int)$row['slot'];
+                $years[(int)$row['subject_id']] = (int)$row['year_level'];
+            }
+            $requiredStanding = null;
+
+            if (!ctype_digit((string)$subjectId) || !isset($slots[(int)$subjectId])) {
+                $error = 'That subject is not in this curriculum.';
+            } else {
+                $sid = (int)$subjectId;
+                if ($standingPost !== '') {
+                    $requiredStanding = (int)$standingPost;
+                    if ($requiredStanding < 2 || $requiredStanding > 4) {
+                        $error = 'Year standing must be 2nd, 3rd or 4th year.';
+                    } elseif ($requiredStanding > $years[$sid]) {
+                        $error = 'A subject cannot ask for a higher year standing than the year it is placed in.';
+                    }
+                }
+                foreach ($error === '' ? $prereqIds : [] as $rid) {
+                    if ($rid === $sid) {
+                        $error = 'A subject cannot be its own prerequisite.';
+                    } elseif (!isset($slots[$rid])) {
+                        $error = 'Every prerequisite must be a subject of this curriculum.';
+                    } elseif ($slots[$rid] >= $slots[$sid]) {
+                        $error = 'A prerequisite must come in an earlier year or semester than the subject.';
+                    } elseif (prerequisiteWouldCreateCycle($pdo, (int)$curriculumId, $sid, $rid)) {
+                        $error = 'That would create a circular prerequisite chain.';
+                    }
+                    if ($error !== '') {
+                        break;
+                    }
+                }
+            }
+
+            if ($error === '') {
+                try {
+                    $pdo->beginTransaction();
+                    $pdo->prepare('DELETE FROM Curriculum_prerequisite WHERE curriculum_id = :c AND subject_id = :s')
+                        ->execute(['c' => $curriculumId, 's' => $sid]);
+                    $pdo->prepare('UPDATE Curriculum_subject SET required_standing = :rs WHERE curriculum_id = :c AND subject_id = :s')
+                        ->execute(['rs' => $requiredStanding, 'c' => $curriculumId, 's' => $sid]);
+                    $ins = $pdo->prepare('INSERT INTO Curriculum_prerequisite (curriculum_id, subject_id, prerequisite_subject_id) VALUES (:c, :s, :r)');
+                    foreach ($prereqIds as $rid) {
+                        $ins->execute(['c' => $curriculumId, 's' => $sid, 'r' => $rid]);
+                    }
+                    $pdo->commit();
+                    $message = 'Requirements saved. They apply to future subject choices only.';
+                } catch (Exception $e) {
+                    if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                    $error = errorMessage($e, 'Could not save the prerequisites.');
+                }
+            }
         }
     } elseif ($action === 'add_subject') {
         $curriculumId = $_POST['curriculum_id'] ?? '';
@@ -166,6 +320,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Expanded view: managing one curriculum's subject list
 $expandId = $_GET['curriculum_id'] ?? ($_POST['curriculum_id'] ?? null);
 $expanded = null;
+$followers = [];
+$recordedSubjectIds = [];
+$prereqMap = [];
+$dependentsMap = [];
 $curriculumSubjects = [];
 $allSubjects = [];
 if ($expandId) {
@@ -186,13 +344,44 @@ if ($expandId) {
         $curriculumSubjects = $stmt->fetchAll();
 
         $allSubjects = $pdo->query('SELECT subject_id, subject_code, subject_name, units, year_level FROM Subject ORDER BY subject_id DESC')->fetchAll();
+
+        $followers = curriculumFollowers($pdo, (int)$expandId);
+        $stmt = $pdo->prepare(
+            'SELECT DISTINCT co.subject_id FROM Enrolled_subject es
+             JOIN Enrollment e ON e.enrollment_id = es.enrollment_id AND e.curriculum_id = :c1
+             JOIN Class_Offering co ON co.offering_id = es.offering_id
+             UNION
+             SELECT sc.credited_subject_id FROM Shift_credit sc
+             JOIN Program_shift_request r ON r.request_id = sc.request_id AND r.to_curriculum_id = :c2 AND r.status = \'approved\'
+             UNION
+             SELECT tc.credited_subject_id FROM Transferee_credit tc
+             WHERE EXISTS (SELECT 1 FROM Enrollment e2 WHERE e2.student_id = tc.student_id AND e2.curriculum_id = :c3)'
+        );
+        $stmt->execute(['c1' => $expandId, 'c2' => $expandId, 'c3' => $expandId]);
+        $recordedSubjectIds = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+
+        $codeById = [];
+        foreach ($curriculumSubjects as $cs) {
+            $codeById[(int)$cs['subject_id']] = $cs['subject_code'];
+        }
+        $stmt = $pdo->prepare('SELECT subject_id, prerequisite_subject_id FROM Curriculum_prerequisite WHERE curriculum_id = :id');
+        $stmt->execute(['id' => $expandId]);
+        foreach ($stmt->fetchAll() as $row) {
+            $sid = (int)$row['subject_id'];
+            $rid = (int)$row['prerequisite_subject_id'];
+            $prereqMap[$sid][] = $rid;
+            $dependentsMap[$rid][] = $codeById[$sid] ?? '';
+        }
     }
 }
 
 $curricula = $pdo->prepare(
-    'SELECT c.*, p.program_code FROM Curriculum c JOIN Program p ON p.program_id = c.program_id
+    "SELECT c.*, p.program_code,
+            (SELECT COUNT(DISTINCT e.student_id) FROM Enrollment e WHERE e.curriculum_id = c.curriculum_id AND e.status <> 'rejected') AS follower_count,
+            (SELECT COUNT(*) FROM Section sec WHERE sec.curriculum_id = c.curriculum_id) AS section_count
+     FROM Curriculum c JOIN Program p ON p.program_id = c.program_id
      WHERE p.department_id = :dept
-     ORDER BY p.program_code, c.effective_year DESC'
+     ORDER BY p.program_code, c.effective_year DESC, c.curriculum_id DESC"
 );
 $curricula->execute(['dept' => $myDepartmentId]);
 $curricula = $curricula->fetchAll();
@@ -219,8 +408,9 @@ $curricula = $curricula->fetchAll();
         <h2 class="h5">
             <?= htmlspecialchars($expanded['curriculum_name']) ?>
             (<?= htmlspecialchars($expanded['program_code']) ?>, <?= $expanded['effective_year'] ?>)
-            <?php if ($expanded['is_active']): ?><?= statusBadge('active') ?><?php endif; ?>
+            <?= statusBadge($expanded['is_active'] ? 'active' : 'retired', $expanded['is_active'] ? 'Open for placement' : 'Retired') ?>
         </h2>
+        <p class="text-muted small"><?= count($followers) ?> student(s) follow this curriculum. They keep it for good. Removing a subject here only affects future choices.</p>
 
         <?php
         // Year tabs: only worth showing when the curriculum spans more than one year level.
@@ -344,7 +534,7 @@ $curricula = $curricula->fetchAll();
                     </div>
                     <div class="table-responsive">
                     <table class="table bg-white mb-0">
-                        <thead><tr><th>Code</th><th>Subject</th><th>Units</th><th></th></tr></thead>
+                        <thead><tr><th>Code</th><th>Subject</th><th>Units</th><th>Requires</th><th></th></tr></thead>
                         <tbody>
                         <?php $semesterUnits = 0; ?>
                         <?php foreach ($rows as $cs): ?>
@@ -353,13 +543,36 @@ $curricula = $curricula->fetchAll();
                                 <td><?= htmlspecialchars($cs['subject_code']) ?></td>
                                 <td><?= htmlspecialchars($cs['subject_name']) ?></td>
                                 <td><?= $cs['units'] ?></td>
+                                <?php $myPrereqs = $prereqMap[(int)$cs['subject_id']] ?? []; ?>
                                 <td>
+                                    <?= $myPrereqs ? htmlspecialchars(implode(', ', array_map(fn($r) => $codeById[$r] ?? '?', $myPrereqs))) : ($cs['required_standing'] ? '' : '<span class="text-muted">None</span>') ?>
+                                    <?php if ($cs['required_standing']): ?><span class="badge text-bg-light border"><?= htmlspecialchars(standingLabel((int)$cs['required_standing'])) ?></span><?php endif; ?>
+                                </td>
+                                <td class="text-nowrap">
+                                    <button type="button" class="btn btn-sm btn-outline-primary"
+                                            onclick="openPrereqModal(<?= (int)$cs['subject_id'] ?>)">Prerequisites</button>
+                                    <?php $hasRecord = in_array((int)$cs['subject_id'], $recordedSubjectIds, true); ?>
                                     <form method="post">
                                         <input type="hidden" name="action" value="remove_subject">
                                         <input type="hidden" name="curriculum_id" value="<?= $expanded['curriculum_id'] ?>">
                                         <input type="hidden" name="subject_id" value="<?= $cs['subject_id'] ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger"
-                                                data-confirm="Remove this subject from the curriculum?" data-confirm-label="Remove" data-confirm-tone="danger">Remove</button>
+                                        <?php if ($hasRecord): ?>
+                                            <button type="button" class="btn btn-sm btn-outline-danger" disabled
+                                                    title="Students already have a record for this subject">Remove</button>
+                                        <?php else: ?>
+                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                    data-confirm="<?php
+                                                $warn = 'Remove this subject from the curriculum?';
+                                                $own = array_map(fn($r) => $codeById[$r] ?? '?', $prereqMap[(int)$cs['subject_id']] ?? []);
+                                                $dep = array_filter($dependentsMap[(int)$cs['subject_id']] ?? []);
+                                                if ($own) { $warn .= ' It requires ' . implode(', ', $own) . '.'; }
+                                                if ($dep) { $warn .= ' It is required by ' . implode(', ', $dep) . '.'; }
+                                                if ($own || $dep) { $warn .= ' Those prerequisite links are removed too.'; }
+                                                if ($followers) { $warn .= ' These students follow this curriculum and will no longer see it for future choices: ' . curriculumStudentList($followers) . '.'; }
+                                                echo htmlspecialchars($warn);
+                                            ?>"
+                                                    data-confirm-label="Remove" data-confirm-tone="danger">Remove</button>
+                                        <?php endif; ?>
                                     </form>
                                 </td>
                             </tr>
@@ -370,6 +583,7 @@ $curricula = $curricula->fetchAll();
                                 <td colspan="2" class="text-end">Total Units</td>
                                 <td><?= rtrim(rtrim(number_format($semesterUnits, 2), '0'), '.') ?></td>
                                 <td></td>
+                                <td></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -377,6 +591,81 @@ $curricula = $curricula->fetchAll();
                 </div>
             <?php endforeach; ?>
         <?php endforeach; ?>
+
+        <div class="modal fade" id="prereqModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-scrollable">
+                <form method="post" class="modal-content">
+                    <input type="hidden" name="action" value="save_prereqs">
+                    <input type="hidden" name="curriculum_id" value="<?= (int)$expanded['curriculum_id'] ?>">
+                    <input type="hidden" name="subject_id" id="prereqSubjectId">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="prereqTitle">Requirements</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="text-muted small mb-2">Tick every subject that must be completed first. Only subjects in an earlier year or semester of this curriculum are listed. Every ticked subject is required.
+                            <?= count($followers) ?> student(s) follow this curriculum. Changes apply to future subject choices only.</p>
+                        <div id="prereqList"></div>
+                        <div id="prereqEmpty" class="text-muted d-none">No subject comes before this one in the curriculum.</div>
+                        <hr>
+                        <label class="form-label" for="prereqStanding">Year standing needed</label>
+                        <select class="form-select" name="required_standing" id="prereqStanding"></select>
+                        <div class="form-text">Standing means every subject of the earlier years is completed. It cannot be higher than the year this subject is placed in.</div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script>
+        var prereqSubjects = <?= json_encode(array_map(fn($cs) => [
+            'id' => (int)$cs['subject_id'], 'code' => $cs['subject_code'], 'name' => $cs['subject_name'],
+            'year' => (int)$cs['year_level'], 'sem' => (int)$cs['semester'],
+            'standing' => $cs['required_standing'] === null ? '' : (int)$cs['required_standing'],
+        ], $curriculumSubjects), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        var prereqCurrent = <?= json_encode((object)$prereqMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        function openPrereqModal(subjectId) {
+            var me = prereqSubjects.filter(function (s) { return s.id === subjectId; })[0];
+            if (!me) { return; }
+            var mySlot = me.year * 10 + me.sem;
+            var have = (prereqCurrent[subjectId] || []).map(Number);
+            var list = document.getElementById('prereqList');
+            list.innerHTML = '';
+            var shown = 0;
+            prereqSubjects.forEach(function (s) {
+                if (s.year * 10 + s.sem >= mySlot) { return; }
+                var wrap = document.createElement('div');
+                wrap.className = 'form-check';
+                var box = document.createElement('input');
+                box.type = 'checkbox'; box.className = 'form-check-input'; box.name = 'prereq_ids[]';
+                box.value = s.id; box.id = 'pr' + s.id; box.checked = have.indexOf(s.id) !== -1;
+                var label = document.createElement('label');
+                label.className = 'form-check-label'; label.htmlFor = box.id;
+                label.textContent = s.code + ' ' + s.name + ' (Year ' + s.year + ', Sem ' + s.sem + ')';
+                wrap.appendChild(box); wrap.appendChild(label); list.appendChild(wrap);
+                shown++;
+            });
+            document.getElementById('prereqEmpty').classList.toggle('d-none', shown !== 0);
+            var standing = document.getElementById('prereqStanding');
+            standing.innerHTML = '';
+            var none = document.createElement('option');
+            none.value = ''; none.textContent = 'None';
+            standing.appendChild(none);
+            var names = { 2: '2nd year standing', 3: '3rd year standing', 4: '4th year standing' };
+            for (var n = 2; n <= me.year; n++) {
+                var op = document.createElement('option');
+                op.value = n; op.textContent = names[n];
+                if (String(me.standing) === String(n)) { op.selected = true; }
+                standing.appendChild(op);
+            }
+            standing.disabled = me.year < 2;
+            document.getElementById('prereqSubjectId').value = subjectId;
+            document.getElementById('prereqTitle').textContent = 'Requirements for ' + me.code;
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('prereqModal')).show();
+        }
+        </script>
 
         <a href="<?= BASE_URL ?>/registrar/curriculum.php">&larr; Back to all curricula</a>
 
@@ -386,8 +675,8 @@ $curricula = $curricula->fetchAll();
             <div class="card-body">
                 <input type="hidden" name="action" value="create">
                 <h2 class="h6">Create a New Curriculum</h2>
-                <p class="text-muted small">Creating a new curriculum for a program automatically retires that
-                    program's current active one — only one curriculum per program is active at a time.</p>
+                <p class="text-muted small">A new curriculum opens for placement right away. A program may have several open
+                    curricula at once. The registrar picks one at placement, and students never move to another curriculum.</p>
                 <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">Program</label>
@@ -420,25 +709,27 @@ $curricula = $curricula->fetchAll();
                     <div class="form-text">
                         <strong>Blank</strong> creates an empty curriculum that you fill in yourself.
                         <strong>Copy of</strong> brings over every subject, with its year and semester, so you only edit the differences.
-                        Either way, the new curriculum becomes the active one and retires the current one for this program.
+                        Either way, the new curriculum is open for placement and the others stay as they are.
                     </div>
                 </div>
                 <button type="submit" class="btn btn-primary"
-                        data-confirm="The new curriculum becomes the active one for this program and the current one is retired. New students are placed into the active curriculum only, and a retired one can be reactivated from the list below. Continue?"
+                        data-confirm="Create this curriculum and open it for new placements? Other open curricula of this program stay open."
                         data-confirm-label="Create" data-confirm-tone="warning">Create Curriculum</button>
             </div>
         </form>
 
         <div class="table-responsive">
 <table class="table table-hover bg-white">
-            <thead><tr><th>Program</th><th>Curriculum</th><th>Year</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Program</th><th>Curriculum</th><th>Year</th><th>Status</th><th>Students</th><th>Sections</th><th></th></tr></thead>
             <tbody>
             <?php foreach ($curricula as $c): ?>
                 <tr>
                     <td><?= htmlspecialchars($c['program_code']) ?></td>
                     <td><?= htmlspecialchars($c['curriculum_name']) ?></td>
                     <td><?= $c['effective_year'] ?></td>
-                    <td><?= statusBadge($c['is_active'] ? 'active' : 'retired') ?></td>
+                    <td><?= statusBadge($c['is_active'] ? 'active' : 'retired', $c['is_active'] ? 'Open' : 'Retired') ?></td>
+                    <td><?= (int)$c['follower_count'] ?></td>
+                    <td><?= (int)$c['section_count'] ?></td>
                     <td>
                         <a href="?curriculum_id=<?= $c['curriculum_id'] ?>" class="btn btn-sm btn-outline-primary">Manage Subjects</a>
                         <?php if (!$c['is_active']): ?>
@@ -446,8 +737,16 @@ $curricula = $curricula->fetchAll();
                                 <input type="hidden" name="action" value="reactivate">
                                 <input type="hidden" name="curriculum_id" value="<?= $c['curriculum_id'] ?>">
                                 <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        data-confirm="Make this the active curriculum for its program? The current active one will be retired, and new placements will use this one."
-                                        data-confirm-label="Reactivate" data-confirm-tone="warning">Reactivate</button>
+                                        data-confirm="Open this curriculum for new placements, shifts and new sections? Other open curricula stay open."
+                                        data-confirm-label="Open" data-confirm-tone="warning">Open</button>
+                            </form>
+                        <?php else: ?>
+                            <form method="post" class="d-inline">
+                                <input type="hidden" name="action" value="retire">
+                                <input type="hidden" name="curriculum_id" value="<?= $c['curriculum_id'] ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                        data-confirm="Retire this curriculum? Students already on it are not affected. It only stops new placements, shifts and new sections."
+                                        data-confirm-label="Retire" data-confirm-tone="warning">Retire</button>
                             </form>
                         <?php endif; ?>
                     </td>

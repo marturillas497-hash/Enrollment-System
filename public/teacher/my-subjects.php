@@ -20,7 +20,7 @@ $stmt = $pdo->prepare(
     "SELECT co.offering_id, s.subject_code, s.subject_name, s.units, sec.section_name, sec.year_level, p.program_code,
             st.school_year, st.semester, st.status AS term_status, co.day_of_week, co.start_time, co.end_time, co.room,
             (SELECT COUNT(*) FROM Enrolled_subject es WHERE es.offering_id = co.offering_id) AS enrolled_count
-     FROM Class_Offering co
+     FROM Class_Schedule co
      JOIN Subject s ON s.subject_id = co.subject_id
      JOIN Section sec ON sec.section_id = co.section_id
      JOIN Program p ON p.program_id = sec.program_id
@@ -29,7 +29,7 @@ $stmt = $pdo->prepare(
      ORDER BY st.term_id DESC, s.subject_code"
 );
 $stmt->execute(['tid' => $teacher['teacher_id']]);
-$offerings = $stmt->fetchAll();
+$offerings = foldMeetings($stmt->fetchAll(), 'offering_id');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -56,7 +56,7 @@ $offerings = $stmt->fetchAll();
                 <td><?= htmlspecialchars($o['subject_code'] . ' — ' . $o['subject_name']) ?></td>
                 <td><?= $o['units'] ?></td>
                 <td><?= htmlspecialchars(sectionLabel($o['year_level'], $o['section_name'], $o['program_code'])) ?></td>
-                <td><?= htmlspecialchars(formatSchedule($o['day_of_week'] ?? '', $o['start_time'] ?? '', $o['end_time'] ?? '', $o['room'] ?? '')) ?></td>
+                <td><?= scheduleLinesHtml($o) ?></td>
                 <td><?= $o['enrolled_count'] ?></td>
                 <td><a href="<?= BASE_URL ?>/teacher/grade-entry.php?offering_id=<?= $o['offering_id'] ?>"
                        class="btn btn-sm btn-outline-primary">Enter Grades</a></td>

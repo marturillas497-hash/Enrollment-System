@@ -138,14 +138,14 @@ if ($latestEnrollment) {
         'SELECT es.*, s.subject_code, s.subject_name, s.units, t.last_name, t.first_name,
                 co.day_of_week, co.start_time, co.end_time, co.room
          FROM Enrolled_subject es
-         JOIN Class_Offering co ON co.offering_id = es.offering_id
+         JOIN Class_Schedule co ON co.offering_id = es.offering_id
          JOIN Subject s ON s.subject_id = co.subject_id
          JOIN Teacher t ON t.teacher_id = co.teacher_id
          WHERE es.enrollment_id = :eid
          ORDER BY s.subject_code'
     );
     $stmt->execute(['eid' => $latestEnrollment['enrollment_id']]);
-    $subjects = $stmt->fetchAll();
+    $subjects = foldMeetings($stmt->fetchAll(), 'enrolled_subject_id');
 }
 
 $totalUnits = 0;
@@ -239,6 +239,7 @@ foreach ($subjects as $s) {
                 — Section <?= htmlspecialchars($latestEnrollment['section_name']) ?>, Year <?= $latestEnrollment['year_level'] ?>
                 <?= statusBadge($latestEnrollment['student_standing']) ?>
                 <span class="badge bg-light text-dark"><?= rtrim(rtrim(number_format($totalUnits, 2), '0'), '.') ?> units</span>
+                <span class="badge bg-light text-dark"><?= htmlspecialchars(standingLabel(studentStanding($pdo, (int)$student['student_id'], (int)$latestEnrollment['curriculum_id']))) ?></span>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -258,8 +259,8 @@ foreach ($subjects as $s) {
                             <td><?= htmlspecialchars($s['subject_name']) ?></td>
                             <td><?= $s['units'] ?></td>
                             <td><?= htmlspecialchars($s['last_name'] . ', ' . $s['first_name']) ?></td>
-                            <td><?= htmlspecialchars(formatSchedule($s['day_of_week'], $s['start_time'], $s['end_time'], $s['room'] ?? '')) ?></td>
-                            <td><?= $s['grade'] !== null ? htmlspecialchars($s['grade']) : '<span class="text-muted">—</span>' ?></td>
+                            <td><?= scheduleLinesHtml($s) ?></td>
+                            <td><?= $s['grade'] !== null ? htmlspecialchars($s['grade']) : '<span class="text-muted">—</span>' ?><?= !empty($s['corrected_at']) ? ' ' . statusBadge('corrected', 'Corrected', 'info') : '' ?></td>
                         </tr>
                     <?php endforeach; ?>
                     <?php if (empty($subjects) && empty($creditedSubjects)): ?><tr><td colspan="6" class="text-muted">No subjects on record.</td></tr><?php endif; ?>

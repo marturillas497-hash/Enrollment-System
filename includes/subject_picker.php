@@ -11,8 +11,8 @@ $pickerOfferingData = [];
 foreach ($pickerRows as $r) {
     foreach ($r['offerings'] as $o) {
         $pickerOfferingData[(int)$o['offering_id']] = [
-            'units' => (float)$r['units'], 'day' => $o['day_of_week'],
-            'start' => $o['start_time'], 'end' => $o['end_time'], 'label' => $r['subject_code'],
+            'units' => (float)$r['units'], 'label' => $r['subject_code'],
+            'slots' => array_map(fn($m) => ['day' => $m['day_of_week'], 'start' => $m['start_time'], 'end' => $m['end_time']], $o['meetings']),
         ];
     }
 }
@@ -37,12 +37,17 @@ foreach ($pickerRows as $r) {
                         <td>
                             <?php if ($row['locked']): ?>
                                 <span class="text-muted small">
-                                    <?= $row['missing_prereqs'] ? 'Requires: ' . htmlspecialchars(implode(', ', $row['missing_prereqs'])) : 'Not offered this term' ?>
+                                    <?php
+                                    $why = [];
+                                    if ($row['missing_prereqs']) { $why[] = 'Requires: ' . implode(', ', $row['missing_prereqs']); }
+                                    if (!empty($row['standing_required'])) { $why[] = standingLabel((int)$row['standing_required']); }
+                                    echo htmlspecialchars($why ? implode('. ', $why) : 'Not offered this term');
+                                    ?>
                                 </span>
                             <?php else: ?>
                                 <select class="form-select form-select-sm picker-offering" name="offering[<?= $row['subject_id'] ?>]">
                                     <?php foreach ($row['offerings'] as $o): ?>
-                                        <option value="<?= $o['offering_id'] ?>"><?= htmlspecialchars(sectionLabel($o['year_level'], $o['section_name']) . ' — ' . formatSchedule($o['day_of_week'], $o['start_time'], $o['end_time'], $o['room'] ?? '')) ?></option>
+                                        <option value="<?= $o['offering_id'] ?>"><?= htmlspecialchars(sectionLabel($o['year_level'], $o['section_name']) . ' — ' . implode(' / ', $o['schedule_lines'])) ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             <?php endif; ?>
@@ -82,7 +87,11 @@ foreach ($pickerRows as $r) {
         chosen.forEach(function (o) { total += o.units; });
         var out = document.getElementById('unit-total');
         if (out) { out.textContent = total % 1 === 0 ? total : total.toFixed(2); }
-        var all = existing.concat(chosen), conflicts = [];
+        var chosenSlots = [];
+        chosen.forEach(function (o) {
+            (o.slots || []).forEach(function (s) { chosenSlots.push({ day: s.day, start: s.start, end: s.end, label: o.label }); });
+        });
+        var all = existing.concat(chosenSlots), conflicts = [];
         for (var i = 0; i < all.length; i++) {
             for (var j = i + 1; j < all.length; j++) {
                 if (j < existing.length) { continue; }

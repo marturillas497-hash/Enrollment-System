@@ -4,6 +4,8 @@ require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/account_email_helper.php';
+require_once __DIR__ . '/../../src/helpers/instructor_helper.php';
+require_once __DIR__ . '/../../src/helpers/audit_helper.php';
 
 $user = requireRole(['admin']);
 $pdo = getDbConnection();
@@ -49,6 +51,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['
         $makeActive = ($_POST['active'] ?? '') === '1';
         $pdo->prepare('UPDATE Accounts SET is_active = :a, session_version = session_version + 1 WHERE account_id = :id')
             ->execute(['a' => $makeActive ? 1 : 0, 'id' => $accountId]);
+        auditLog($pdo, $user, $makeActive ? 'account.reactivate' : 'account.deactivate', 'account', (int)$accountId,
+            'Account ' . $target['username'] . ($makeActive ? ' was reactivated.' : ' was deactivated and signed out.'));
         flashSet('staff_msg', $target['username'] . ($makeActive ? ' was reactivated.' : ' was deactivated and signed out.'));
         header('Location: ' . $_SERVER['REQUEST_URI']);
         exit;
@@ -181,6 +185,7 @@ $staffStmt->bindValue(':offset', $pageInfo['offset'], PDO::PARAM_INT);
 $staffStmt->execute();
 $staff = $staffStmt->fetchAll();
 $linkStates = accountActivationStatuses($pdo, array_column($staff, 'account_id'));
+$teacherClasses = ongoingClassLinesByAccount($pdo, array_column(array_filter($staff, fn($r) => $r['role'] === 'teacher'), 'account_id'));
 $isFiltered = ($search !== '' || $filterRole !== '' || $sortKey !== 'role');
 
 $pageQueryParams = array_filter([
@@ -265,6 +270,7 @@ $pageQueryParams = array_filter([
                                 'last_name' => $s['last_name'], 'suffix' => $s['suffix'] ?? '',
                                 'email' => $s['email'] ?? '', 'active' => (int)$s['is_active'] === 1, 'link_state' => $linkStates[(int)$s['account_id']] ?? 'active',
                                 'created' => $s['created_at'] ? date('M j, Y', strtotime($s['created_at'])) : '',
+                                'classes' => $teacherClasses[(int)$s['account_id']] ?? [],
                             ]), ENT_QUOTES) ?>"><i class="bi bi-eye"></i></button>
                 </td>
             </tr>
@@ -395,6 +401,7 @@ $pageQueryParams = array_filter([
         btn.className = 'btn btn-sm ' + (d.active ? 'btn-outline-danger' : 'btn-outline-success');
         document.getElementById('sdActiveConfirmText').textContent = d.active
             ? 'Deactivate this account? They are signed out right away and cannot log in until reactivated. Their records are kept.'
+                + ((d.classes || []).length ? ' They teach ' + d.classes.length + ' class(es) in the ongoing term: ' + d.classes.slice(0, 6).join('; ') + (d.classes.length > 6 ? '; and more' : '') + '. Those classes keep this teacher until you assign someone else on Class Offerings.' : '')
             : 'Reactivate this account so they can log in again?';
         var yes = document.getElementById('sdActiveYes');
         yes.textContent = d.active ? 'Deactivate' : 'Reactivate';

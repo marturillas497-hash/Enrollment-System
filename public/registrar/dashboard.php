@@ -38,6 +38,17 @@ $stmt = $pdo->prepare(
 $stmt->execute(['dept' => $myDepartmentId]);
 $pendingIrregular = (int)$stmt->fetchColumn();
 
+$stmt = $pdo->prepare(
+    "SELECT COUNT(*) FROM Grade_correction gc
+     JOIN Enrolled_subject es ON es.enrolled_subject_id = gc.enrolled_subject_id
+     JOIN Class_Offering co ON co.offering_id = es.offering_id
+     JOIN Section sec ON sec.section_id = co.section_id
+     JOIN Program p ON p.program_id = sec.program_id
+     WHERE gc.status = 'pending' AND p.department_id = :dept"
+);
+$stmt->execute(['dept' => $myDepartmentId]);
+$pendingCorrections = (int)$stmt->fetchColumn();
+
 // Active students currently in this department (by their CURRENT program, via latest enrollment).
 $stmt = $pdo->prepare(
     "SELECT COUNT(DISTINCT s.student_id) FROM Student s
@@ -105,13 +116,14 @@ if ($currentTerm) {
         <?php endif; ?>
 
         <h2 class="h6 text-muted mt-4 mb-2">Needs Your Attention</h2>
-        <?php if ($pendingPlacements + $pendingShifts + $pendingIrregular === 0): ?>
+        <?php if ($pendingPlacements + $pendingShifts + $pendingIrregular + $pendingCorrections === 0): ?>
             <p class="text-muted small mb-2">You're all caught up. Nothing is waiting on you right now.</p>
         <?php endif; ?>
         <div class="stat-grid">
             <?= statCard($pendingPlacements, 'Awaiting Placement', 'person-check', BASE_URL . '/registrar/place-student.php', $pendingPlacements > 0) ?>
             <?= statCard($pendingShifts, 'Pending Shift Requests', 'arrow-left-right', BASE_URL . '/registrar/shift-requests.php', $pendingShifts > 0) ?>
             <?= statCard($pendingIrregular, 'Pending Irregular Enrollments', 'person-lines-fill', BASE_URL . '/registrar/irregular-enrollments.php', $pendingIrregular > 0) ?>
+            <?= statCard($pendingCorrections, 'Pending Grade Corrections', 'pencil-square', BASE_URL . '/registrar/grade-corrections.php', $pendingCorrections > 0) ?>
         </div>
 
         <h2 class="h6 text-muted mb-2">Department Overview</h2>

@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 require_once __DIR__ . '/../../src/helpers/picker_helper.php';
 require_once __DIR__ . '/../../src/helpers/account_email_helper.php';
+require_once __DIR__ . '/../../src/helpers/audit_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -126,8 +127,9 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
 
 /**
  * Re-checks the term, curriculum and section a placement POST names: the term must be open,
- * the curriculum must be the program's active one, and the section must belong to the same
- * program and the applicant's evaluated year level. Returns an error message, or '' when valid.
+ * the curriculum must be one of the program's open curricula, and the section must belong to the
+ * same program and the applicant's evaluated year level and follow that curriculum.
+ * Returns an error message, or '' when valid.
  */
 function validatePlacementChoice(PDO $pdo, array $application, mixed $termId, mixed $curriculumId, mixed $sectionId): string
 {
@@ -146,13 +148,13 @@ function validatePlacementChoice(PDO $pdo, array $application, mixed $termId, mi
     $stmt = $pdo->prepare('SELECT 1 FROM Curriculum WHERE curriculum_id = :id AND program_id = :pid AND is_active = 1');
     $stmt->execute(['id' => $curriculumId, 'pid' => $application['program_id']]);
     if ($stmt->fetch() === false) {
-        return 'That curriculum is not the active curriculum for this program.';
+        return 'That curriculum is not open for placement in this program.';
     }
 
-    $stmt = $pdo->prepare('SELECT 1 FROM Section WHERE section_id = :id AND program_id = :pid AND year_level = :yl');
-    $stmt->execute(['id' => $sectionId, 'pid' => $application['program_id'], 'yl' => $application['evaluated_year_level']]);
+    $stmt = $pdo->prepare('SELECT 1 FROM Section WHERE section_id = :id AND program_id = :pid AND year_level = :yl AND curriculum_id = :cid');
+    $stmt->execute(['id' => $sectionId, 'pid' => $application['program_id'], 'yl' => $application['evaluated_year_level'], 'cid' => $curriculumId]);
     if ($stmt->fetch() === false) {
-        return 'That section does not belong to this program and year level.';
+        return 'That section does not belong to this program and year level, or does not follow the chosen curriculum.';
     }
 
     return '';
@@ -183,7 +185,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
                     co.offering_id, co.day_of_week, co.start_time, co.end_time, co.room
              FROM Curriculum_subject cs
              JOIN Subject s ON s.subject_id = cs.subject_id
-             LEFT JOIN Class_Offering co
+             LEFT JOIN Class_Schedule co
                     ON co.subject_id = cs.subject_id AND co.section_id = :section_id AND co.term_id = :term_id
              WHERE cs.curriculum_id = :curriculum_id
                AND cs.year_level = :year_level
@@ -197,7 +199,7 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
             'year_level'    => $application['evaluated_year_level'],
             'semester'      => $term['semester'],
         ]);
-        $subjectRows = $stmt->fetchAll();
+        $subjectRows = foldMeetings($stmt->fetchAll(), 'subject_id');
         $stage = 'confirm';
 
         // Informational only — this student hasn't been placed yet, so occupancy + 1
@@ -366,6 +368,9 @@ if ($application && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         }
 
         $pdo->commit();
+        auditLog($pdo, $user, 'student.place', 'student', $newStudentId,
+            'Student ' . $studentIdNumber . ' placed with ' . $enrolledCount . ' subject' . ($enrolledCount === 1 ? '' : 's') . '.',
+            null, ['student_id_number' => $studentIdNumber, 'application_id' => $applicationId]);
 
         $created = [
             'username' => $studentIdNumber,
@@ -393,11 +398,11 @@ $terms = $curricula = $sections = $allPrograms = [];
 if ($application) {
     $terms = $pdo->query("SELECT * FROM School_term WHERE status = 'ongoing' ORDER BY term_id DESC")->fetchAll();
 
-    $stmt = $pdo->prepare('SELECT * FROM Curriculum WHERE program_id = :pid AND is_active = 1');
+    $stmt = $pdo->prepare('SELECT * FROM Curriculum WHERE program_id = :pid AND is_active = 1 ORDER BY effective_year DESC, curriculum_id DESC');
     $stmt->execute(['pid' => $application['program_id']]);
     $curricula = $stmt->fetchAll();
 
-    $stmt = $pdo->prepare('SELECT * FROM Section WHERE program_id = :pid AND year_level = :yl');
+    $stmt = $pdo->prepare('SELECT * FROM Section WHERE program_id = :pid AND year_level = :yl ORDER BY section_name');
     $stmt->execute(['pid' => $application['program_id'], 'yl' => $application['evaluated_year_level']]);
     $sections = $stmt->fetchAll();
 
@@ -577,7 +582,7 @@ if (!$application && !$created && $listTab === 'rejected') {
                                 <td><?= $s['units'] ?></td>
                                 <td>
                                     <?= $s['offering_id'] !== null
-                                        ? htmlspecialchars(formatSchedule($s['day_of_week'], $s['start_time'], $s['end_time'], $s['room']))
+                                        ? scheduleLinesHtml($s)
                                         : '<span class="text-muted">not scheduled</span>' ?>
                                 </td>
                             </tr>
@@ -696,7 +701,7 @@ if (!$application && !$created && $listTab === 'rejected') {
                 Missing setup data before this student can be placed:
                 <ul class="mb-0">
                     <?php if (empty($terms)): ?><li>No <code>School_term</code> with status 'ongoing'.</li><?php endif; ?>
-                    <?php if (empty($curricula)): ?><li>No active <code>Curriculum</code> for this program.</li><?php endif; ?>
+                    <?php if (empty($curricula)): ?><li>No curriculum is open for placement in this program.</li><?php endif; ?>
                     <?php if (empty($sections)): ?><li>No <code>Section</code> for this program at year <?= $application['evaluated_year_level'] ?>.</li><?php endif; ?>
                 </ul>
             </div>
@@ -718,7 +723,7 @@ if (!$application && !$created && $listTab === 'rejected') {
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Curriculum</label>
-                        <select class="form-select" name="curriculum_id" required>
+                        <select class="form-select" name="curriculum_id" id="placeCurriculum" required>
                             <?php foreach ($curricula as $c): ?>
                                 <option value="<?= $c['curriculum_id'] ?>">
                                     <?= htmlspecialchars($c['curriculum_name'] . ' (' . $c['effective_year'] . ')') ?>
@@ -728,15 +733,41 @@ if (!$application && !$created && $listTab === 'rejected') {
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Section</label>
-                        <select class="form-select" name="section_id" required>
+                        <select class="form-select" name="section_id" id="placeSection" required>
                             <?php foreach ($sections as $s): ?>
-                                <option value="<?= $s['section_id'] ?>"><?= htmlspecialchars($s['section_name']) ?></option>
+                                <option value="<?= $s['section_id'] ?>" data-curriculum="<?= (int)$s['curriculum_id'] ?>"><?= htmlspecialchars($s['section_name']) ?></option>
                             <?php endforeach; ?>
                         </select>
+                        <div class="form-text">Only sections that follow the chosen curriculum are listed.</div>
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Load Subjects</button>
                 </div>
             </form>
+            <script>
+            (function () {
+                var cur = document.getElementById('placeCurriculum'), sec = document.getElementById('placeSection');
+                var all = Array.prototype.map.call(sec.options, function (o) {
+                    return { v: o.value, t: o.text, c: o.getAttribute('data-curriculum') };
+                });
+                function sync() {
+                    sec.innerHTML = '';
+                    var n = 0;
+                    all.forEach(function (o) {
+                        if (o.c === cur.value) {
+                            var op = document.createElement('option');
+                            op.value = o.v; op.text = o.t; sec.appendChild(op); n++;
+                        }
+                    });
+                    if (n === 0) {
+                        var none = document.createElement('option');
+                        none.value = ''; none.text = 'No section follows this curriculum yet';
+                        sec.appendChild(none);
+                    }
+                }
+                cur.addEventListener('change', sync);
+                sync();
+            })();
+            </script>
         <?php endif; ?>
 
     <?php else: ?>

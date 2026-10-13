@@ -19,7 +19,7 @@ if ($teacher === false) {
 
 $stmt = $pdo->prepare(
     "SELECT s.subject_code, s.subject_name, sec.section_name, co.day_of_week, co.start_time, co.end_time, co.room
-     FROM Class_Offering co
+     FROM Class_Schedule co
      JOIN Subject s ON s.subject_id = co.subject_id
      JOIN Section sec ON sec.section_id = co.section_id
      JOIN School_term st ON st.term_id = co.term_id

@@ -1,15 +1,28 @@
 -- MIST Enrollment System: database schema
--- 23 tables, all InnoDB utf8mb4. Current through Batch 9 (October 2026): unique subject code and unique
+-- 34 tables and the Class_Schedule view, all InnoDB utf8mb4, 69 foreign keys, 3 check constraints. Current through Batch 12.
+-- Batch 12: Audit_log, Grade_correction, Grade_correction_flag and Enrolled_subject.corrected_at (grade corrections after a term closes).
+-- Older notes follow. Current through Batch 9 (October 2026): unique subject code and unique
 -- term (school year + semester), Admission_Application.applicant_year_level, grade CHECK constraints,
 -- Password_reset, Account_email_change, and Accounts.email / session_version / is_active / activated_at.
 -- v2.4: unique account email (uq_account_email, the only copy of a student's email) and Subject.year_level.
+-- Batch 3: Section.curriculum_id (a section follows one curriculum) and a unique curriculum name per program.
+-- Batch 11: Generation_run and Class_Offering.generation_run_id (which run created a class, for Undo). 31 tables, 61 foreign keys.
+-- Batch 10: Teacher.max_units (default 24) and Teacher.max_hours_per_week (default 30, empty means no cap).
+-- Batch 9: Tag, Subject_tag, Teacher_tag and Subject_requirement. 30 tables, 58 foreign keys.
+-- Batch 8: Room_type and Room replace the free-text room. Class_Meeting.room_id points at Room. 26 tables, 51 foreign keys.
+-- Batch 7: a class (Class_Offering) has many meetings (Class_Meeting). View Class_Schedule gives one row per meeting.
+-- 24 tables, 49 foreign keys.
+-- Batch 5: Curriculum_subject.required_standing (2, 3 or 4, enforced in the application).
+-- Batch 4: Curriculum_prerequisite replaces the global Prerequisite table (still 23 tables, 48 foreign keys).
 --
 -- Import into an existing EMPTY database. FOREIGN_KEY_CHECKS stays on so a bad FK fails the import.
--- This file holds structure only. To wipe an existing database back to a clean slate, run MIST_Full_Reset.sql instead.
+-- This file holds structure only (no rows, so even the Admin account and the 6 departments come from a seed file).
+-- Local test setup is two imports in phpMyAdmin, in this order: this file, then seed_test.sql.
+-- seed_test.sql wipes every table first, so importing it again at any time resets the database to the test starting state.
+-- For a clean production-style start use enrollment_import.sql instead (structure plus the Admin account, departments, programs and room types).
 --
 -- phpMyAdmin 4.9 underlines CHECK in red and leaves CHECK constraints out of its exports. Both are cosmetic;
--- the server enforces them. After an import, MIST_Full_Reset.sql's last query should report 22 tables,
--- 0 non-InnoDB, 45 foreign keys and 2 check constraints.
+-- the server enforces them. After an import, expect 34 tables, 0 non-InnoDB, 69 foreign keys and 3 check constraints.
 
 CREATE TABLE `Accounts` (
   `account_id` INT NOT NULL AUTO_INCREMENT,
@@ -61,6 +74,7 @@ CREATE TABLE `Curriculum` (
   `effective_year` YEAR NOT NULL,
   `is_active` TINYINT(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`curriculum_id`),
+  UNIQUE KEY `uq_curriculum_program_name` (`program_id`, `curriculum_name`),
   KEY `program_id_idx` (`program_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -81,9 +95,11 @@ CREATE TABLE `Section` (
   `section_name` VARCHAR(45) NOT NULL,
   `year_level` INT NOT NULL,
   `program_id` INT NOT NULL,
+  `curriculum_id` INT NOT NULL,
   `max_slots` INT NOT NULL,
   PRIMARY KEY (`section_id`),
   KEY `program_id_idx` (`program_id`),
+  KEY `curriculum_id_idx` (`curriculum_id`),
   UNIQUE KEY `uq_section_program_year_name` (`program_id`, `year_level`, `section_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -95,6 +111,8 @@ CREATE TABLE `Teacher` (
   `middle_name` VARCHAR(255) NULL DEFAULT NULL,
   `suffix` VARCHAR(45) NULL DEFAULT NULL,
   `department_id` INT NOT NULL,
+  `max_units` INT NOT NULL DEFAULT 24,
+  `max_hours_per_week` DECIMAL(5,2) NULL DEFAULT 30.00,
   PRIMARY KEY (`teacher_id`),
   UNIQUE KEY `account_id_UNIQUE` (`account_id`),
   KEY `account_id_idx` (`account_id`),
@@ -121,15 +139,17 @@ CREATE TABLE `Curriculum_subject` (
   `subject_id` INT NOT NULL,
   `year_level` INT NOT NULL,
   `semester` INT NOT NULL,
+  `required_standing` TINYINT NULL,
   PRIMARY KEY (`curriculum_id`,`subject_id`),
   KEY `subject_id_idx` (`subject_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
-CREATE TABLE `Prerequisite` (
+CREATE TABLE `Curriculum_prerequisite` (
+  `curriculum_id` INT NOT NULL,
   `subject_id` INT NOT NULL,
   `prerequisite_subject_id` INT NOT NULL,
-  PRIMARY KEY (`subject_id`,`prerequisite_subject_id`),
-  KEY `prerequisite_subject_id_idx` (`prerequisite_subject_id`)
+  PRIMARY KEY (`curriculum_id`,`subject_id`,`prerequisite_subject_id`),
+  KEY `curriculum_prerequisite_required_idx` (`curriculum_id`,`prerequisite_subject_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Admission_Application` (
@@ -228,15 +248,91 @@ CREATE TABLE `Class_Offering` (
   `teacher_id` INT NOT NULL,
   `section_id` INT NOT NULL,
   `term_id` INT NOT NULL,
-  `room` VARCHAR(255) NULL DEFAULT NULL,
-  `day_of_week` VARCHAR(45) NULL DEFAULT NULL,
-  `start_time` TIME NULL DEFAULT NULL,
-  `end_time` TIME NULL DEFAULT NULL,
+  `generation_run_id` INT NULL DEFAULT NULL,
   PRIMARY KEY (`offering_id`),
+  UNIQUE KEY `uq_class_term_section_subject` (`term_id`,`section_id`,`subject_id`),
   KEY `subject_id_idx` (`subject_id`),
   KEY `teacher_id_idx` (`teacher_id`),
   KEY `section_id_idx` (`section_id`),
-  KEY `term_id_idx` (`term_id`)
+  KEY `term_id_idx` (`term_id`),
+  KEY `generation_run_id_idx` (`generation_run_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Generation_run` (
+  `run_id` INT NOT NULL AUTO_INCREMENT,
+  `term_id` INT NOT NULL,
+  `created_by_account_id` INT NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`run_id`),
+  KEY `term_id_idx` (`term_id`),
+  KEY `created_by_account_id_idx` (`created_by_account_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Class_Meeting` (
+  `meeting_id` INT NOT NULL AUTO_INCREMENT,
+  `offering_id` INT NOT NULL,
+  `day_of_week` VARCHAR(45) NOT NULL,
+  `start_time` TIME NOT NULL,
+  `end_time` TIME NOT NULL,
+  `room_id` INT NULL DEFAULT NULL,
+  PRIMARY KEY (`meeting_id`),
+  KEY `offering_id_idx` (`offering_id`),
+  KEY `room_id_idx` (`room_id`),
+  KEY `day_time_idx` (`day_of_week`,`start_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Room_type` (
+  `room_type_id` INT NOT NULL AUTO_INCREMENT,
+  `type_name` VARCHAR(100) NOT NULL,
+  `is_unlimited` TINYINT(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`room_type_id`),
+  UNIQUE KEY `uq_room_type_name` (`type_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Tag` (
+  `tag_id` INT NOT NULL AUTO_INCREMENT,
+  `tag_name` VARCHAR(50) NOT NULL,
+  PRIMARY KEY (`tag_id`),
+  UNIQUE KEY `uq_tag_name` (`tag_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Subject_tag` (
+  `subject_id` INT NOT NULL,
+  `tag_id` INT NOT NULL,
+  PRIMARY KEY (`subject_id`,`tag_id`),
+  KEY `tag_id_idx` (`tag_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Teacher_tag` (
+  `teacher_id` INT NOT NULL,
+  `tag_id` INT NOT NULL,
+  PRIMARY KEY (`teacher_id`,`tag_id`),
+  KEY `tag_id_idx` (`tag_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Subject_requirement` (
+  `requirement_id` INT NOT NULL AUTO_INCREMENT,
+  `subject_id` INT NOT NULL,
+  `part_kind` VARCHAR(30) NOT NULL,
+  `hours_per_meeting` DECIMAL(4,2) NOT NULL,
+  `meetings_per_week` TINYINT NOT NULL DEFAULT 1,
+  `preferred_room_type_id` INT NULL DEFAULT NULL,
+  `fallback_room_type_id` INT NULL DEFAULT NULL,
+  PRIMARY KEY (`requirement_id`),
+  KEY `subject_id_idx` (`subject_id`),
+  KEY `preferred_room_type_id_idx` (`preferred_room_type_id`),
+  KEY `fallback_room_type_id_idx` (`fallback_room_type_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Room` (
+  `room_id` INT NOT NULL AUTO_INCREMENT,
+  `room_code` VARCHAR(100) NOT NULL,
+  `room_type_id` INT NOT NULL,
+  `capacity` INT NULL DEFAULT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`room_id`),
+  UNIQUE KEY `uq_room_code` (`room_code`),
+  KEY `room_type_id_idx` (`room_type_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 CREATE TABLE `Enrollment_Document` (
@@ -301,6 +397,7 @@ CREATE TABLE `Enrolled_subject` (
   `offering_id` INT NOT NULL,
   `grade` DECIMAL(3,2) NULL DEFAULT NULL,
   `remarks` VARCHAR(255) NULL DEFAULT NULL,
+  `corrected_at` DATETIME NULL DEFAULT NULL,
   PRIMARY KEY (`enrolled_subject_id`),
   UNIQUE KEY `enrollment_offering_UNIQUE` (`offering_id`,`enrollment_id`),
   KEY `enrollment_id_idx` (`enrollment_id`),
@@ -351,6 +448,7 @@ ALTER TABLE `Program` ADD CONSTRAINT `fk_program_department_id` FOREIGN KEY (`de
 ALTER TABLE `Curriculum` ADD CONSTRAINT `fk_curriculum_program_id` FOREIGN KEY (`program_id`) REFERENCES `Program` (`program_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `School_term` ADD CONSTRAINT `fk_school_term_closed_by` FOREIGN KEY (`closed_by`) REFERENCES `Accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Section` ADD CONSTRAINT `fk_section_program_id` FOREIGN KEY (`program_id`) REFERENCES `Program` (`program_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Section` ADD CONSTRAINT `fk_section_curriculum_id` FOREIGN KEY (`curriculum_id`) REFERENCES `Curriculum` (`curriculum_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Teacher` ADD CONSTRAINT `fk_teacher_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Teacher` ADD CONSTRAINT `fk_teacher_department_id` FOREIGN KEY (`department_id`) REFERENCES `Department` (`department_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Registrar` ADD CONSTRAINT `fk_registrar_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -358,8 +456,8 @@ ALTER TABLE `Registrar` ADD CONSTRAINT `fk_registrar_department_id` FOREIGN KEY 
 ALTER TABLE `Registrar` ADD CONSTRAINT `fk_registrar_created_by` FOREIGN KEY (`created_by`) REFERENCES `Accounts` (`account_id`) ON DELETE SET NULL ON UPDATE NO ACTION;
 ALTER TABLE `Curriculum_subject` ADD CONSTRAINT `fk_curriculum_subject_curriculum_id` FOREIGN KEY (`curriculum_id`) REFERENCES `Curriculum` (`curriculum_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Curriculum_subject` ADD CONSTRAINT `fk_curriculum_subject_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE `Prerequisite` ADD CONSTRAINT `fk_prerequisite_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE `Prerequisite` ADD CONSTRAINT `fk_prerequisite_prerequisite_subject_id` FOREIGN KEY (`prerequisite_subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Curriculum_prerequisite` ADD CONSTRAINT `fk_curriculum_prerequisite_subject` FOREIGN KEY (`curriculum_id`, `subject_id`) REFERENCES `Curriculum_subject` (`curriculum_id`, `subject_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `Curriculum_prerequisite` ADD CONSTRAINT `fk_curriculum_prerequisite_required` FOREIGN KEY (`curriculum_id`, `prerequisite_subject_id`) REFERENCES `Curriculum_subject` (`curriculum_id`, `subject_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE `Admission_Application` ADD CONSTRAINT `fk_admission_application_program_id` FOREIGN KEY (`program_id`) REFERENCES `Program` (`program_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Admission_Application` ADD CONSTRAINT `fk_admission_application_validated_by` FOREIGN KEY (`validated_by`) REFERENCES `Accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Admission_Application` ADD CONSTRAINT `fk_admission_application_rejected_by` FOREIGN KEY (`rejected_by`) REFERENCES `Accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -369,6 +467,19 @@ ALTER TABLE `Admission_Staff` ADD CONSTRAINT `fk_admission_staff_account_id` FOR
 ALTER TABLE `Class_Offering` ADD CONSTRAINT `fk_class_offering_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Class_Offering` ADD CONSTRAINT `fk_class_offering_teacher_id` FOREIGN KEY (`teacher_id`) REFERENCES `Teacher` (`teacher_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Class_Offering` ADD CONSTRAINT `fk_class_offering_section_id` FOREIGN KEY (`section_id`) REFERENCES `Section` (`section_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Class_Meeting` ADD CONSTRAINT `fk_class_meeting_offering_id` FOREIGN KEY (`offering_id`) REFERENCES `Class_Offering` (`offering_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `Class_Meeting` ADD CONSTRAINT `fk_class_meeting_room_id` FOREIGN KEY (`room_id`) REFERENCES `Room` (`room_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Generation_run` ADD CONSTRAINT `fk_generation_run_term_id` FOREIGN KEY (`term_id`) REFERENCES `School_term` (`term_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Generation_run` ADD CONSTRAINT `fk_generation_run_account_id` FOREIGN KEY (`created_by_account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Class_Offering` ADD CONSTRAINT `fk_class_offering_generation_run_id` FOREIGN KEY (`generation_run_id`) REFERENCES `Generation_run` (`run_id`) ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE `Room` ADD CONSTRAINT `fk_room_room_type_id` FOREIGN KEY (`room_type_id`) REFERENCES `Room_type` (`room_type_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Subject_tag` ADD CONSTRAINT `fk_subject_tag_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `Subject_tag` ADD CONSTRAINT `fk_subject_tag_tag_id` FOREIGN KEY (`tag_id`) REFERENCES `Tag` (`tag_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `Teacher_tag` ADD CONSTRAINT `fk_teacher_tag_teacher_id` FOREIGN KEY (`teacher_id`) REFERENCES `Teacher` (`teacher_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `Teacher_tag` ADD CONSTRAINT `fk_teacher_tag_tag_id` FOREIGN KEY (`tag_id`) REFERENCES `Tag` (`tag_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `Subject_requirement` ADD CONSTRAINT `fk_subject_requirement_subject_id` FOREIGN KEY (`subject_id`) REFERENCES `Subject` (`subject_id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `Subject_requirement` ADD CONSTRAINT `fk_subject_requirement_preferred` FOREIGN KEY (`preferred_room_type_id`) REFERENCES `Room_type` (`room_type_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE `Subject_requirement` ADD CONSTRAINT `fk_subject_requirement_fallback` FOREIGN KEY (`fallback_room_type_id`) REFERENCES `Room_type` (`room_type_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Class_Offering` ADD CONSTRAINT `fk_class_offering_term_id` FOREIGN KEY (`term_id`) REFERENCES `School_term` (`term_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE `Enrollment_Document` ADD CONSTRAINT `fk_enrollment_document_application_id` FOREIGN KEY (`application_id`) REFERENCES `Admission_Application` (`application_id`) ON DELETE NO ACTION ON UPDATE NO ACTION;
 ALTER TABLE `Program_shift_request` ADD CONSTRAINT `fk_program_shift_request_student_id` FOREIGN KEY (`student_id`) REFERENCES `Student` (`student_id`) ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -411,3 +522,75 @@ CREATE TABLE `Account_email_change` (
   CONSTRAINT `fk_account_email_change_account_id` FOREIGN KEY (`account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_account_email_change_changed_by` FOREIGN KEY (`changed_by`) REFERENCES `Accounts` (`account_id`) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- Batch 12: grade corrections after a term closes, and a general audit log.
+CREATE TABLE `Audit_log` (
+  `audit_id` INT NOT NULL AUTO_INCREMENT,
+  `actor_account_id` INT NULL DEFAULT NULL,
+  `actor_role` VARCHAR(20) NULL DEFAULT NULL,
+  `action` VARCHAR(60) NOT NULL,
+  `entity_type` VARCHAR(40) NOT NULL,
+  `entity_id` INT NULL DEFAULT NULL,
+  `summary` VARCHAR(255) NOT NULL,
+  `before_json` TEXT NULL DEFAULT NULL,
+  `after_json` TEXT NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`audit_id`),
+  KEY `audit_created_idx` (`created_at`),
+  KEY `audit_entity_idx` (`entity_type`, `entity_id`),
+  KEY `audit_actor_idx` (`actor_account_id`),
+  KEY `audit_action_idx` (`action`),
+  CONSTRAINT `fk_audit_log_actor` FOREIGN KEY (`actor_account_id`) REFERENCES `Accounts` (`account_id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Grade_correction` (
+  `correction_id` INT NOT NULL AUTO_INCREMENT,
+  `enrolled_subject_id` INT NOT NULL,
+  `old_grade` DECIMAL(3,2) NULL DEFAULT NULL,
+  `old_remarks` VARCHAR(255) NULL DEFAULT NULL,
+  `new_grade` DECIMAL(3,2) NULL DEFAULT NULL,
+  `new_remarks` VARCHAR(255) NULL DEFAULT NULL,
+  `reason` VARCHAR(500) NOT NULL,
+  `requested_by` INT NOT NULL,
+  `status` ENUM('pending', 'approved', 'rejected', 'cancelled') NOT NULL DEFAULT 'pending',
+  `decided_by` INT NULL DEFAULT NULL,
+  `decision_reason` VARCHAR(500) NULL DEFAULT NULL,
+  `requested_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `decided_at` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY (`correction_id`),
+  KEY `grade_correction_es_idx` (`enrolled_subject_id`),
+  KEY `grade_correction_teacher_idx` (`requested_by`),
+  KEY `grade_correction_registrar_idx` (`decided_by`),
+  KEY `grade_correction_status_idx` (`status`),
+  CONSTRAINT `fk_grade_correction_es` FOREIGN KEY (`enrolled_subject_id`) REFERENCES `Enrolled_subject` (`enrolled_subject_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_grade_correction_teacher` FOREIGN KEY (`requested_by`) REFERENCES `Teacher` (`teacher_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_grade_correction_registrar` FOREIGN KEY (`decided_by`) REFERENCES `Registrar` (`registrar_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `chk_grade_correction_grades` CHECK ((`old_grade` IS NULL OR `old_grade` BETWEEN 1.00 AND 5.00) AND (`new_grade` IS NULL OR `new_grade` BETWEEN 1.00 AND 5.00))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE `Grade_correction_flag` (
+  `flag_id` INT NOT NULL AUTO_INCREMENT,
+  `correction_id` INT NOT NULL,
+  `enrollment_id` INT NULL DEFAULT NULL,
+  `student_id` INT NOT NULL,
+  `message` VARCHAR(500) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `resolved_by` INT NULL DEFAULT NULL,
+  `resolved_at` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY (`flag_id`),
+  KEY `grade_flag_correction_idx` (`correction_id`),
+  KEY `grade_flag_enrollment_idx` (`enrollment_id`),
+  KEY `grade_flag_student_idx` (`student_id`),
+  KEY `grade_flag_resolved_idx` (`resolved_by`),
+  CONSTRAINT `fk_grade_flag_correction` FOREIGN KEY (`correction_id`) REFERENCES `Grade_correction` (`correction_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_grade_flag_enrollment` FOREIGN KEY (`enrollment_id`) REFERENCES `Enrollment` (`enrollment_id`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT `fk_grade_flag_student` FOREIGN KEY (`student_id`) REFERENCES `Student` (`student_id`) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_grade_flag_resolved_by` FOREIGN KEY (`resolved_by`) REFERENCES `Registrar` (`registrar_id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- One row per meeting of a class, and one row with empty times for a class with no meetings (TBA).
+CREATE VIEW `Class_Schedule` AS
+SELECT co.`offering_id`, co.`subject_id`, co.`teacher_id`, co.`section_id`, co.`term_id`,
+       cm.`meeting_id`, cm.`day_of_week`, cm.`start_time`, cm.`end_time`, cm.`room_id`, r.`room_code` AS `room`
+FROM `Class_Offering` co LEFT JOIN `Class_Meeting` cm ON cm.`offering_id` = co.`offering_id`
+LEFT JOIN `Room` r ON r.`room_id` = cm.`room_id`;

@@ -10,7 +10,7 @@ $stmt->execute(['aid' => $user['account_id']]);
 $student = $stmt->fetch();
 
 $stmt = $pdo->prepare(
-    'SELECT st.school_year, st.semester, s.subject_code, s.subject_name, s.units, es.grade, es.remarks
+    'SELECT st.school_year, st.semester, s.subject_code, s.subject_name, s.units, es.grade, es.remarks, es.corrected_at
      FROM Enrolled_subject es
      JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
      JOIN Class_Offering co ON co.offering_id = es.offering_id
@@ -68,7 +68,7 @@ foreach ($grouped as $termLabel => $termRows) {
                         <td><?= htmlspecialchars($r['subject_name']) ?></td>
                         <td><?= $r['units'] ?></td>
                         <td><?= $r['grade'] !== null ? htmlspecialchars($r['grade']) : '<span class="text-muted">—</span>' ?></td>
-                        <td><?= $r['remarks'] ? htmlspecialchars($r['remarks']) : '<span class="text-muted">—</span>' ?></td>
+                        <td><?= $r['remarks'] ? htmlspecialchars($r['remarks']) : '<span class="text-muted">—</span>' ?><?= $r['corrected_at'] ? ' ' . statusBadge('corrected', 'Corrected', 'info') : '' ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

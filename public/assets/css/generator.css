@@ -1,0 +1,167 @@
+/* ============================================================
+   generator.css: Auto-generate Classes preview.
+   Loaded by registrar/generate-classes.php after app.css.
+   Colors come from tokens.css only.
+   ============================================================ */
+
+.gen-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+    background: var(--status-neutral-bg);
+    color: var(--status-neutral-fg);
+}
+.gen-chip--danger  { background: var(--status-danger-bg);  color: var(--status-danger-fg); }
+.gen-chip--warning { background: var(--status-warning-bg); color: var(--status-warning-fg); }
+.gen-chip--success { background: var(--status-success-bg); color: var(--status-success-fg); }
+.gen-chip--info    { background: var(--status-info-bg);    color: var(--status-info-fg); }
+
+.gen-ic--danger  { color: var(--status-danger-fg); }
+.gen-ic--warning { color: var(--status-warning-fg); }
+.gen-ic--success { color: var(--status-success-fg); }
+
+.gen-muted { color: var(--text-muted); font-size: 0.8125rem; }
+
+/* Header card */
+.gen-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-faint);
+}
+.gen-help summary { cursor: pointer; color: var(--text-muted); }
+.gen-help p { margin: 0.5rem 0 0; color: var(--text-muted); }
+
+/* One collapsible panel per section */
+.gen-sec {
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    box-shadow: var(--neu-raised-sm);
+    margin-bottom: 1rem;
+}
+.gen-sec > summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    padding: 0.85rem 1rem;
+    cursor: pointer;
+    list-style: none;
+    border-radius: var(--radius-card);
+}
+.gen-sec > summary::-webkit-details-marker { display: none; }
+.gen-sec > summary:hover { background: var(--surface-tint); }
+.gen-sec[open] > summary {
+    border-bottom: 1px solid var(--border-faint);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+}
+.gen-chevron { transition: transform 0.15s ease; color: var(--royal-blue); }
+.gen-sec[open] > summary .gen-chevron { transform: rotate(180deg); }
+.gen-sec-title { font-weight: 700; color: var(--royal-blue); }
+.gen-sec-chips { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; }
+.gen-sec-wait { margin-left: auto; }
+
+/* One class */
+.gen-class {
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid var(--border-faint);
+}
+.gen-class:last-child { border-bottom: 0; }
+.gen-class[data-state="bad"]  { box-shadow: inset 4px 0 0 var(--status-danger-fg); }
+.gen-class[data-state="warn"] { box-shadow: inset 4px 0 0 var(--attention-accent); }
+.gen-class[data-remove="1"] { opacity: 0.45; }
+
+.gen-row-main {
+    display: grid;
+    grid-template-columns: minmax(11rem, 1.1fr) minmax(10rem, 1fr) minmax(15rem, 1.8fr) auto;
+    gap: 0.5rem 1.25rem;
+    align-items: start;
+}
+.gen-code { font-weight: 700; }
+.gen-teacher-name { font-weight: 600; }
+.gen-meet { font-size: 0.875rem; }
+.gen-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+.gen-dirty-tag { display: none; }
+.gen-dirty .gen-dirty-tag { display: inline-flex; }
+
+.gen-issues {
+    list-style: none;
+    margin: 0.55rem 0 0;
+    padding: 0;
+    font-size: 0.8125rem;
+}
+.gen-issues li { display: flex; gap: 0.45rem; margin-bottom: 0.15rem; }
+
+.gen-edit .bi-chevron-down { transition: transform 0.15s ease; }
+.gen-edit[aria-expanded="true"] .bi-chevron-down { transform: rotate(180deg); }
+
+.gen-editor {
+    margin-top: 0.75rem;
+    padding: 0.85rem 1rem;
+    background: var(--surface-tint);
+    border-radius: var(--radius-control);
+}
+.gen-editor-grid {
+    display: grid;
+    grid-template-columns: minmax(14rem, 20rem) 1fr;
+    gap: 0.75rem 1.5rem;
+}
+.gen-label { font-size: 0.8125rem; font-weight: 600; color: var(--text-muted); margin-bottom: 0.25rem; }
+.gen-w-day  { width: 8.5rem; }
+.gen-w-time { width: 7rem; }
+.gen-w-room { width: 9.5rem; }
+.gen-remove {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--status-danger-fg);
+}
+
+/* Show only classes that need attention */
+.gen-only-issues .gen-class[data-state="ok"],
+.gen-only-issues .gen-sec[data-state="ok"] { display: none; }
+
+/* Sticky action bar */
+.gen-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    margin: 1.5rem 0 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    box-shadow: 0 -4px 12px var(--neu-shadow-dark);
+}
+.gen-actions-status { flex: 1 1 16rem; font-size: 0.875rem; }
+.gen-actions-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+@media (max-width: 992px) {
+    .gen-row-main { grid-template-columns: 1fr 1fr; }
+    .gen-status { justify-content: flex-start; }
+    .gen-editor-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 576px) {
+    .gen-row-main { grid-template-columns: 1fr; }
+    .gen-sec-wait { margin-left: 0; }
+}

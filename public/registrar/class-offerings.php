@@ -1,6 +1,9 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/schedule_helper.php';
+require_once __DIR__ . '/../../src/helpers/academic_helper.php';
+require_once __DIR__ . '/../../src/helpers/instructor_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -10,9 +13,10 @@ $stmt->execute(['aid' => $user['account_id']]);
 $myDepartmentId = $stmt->fetchColumn();
 
 $error = '';
+$warning = '';
 $message = flashGet('offering_msg') ?? '';
 
-// Subjects are shared across every department (e.g. GE1 is taken by multiple programs) — not scoped.
+// Subjects are shared across every department (e.g. GE1 is taken by multiple programs), so they are not scoped.
 $subjects = $pdo->query('SELECT subject_id, subject_code, subject_name FROM Subject ORDER BY subject_id DESC')->fetchAll();
 
 $teachers = $pdo->prepare(
@@ -38,7 +42,58 @@ $mySectionIds = array_column($sections, 'section_id');
 
 $terms = $pdo->query("SELECT term_id, school_year, semester FROM School_term WHERE status = 'ongoing' ORDER BY term_id DESC")->fetchAll();
 
+// Rooms are managed by the administrator. Registrars only pick from them.
+$rooms = $pdo->query(
+    'SELECT r.room_id, r.room_code, r.capacity, r.is_active, rt.type_name, rt.is_unlimited
+     FROM Room r JOIN Room_type rt ON rt.room_type_id = r.room_type_id ORDER BY rt.type_name, r.room_code'
+)->fetchAll();
+$roomById = [];
+foreach ($rooms as $r) {
+    $roomById[(int)$r['room_id']] = $r;
+}
+
 $deleteError = '';
+$days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Meetings posted by the form: parallel arrays, rows left completely empty are ignored. */
+function postedMeetings(): array|string
+{
+    $d = (array)($_POST['meeting_day'] ?? []);
+    $s = (array)($_POST['meeting_start'] ?? []);
+    $e = (array)($_POST['meeting_end'] ?? []);
+    $r = (array)($_POST['meeting_room'] ?? []);
+    $out = [];
+    foreach ($d as $i => $day) {
+        $day = trim((string)$day);
+        $start = substr(trim((string)($s[$i] ?? '')), 0, 5);
+        $end = substr(trim((string)($e[$i] ?? '')), 0, 5);
+        $room = trim((string)($r[$i] ?? ''));
+        if ($room !== '' && !ctype_digit($room)) {
+            return 'Pick a room from the list.';
+        }
+        if ($day === '' && $start === '' && $end === '' && $room === '') {
+            continue;
+        }
+        if ($day === '' || $start === '' || $end === '') {
+            return 'Each meeting needs a day, a start time and an end time.';
+        }
+        if (!in_array($day, ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], true)) {
+            return 'Pick a day from Monday to Saturday.';
+        }
+        if ($start >= $end) {
+            return 'Each meeting must start before it ends.';
+        }
+        $out[] = ['day' => $day, 'start' => $start, 'end' => $end, 'room' => $room];
+    }
+    foreach ($out as $i => $a) {
+        foreach ($out as $j => $b) {
+            if ($j > $i && $a['day'] === $b['day'] && $a['start'] < $b['end'] && $b['start'] < $a['end']) {
+                return 'Two meetings of this class overlap on ' . $a['day'] . '.';
+            }
+        }
+    }
+    return $out;
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_offering') {
     $stmt = $pdo->prepare(
@@ -62,11 +117,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
     } else {
         try {
             $pdo->prepare('DELETE FROM Class_Offering WHERE offering_id = :id')->execute(['id' => (int)$_POST['offering_id']]);
-            flashSet('offering_msg', 'Class offering deleted.');
+            flashSet('offering_msg', 'Class deleted.');
             header('Location: ' . $_SERVER['REQUEST_URI']);
             exit;
         } catch (Exception $e) {
-            $deleteError = errorMessage($e, 'Could not delete the class offering.');
+            $deleteError = errorMessage($e, 'Could not delete the class.');
         }
     }
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -74,10 +129,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
     $teacherId = $_POST['teacher_id'] ?? '';
     $sectionId = $_POST['section_id'] ?? '';
     $termId = $_POST['term_id'] ?? '';
-    $room = trim($_POST['room'] ?? '');
-    $day = $_POST['day_of_week'] ?? '';
-    $startTime = $_POST['start_time'] ?? '';
-    $endTime = $_POST['end_time'] ?? '';
     $offeringId = (int)($_POST['offering_id'] ?? 0);
     $editLocked = false;
     $editEnrolled = 0;
@@ -105,183 +156,178 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         }
     }
 
+    $meetings = postedMeetings();
+
     if ($offeringId && (!$existing || (int)$existing['department_id'] !== (int)$myDepartmentId || $existing['term_status'] !== 'ongoing')) {
         $error = 'That class cannot be edited. It is not in your department, or its term is closed.';
-    } elseif ($subjectId === '' || $teacherId === '' || $sectionId === '' || $termId === '' || $day === '' || $startTime === '' || $endTime === '') {
-        $error = 'All fields except room are required.';
-    } elseif ($startTime >= $endTime) {
-        $error = 'Start time must be before end time.';
-    } elseif (!in_array((int)$teacherId, $myTeacherIds, true) || !in_array((int)$sectionId, $mySectionIds, true)) {
-        // Defense in depth — the dropdowns only list your department's own teachers/sections.
+    } elseif ($subjectId === '' || $teacherId === '' || $sectionId === '' || $termId === '') {
+        $error = 'Term, subject, teacher and section are required.';
+    } elseif (is_string($meetings)) {
+        $error = $meetings;
+    } elseif (!in_array((int)$teacherId, array_map('intval', $myTeacherIds), true) || !in_array((int)$sectionId, array_map('intval', $mySectionIds), true)) {
+        // Defense in depth. The dropdowns only list this department's own teachers and sections.
         $error = 'That teacher is inactive or not in your department, or that section is not in your department.';
     } elseif (!in_array((int)$termId, array_map('intval', array_column($terms, 'term_id')), true)) {
         $error = 'That term is not open.';
     } else {
-        // Conflict check: same teacher OR same section, same term/day, overlapping time.
-        $stmt = $pdo->prepare(
-            "SELECT co.*, s.subject_code, t.last_name, sec.section_name
-             FROM Class_Offering co
-             JOIN Subject s ON s.subject_id = co.subject_id
-             JOIN Teacher t ON t.teacher_id = co.teacher_id
-             JOIN Section sec ON sec.section_id = co.section_id
-             WHERE co.term_id = :term_id AND co.day_of_week = :day
-               AND (co.teacher_id = :teacher_id OR co.section_id = :section_id)
-               AND co.offering_id <> :self
-               AND co.start_time < :end_time AND co.end_time > :start_time"
-        );
-        $stmt->execute([
-            'term_id' => $termId, 'day' => $day, 'teacher_id' => $teacherId, 'section_id' => $sectionId,
-            'end_time' => $endTime, 'start_time' => $startTime, 'self' => $offeringId,
-        ]);
-        $conflict = $stmt->fetch();
-        $roomConflict = false;
-
-        // Room conflict is a separate axis — deliberately NOT scoped to :dept, since a
-        // physical room can be double-booked by a registrar in a different department.
-        if (!$conflict && $room !== '') {
-            $stmt = $pdo->prepare(
-                "SELECT co.*, s.subject_code, t.last_name, sec.section_name
-                 FROM Class_Offering co
-                 JOIN Subject s ON s.subject_id = co.subject_id
-                 JOIN Teacher t ON t.teacher_id = co.teacher_id
-                 JOIN Section sec ON sec.section_id = co.section_id
-                 WHERE co.term_id = :term_id AND co.day_of_week = :day
-                   AND LOWER(co.room) = LOWER(:room)
-                   AND co.offering_id <> :self
-                   AND co.start_time < :end_time AND co.end_time > :start_time"
-            );
-            $stmt->execute([
-                'term_id' => $termId, 'day' => $day, 'room' => $room,
-                'end_time' => $endTime, 'start_time' => $startTime, 'self' => $offeringId,
-            ]);
-            $conflict = $stmt->fetch();
-            $roomConflict = (bool)$conflict;
+        /*
+         * A class is one subject for one section in one term, with one teacher. Meetings are its weekly
+         * time slots. A class with no meetings shows as TBA (for example OJT, thesis or a clinical rotation).
+         */
+        $dup = $pdo->prepare('SELECT 1 FROM Class_Offering WHERE term_id = :t AND section_id = :sec AND subject_id = :sub AND offering_id <> :self');
+        $dup->execute(['t' => $termId, 'sec' => $sectionId, 'sub' => $subjectId, 'self' => $offeringId]);
+        if ($dup->fetch() !== false) {
+            $error = 'This section already has a class for that subject this term. Edit that class to add or change its meetings.';
         }
 
-        /*
-         * One teacher per subject in a section for the term. A second meeting of the same subject
-         * is fine, but only with the same teacher. Changing the teacher on a subject that meets
-         * more than once moves every meeting of that subject in the section to the new teacher.
-         */
-        $teacherRuleError = '';
-        $propagateIds = [];
-        if (!$conflict) {
-            $sameGroup = $existing
-                && (int)$existing['subject_id'] === (int)$subjectId
-                && (int)$existing['section_id'] === (int)$sectionId
-                && (int)$existing['term_id'] === (int)$termId;
-            if ($sameGroup) {
-                if ((int)$existing['teacher_id'] !== (int)$teacherId) {
-                    $sib = $pdo->prepare(
-                        'SELECT offering_id, day_of_week, start_time, end_time FROM Class_Offering
-                         WHERE term_id = :t AND section_id = :sec AND subject_id = :sub AND offering_id <> :self'
-                    );
-                    $sib->execute(['t' => $termId, 'sec' => $sectionId, 'sub' => $subjectId, 'self' => $offeringId]);
-                    $busy = $pdo->prepare(
-                        'SELECT 1 FROM Class_Offering
-                         WHERE term_id = :t AND teacher_id = :teacher AND day_of_week = :day
-                           AND offering_id <> :sib AND start_time < :end_time AND end_time > :start_time LIMIT 1'
-                    );
-                    foreach ($sib->fetchAll() as $sibling) {
-                        $busy->execute([
-                            't' => $termId, 'teacher' => $teacherId, 'day' => $sibling['day_of_week'], 'sib' => $sibling['offering_id'],
-                            'end_time' => $sibling['end_time'], 'start_time' => $sibling['start_time'],
-                        ]);
-                        if ($busy->fetch() !== false) {
-                            $teacherRuleError = 'This subject also meets on '
-                                . formatSchedule($sibling['day_of_week'], $sibling['start_time'], $sibling['end_time'])
-                                . ', and the new teacher is busy then. Every meeting of a subject shares one teacher.';
-                            break;
-                        }
-                        $propagateIds[] = (int)$sibling['offering_id'];
-                    }
+        // Rooms must exist, and an inactive room is only allowed when this class already uses it.
+        if ($error === '') {
+            $currentRoomIds = [];
+            if ($offeringId) {
+                $cr = $pdo->prepare('SELECT DISTINCT room_id FROM Class_Meeting WHERE offering_id = :o AND room_id IS NOT NULL');
+                $cr->execute(['o' => $offeringId]);
+                $currentRoomIds = array_map('intval', $cr->fetchAll(PDO::FETCH_COLUMN));
+            }
+            foreach ($meetings as $m) {
+                if ($m['room'] === '') { continue; }
+                $rm = $roomById[(int)$m['room']] ?? null;
+                if ($rm === null) {
+                    $error = 'Pick a room from the list.';
+                    break;
                 }
-            } else {
-                $stmt = $pdo->prepare(
-                    'SELECT t.last_name, s.subject_code, sec.section_name
-                     FROM Class_Offering co
-                     JOIN Teacher t ON t.teacher_id = co.teacher_id
-                     JOIN Subject s ON s.subject_id = co.subject_id
-                     JOIN Section sec ON sec.section_id = co.section_id
-                     WHERE co.term_id = :t AND co.section_id = :sec AND co.subject_id = :sub
-                       AND co.teacher_id <> :teacher AND co.offering_id <> :self LIMIT 1'
-                );
-                $stmt->execute(['t' => $termId, 'sec' => $sectionId, 'sub' => $subjectId, 'teacher' => $teacherId, 'self' => $offeringId]);
-                $other = $stmt->fetch();
-                if ($other) {
-                    $teacherRuleError = $other['subject_code'] . ' in section ' . $other['section_name'] . ' already has teacher '
-                        . $other['last_name'] . ' this term. A subject can only have one teacher per section, so use '
-                        . $other['last_name'] . ' for this meeting too.';
+                if ((int)$rm['is_active'] !== 1 && !in_array((int)$m['room'], $currentRoomIds, true)) {
+                    $error = 'Room ' . $rm['room_code'] . ' is inactive. Pick another room, or ask the administrator to reactivate it.';
+                    break;
                 }
             }
         }
 
-        $conflictWhen = $conflict ? formatSchedule($conflict['day_of_week'], $conflict['start_time'], $conflict['end_time']) : '';
-        if ($conflict && $roomConflict) {
-            $error = "Room conflict: \"{$conflict['room']}\" is already booked for {$conflict['subject_code']} "
-                . "{$conflictWhen} "
-                . "with teacher {$conflict['last_name']} / section {$conflict['section_name']} in this term.";
-        } elseif ($conflict) {
-            $error = "Schedule conflict: {$conflict['subject_code']} already runs "
-                . "{$conflictWhen} "
-                . "with teacher {$conflict['last_name']} / section {$conflict['section_name']} in this term.";
-        } elseif ($teacherRuleError !== '') {
-            $error = $teacherRuleError;
-        } elseif ($offeringId) {
+        // Teacher and section cannot be in two places at once. Rooms are checked across every department.
+        if ($error === '') {
+            $teacherSection = $pdo->prepare(
+                'SELECT s.subject_code, t.last_name, sec.section_name, cm.day_of_week, cm.start_time, cm.end_time
+                 FROM Class_Meeting cm
+                 JOIN Class_Offering co ON co.offering_id = cm.offering_id
+                 JOIN Subject s ON s.subject_id = co.subject_id
+                 JOIN Teacher t ON t.teacher_id = co.teacher_id
+                 JOIN Section sec ON sec.section_id = co.section_id
+                 WHERE co.term_id = :term AND cm.day_of_week = :day AND (co.teacher_id = :teacher OR co.section_id = :section)
+                   AND co.offering_id <> :self AND cm.start_time < :end_time AND cm.end_time > :start_time
+                 LIMIT 1'
+            );
+            $roomClash = $pdo->prepare(
+                'SELECT s.subject_code, t.last_name, sec.section_name, cm.day_of_week, cm.start_time, cm.end_time
+                 FROM Class_Meeting cm
+                 JOIN Class_Offering co ON co.offering_id = cm.offering_id
+                 JOIN Subject s ON s.subject_id = co.subject_id
+                 JOIN Teacher t ON t.teacher_id = co.teacher_id
+                 JOIN Section sec ON sec.section_id = co.section_id
+                 WHERE co.term_id = :term AND cm.day_of_week = :day AND cm.room_id = :room
+                   AND co.offering_id <> :self AND cm.start_time < :end_time AND cm.end_time > :start_time
+                 LIMIT 1'
+            );
+            foreach ($meetings as $m) {
+                $p = ['term' => $termId, 'day' => $m['day'], 'self' => $offeringId, 'end_time' => $m['end'], 'start_time' => $m['start']];
+                $teacherSection->execute($p + ['teacher' => $teacherId, 'section' => $sectionId]);
+                $hit = $teacherSection->fetch();
+                if ($hit) {
+                    $error = 'Schedule conflict: ' . $hit['subject_code'] . ' already runs ' . formatSchedule($hit['day_of_week'], $hit['start_time'], $hit['end_time'])
+                        . ' with teacher ' . $hit['last_name'] . ' / section ' . $hit['section_name'] . ' in this term.';
+                    break;
+                }
+                // A type with no capacity limit (off-campus or clinical site) never conflicts.
+                if ($m['room'] !== '' && (int)$roomById[(int)$m['room']]['is_unlimited'] !== 1) {
+                    $roomClash->execute($p + ['room' => (int)$m['room']]);
+                    $hit = $roomClash->fetch();
+                    if ($hit) {
+                        $error = 'Room conflict: "' . $roomById[(int)$m['room']]['room_code'] . '" is already booked for ' . $hit['subject_code'] . ' '
+                            . formatSchedule($hit['day_of_week'], $hit['start_time'], $hit['end_time'])
+                            . ' with teacher ' . $hit['last_name'] . ' / section ' . $hit['section_name'] . ' in this term.';
+                        break;
+                    }
+                }
+            }
+        }
+
+        // A class that already has students: the new meetings must not overlap their other classes.
+        if ($error === '' && $offeringId && $editEnrolled > 0) {
             $clash = $pdo->prepare(
                 'SELECT sub.subject_code, st.last_name, COUNT(*) OVER () AS total
                  FROM Enrolled_subject es
                  JOIN Enrolled_subject es2 ON es2.enrollment_id = es.enrollment_id AND es2.offering_id <> es.offering_id
                  JOIN Class_Offering co2 ON co2.offering_id = es2.offering_id
+                 JOIN Class_Meeting cm2 ON cm2.offering_id = co2.offering_id
                  JOIN Subject sub ON sub.subject_id = co2.subject_id
                  JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
                  JOIN Student st ON st.student_id = e.student_id
-                 WHERE es.offering_id = :self AND co2.day_of_week = :day
-                   AND co2.start_time < :end_time AND co2.end_time > :start_time
+                 WHERE es.offering_id = :self AND cm2.day_of_week = :day
+                   AND cm2.start_time < :end_time AND cm2.end_time > :start_time
                  LIMIT 1'
             );
-            $clash->execute(['self' => $offeringId, 'day' => $day, 'end_time' => $endTime, 'start_time' => $startTime]);
-            $hit = $clash->fetch();
-            if ($hit) {
-                $error = 'That time overlaps ' . $hit['subject_code'] . ' for ' . $hit['last_name']
-                    . ((int)$hit['total'] > 1 ? ' and ' . ((int)$hit['total'] - 1) . ' other enrolled student(s)' : '')
-                    . '. Pick a time that fits their schedules.';
-            } else {
-                try {
-                    $pdo->beginTransaction();
-                    $pdo->prepare(
-                        'UPDATE Class_Offering SET subject_id = :subject_id, teacher_id = :teacher_id, section_id = :section_id,
-                            term_id = :term_id, room = :room, day_of_week = :day, start_time = :start_time, end_time = :end_time
-                         WHERE offering_id = :self'
-                    )->execute([
-                        'subject_id' => $subjectId, 'teacher_id' => $teacherId, 'section_id' => $sectionId, 'term_id' => $termId,
-                        'room' => $room ?: null, 'day' => $day, 'start_time' => $startTime, 'end_time' => $endTime, 'self' => $offeringId,
-                    ]);
-                    if ($propagateIds) {
-                        $in = implode(',', array_fill(0, count($propagateIds), '?'));
-                        $pdo->prepare("UPDATE Class_Offering SET teacher_id = ? WHERE offering_id IN ($in)")
-                            ->execute(array_merge([(int)$teacherId], $propagateIds));
-                    }
-                    $pdo->commit();
-                    $message = 'Class offering updated.';
-                    if ($propagateIds) {
-                        $message .= ' The same teacher now covers the subject\'s ' . count($propagateIds) . ' other meeting' . (count($propagateIds) === 1 ? '' : 's') . '.';
-                    }
-                } catch (Exception $e) {
-                    if ($pdo->inTransaction()) { $pdo->rollBack(); }
-                    $error = errorMessage($e, 'Could not update the class offering.');
+            foreach ($meetings as $m) {
+                $clash->execute(['self' => $offeringId, 'day' => $m['day'], 'end_time' => $m['end'], 'start_time' => $m['start']]);
+                $hit = $clash->fetch();
+                if ($hit) {
+                    $error = 'A meeting on ' . $m['day'] . ' overlaps ' . $hit['subject_code'] . ' for ' . $hit['last_name']
+                        . ((int)$hit['total'] > 1 ? ' and ' . ((int)$hit['total'] - 1) . ' other enrolled student(s)' : '')
+                        . '. Pick a time that fits their schedules.';
+                    break;
                 }
             }
-        } else {
-            $stmt = $pdo->prepare(
-                'INSERT INTO Class_Offering (subject_id, teacher_id, section_id, term_id, room, day_of_week, start_time, end_time)
-                 VALUES (:subject_id, :teacher_id, :section_id, :term_id, :room, :day, :start_time, :end_time)'
-            );
-            $stmt->execute([
-                'subject_id' => $subjectId, 'teacher_id' => $teacherId, 'section_id' => $sectionId, 'term_id' => $termId,
-                'room' => $room ?: null, 'day' => $day, 'start_time' => $startTime, 'end_time' => $endTime,
-            ]);
-            $message = 'Class offering scheduled.';
+        }
+
+        if ($error === '') {
+            try {
+                $pdo->beginTransaction();
+                if ($offeringId) {
+                    $pdo->prepare('UPDATE Class_Offering SET subject_id = :sub, teacher_id = :teacher, section_id = :sec, term_id = :term WHERE offering_id = :self')
+                        ->execute(['sub' => $subjectId, 'teacher' => $teacherId, 'sec' => $sectionId, 'term' => $termId, 'self' => $offeringId]);
+                    $pdo->prepare('DELETE FROM Class_Meeting WHERE offering_id = :self')->execute(['self' => $offeringId]);
+                    $classId = $offeringId;
+                    $message = 'Class updated.';
+                } else {
+                    $pdo->prepare('INSERT INTO Class_Offering (subject_id, teacher_id, section_id, term_id) VALUES (:sub, :teacher, :sec, :term)')
+                        ->execute(['sub' => $subjectId, 'teacher' => $teacherId, 'sec' => $sectionId, 'term' => $termId]);
+                    $classId = (int)$pdo->lastInsertId();
+                    $message = $meetings ? 'Class scheduled.' : 'Class added with no meetings yet (shown as TBA).';
+                }
+                $ins = $pdo->prepare('INSERT INTO Class_Meeting (offering_id, day_of_week, start_time, end_time, room_id) VALUES (:o, :d, :s, :e, :r)');
+                foreach ($meetings as $m) {
+                    $ins->execute(['o' => $classId, 'd' => $m['day'], 's' => $m['start'], 'e' => $m['end'], 'r' => $m['room'] !== '' ? (int)$m['room'] : null]);
+                }
+                $pdo->commit();
+
+                // Non-blocking: section size plus students joining from other sections, against each room's capacity.
+                $joiners = $pdo->prepare(
+                    'SELECT COUNT(*) FROM Enrolled_subject es JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
+                     WHERE es.offering_id = :o AND (e.section_id IS NULL OR e.section_id <> :sec)'
+                );
+                $joiners->execute(['o' => $classId, 'sec' => $sectionId]);
+                $expected = sectionOccupancy($pdo, (int)$sectionId) + (int)$joiners->fetchColumn();
+                $tooSmall = [];
+                foreach ($meetings as $m) {
+                    $rm = $m['room'] !== '' ? $roomById[(int)$m['room']] : null;
+                    if ($rm && (int)$rm['is_unlimited'] !== 1 && $rm['capacity'] !== null && $expected > (int)$rm['capacity']) {
+                        $tooSmall[$rm['room_code']] = (int)$rm['capacity'];
+                    }
+                }
+                foreach ($tooSmall as $code => $cap) {
+                    $warning .= 'Room ' . $code . ' seats ' . $cap . ', but about ' . $expected . ' student(s) will attend this class (the section plus students joining from other sections). ';
+                }
+
+                // Non-blocking: a teacher over their units or weekly hours limit.
+                $limits = $pdo->prepare('SELECT max_units, max_hours_per_week FROM Teacher WHERE teacher_id = :id');
+                $limits->execute(['id' => $teacherId]);
+                $limitRow = $limits->fetch();
+                $overText = $limitRow ? loadWarningText($limitRow, teacherLoad($pdo, (int)$teacherId, (int)$termId)) : '';
+                if ($overText !== '') {
+                    $warning .= 'This teacher is now over their limit this term: ' . $overText . '. ';
+                }
+            } catch (Exception $e) {
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                $error = errorMessage($e, 'Could not save the class.');
+                $message = '';
+            }
         }
     }
 }
@@ -296,16 +342,30 @@ $offerings = $pdo->prepare(
      JOIN Program p ON p.program_id = sec.program_id
      JOIN School_term st ON st.term_id = co.term_id
      WHERE p.department_id = :dept
-     ORDER BY st.term_id DESC,
-              FIELD(co.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'),
-              co.start_time"
+     ORDER BY st.term_id DESC, sec.year_level, sec.section_name, s.subject_code"
 );
 $offerings->execute(['dept' => $myDepartmentId]);
 $offerings = $offerings->fetchAll();
 
-// Filter options come from the offerings themselves, and a filter only shows when it has
-// more than one choice. The term filter opens on the most recent ongoing term because
-// that is the one being scheduled; "All terms" is one click away.
+$meetingsByClass = [];
+if ($offerings) {
+    $mstmt = $pdo->prepare(
+        "SELECT cm.*, r.room_code AS room FROM Class_Meeting cm
+         LEFT JOIN Room r ON r.room_id = cm.room_id
+         JOIN Class_Offering co ON co.offering_id = cm.offering_id
+         JOIN Section sec ON sec.section_id = co.section_id
+         JOIN Program p ON p.program_id = sec.program_id
+         WHERE p.department_id = :dept
+         ORDER BY FIELD(cm.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), cm.start_time"
+    );
+    $mstmt->execute(['dept' => $myDepartmentId]);
+    foreach ($mstmt->fetchAll() as $m) {
+        $meetingsByClass[(int)$m['offering_id']][] = $m;
+    }
+}
+
+// Filter options come from the classes themselves, and a filter only shows when it has more than one choice.
+// The term filter opens on the most recent ongoing term because that is the one being scheduled.
 $termOptions = [];
 $sectionOptions = [];
 foreach ($offerings as $o) {
@@ -338,7 +398,17 @@ $visibleOfferings = array_values(array_filter($offerings, fn($o) =>
 // Columns that would repeat the same value on every row are left out.
 $showTermCol = $showTermFilter && $filterTerm === 0;
 $showSectionCol = $filterSection === 0;
-$colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
+$colCount = 4 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
+
+$reopenMeetings = [];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '' && ($_POST['action'] ?? '') !== 'delete_offering') {
+    foreach ((array)($_POST['meeting_day'] ?? []) as $i => $day) {
+        $reopenMeetings[] = [
+            'day' => (string)$day, 'start' => (string)(((array)($_POST['meeting_start'] ?? []))[$i] ?? ''),
+            'end' => (string)(((array)($_POST['meeting_end'] ?? []))[$i] ?? ''), 'room_id' => (string)(((array)($_POST['meeting_room'] ?? []))[$i] ?? ''),
+        ];
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -352,10 +422,20 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
 <div class="container">
     <h1 class="h4 mb-3">Class Offerings</h1>
+    <?php
+    $genDraft = $_SESSION['gen_draft'] ?? null;
+    $draftTermOk = $genDraft && (int)$genDraft['dept_id'] === (int)$myDepartmentId && in_array((int)$genDraft['term_id'], array_map('intval', array_column($terms, 'term_id')), true);
+    if ($draftTermOk): ?>
+        <div class="alert alert-info d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <span>You have an unsaved Auto-generate draft (<?= count($genDraft['rows']) ?> class<?= count($genDraft['rows']) === 1 ? '' : 'es' ?>). Nothing in it is saved yet.</span>
+            <a class="btn btn-sm btn-primary" href="<?= BASE_URL ?>/registrar/generate-classes.php?step=preview">Continue draft</a>
+        </div>
+    <?php endif; ?>
 
     <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
+    <?php if ($warning): ?><div class="alert alert-warning"><?= htmlspecialchars(trim($warning)) ?></div><?php endif; ?>
     <?php if ($deleteError): ?><div class="alert alert-danger"><?= htmlspecialchars($deleteError) ?></div><?php endif; ?>
-    <?php $reopenForm = $error !== '' && $_SERVER['REQUEST_METHOD'] === 'POST'; ?>
+    <?php $reopenForm = $error !== '' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') !== 'delete_offering'; ?>
     <?php if ($error && !$reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
 
     <?php if (empty($terms)): ?>
@@ -363,6 +443,7 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
     <?php else: ?>
     <div class="mb-3">
         <button type="button" class="btn btn-primary" onclick="openOfferingModal({})"><i class="bi bi-plus-lg"></i> Schedule a Class</button>
+        <a href="<?= BASE_URL ?>/registrar/generate-classes.php" class="btn btn-outline-primary ms-2"><i class="bi bi-magic"></i> Auto-generate</a>
     </div>
     <div class="modal fade" id="offeringModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-lg">
@@ -374,13 +455,13 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
           </div>
           <div class="modal-body">
             <?php if ($reopenForm): ?><div class="alert alert-danger js-modal-alert"><?= htmlspecialchars($error) ?></div><?php endif; ?>
-            <div class="alert alert-info" id="offeringLockNote" hidden>Subject, section and term are locked because <span id="offeringLockCount">0</span> student(s) are enrolled. Teacher, room, day and time can still change.</div>
+            <div class="alert alert-info" id="offeringLockNote" hidden>Subject, section and term are locked because <span id="offeringLockCount">0</span> student(s) are enrolled. Teacher and meetings can still change.</div>
             <div class="row">
                 <div class="col-md-4 mb-3">
                     <label class="form-label">Term</label>
                     <select class="form-select" name="term_id" required>
                         <?php foreach ($terms as $t): ?>
-                            <option value="<?= $t['term_id'] ?>"><?= htmlspecialchars($t['school_year'] . ' — Sem ' . $t['semester']) ?></option>
+                            <option value="<?= $t['term_id'] ?>"><?= htmlspecialchars($t['school_year'] . ' - Sem ' . $t['semester']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -389,7 +470,7 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                     <select class="form-select js-search" name="subject_id" data-placeholder="Search subjects">
                         <option value="">Select</option>
                         <?php foreach ($subjects as $s): ?>
-                            <option value="<?= $s['subject_id'] ?>"><?= htmlspecialchars($s['subject_code'] . ' — ' . $s['subject_name']) ?></option>
+                            <option value="<?= $s['subject_id'] ?>"><?= htmlspecialchars($s['subject_code'] . ' - ' . $s['subject_name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -411,28 +492,13 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">Day</label>
-                    <select class="form-select" name="day_of_week" required>
-                        <option value="">Select</option>
-                        <?php foreach (['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'] as $d): ?>
-                            <option value="<?= $d ?>"><?= $d ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">Start</label>
-                    <input type="time" class="form-control" name="start_time" required>
-                </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">End</label>
-                    <input type="time" class="form-control" name="end_time" required>
-                </div>
-                <div class="col-md-3 mb-3">
-                    <label class="form-label">Room</label>
-                    <input class="form-control" name="room" placeholder="Room 101">
-                </div>
             </div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label mb-0">Meetings</label>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="addMeetingRow({})"><i class="bi bi-plus-lg"></i> Add meeting</button>
+            </div>
+            <div id="meetingRows"></div>
+            <div class="form-text" id="noMeetingsNote">No meetings means the class shows as TBA, for example OJT, thesis or a clinical rotation. A subject that meets twice a week needs two meetings in the same class.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -475,25 +541,32 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
 
     <div class="table-responsive">
 <table class="table table-hover bg-white">
-        <thead><tr><?php if ($showTermCol): ?><th>Term</th><?php endif; ?><th>Subject</th><th>Teacher</th><?php if ($showSectionCol): ?><th>Section</th><?php endif; ?><th>Day</th><th>Time</th><th>Room</th><th></th></tr></thead>
+        <thead><tr><?php if ($showTermCol): ?><th>Term</th><?php endif; ?><th>Subject</th><th>Teacher</th><?php if ($showSectionCol): ?><th>Section</th><?php endif; ?><th>Meetings</th><th></th></tr></thead>
         <tbody>
-        <?php foreach ($visibleOfferings as $o): ?>
+        <?php foreach ($visibleOfferings as $o): $classMeetings = $meetingsByClass[(int)$o['offering_id']] ?? []; ?>
             <tr>
                 <?php if ($showTermCol): ?><td><?= htmlspecialchars($o['school_year'] . ' S' . $o['semester']) ?></td><?php endif; ?>
                 <td><?= htmlspecialchars($o['subject_code']) ?></td>
                 <td><?= htmlspecialchars($o['last_name'] . ', ' . $o['first_name']) ?></td>
                 <?php if ($showSectionCol): ?><td><?= htmlspecialchars(sectionLabel($o['year_level'], $o['section_name'], $multiProgram ? $o['program_code'] : null)) ?></td><?php endif; ?>
-                <td><?= htmlspecialchars($o['day_of_week']) ?></td>
-                <td><?= htmlspecialchars(formatTimeRange($o['start_time'], $o['end_time'])) ?></td>
-                <td><?= htmlspecialchars($o['room'] ?? '') ?></td>
                 <td>
+                    <?php if ($classMeetings): foreach ($classMeetings as $m): ?>
+                        <div><?= htmlspecialchars(formatSchedule($m['day_of_week'], $m['start_time'], $m['end_time'], $m['room'] ?? '')) ?></div>
+                    <?php endforeach; else: ?>
+                        <span class="text-muted">TBA</span>
+                    <?php endif; ?>
+                </td>
+                <td class="text-nowrap">
                     <?php if ($o['term_status'] === 'ongoing'): ?>
                         <button type="button" class="btn btn-sm btn-outline-primary"
                                 data-offering="<?= htmlspecialchars(json_encode([
                                     'offering_id' => (int)$o['offering_id'], 'term_id' => (string)$o['term_id'], 'subject_id' => (string)$o['subject_id'],
-                                    'teacher_id' => (string)$o['teacher_id'], 'section_id' => (string)$o['section_id'], 'day_of_week' => $o['day_of_week'],
-                                    'start_time' => substr((string)$o['start_time'], 0, 5), 'end_time' => substr((string)$o['end_time'], 0, 5),
-                                    'room' => $o['room'] ?? '', 'locked' => (int)$o['enrolled_count'] > 0, 'enrolled' => (int)$o['enrolled_count'],
+                                    'teacher_id' => (string)$o['teacher_id'], 'section_id' => (string)$o['section_id'],
+                                    'meetings' => array_map(fn($m) => [
+                                        'day' => $m['day_of_week'], 'start' => substr((string)$m['start_time'], 0, 5),
+                                        'end' => substr((string)$m['end_time'], 0, 5), 'room_id' => $m['room_id'] === null ? '' : (string)$m['room_id'],
+                                    ], $classMeetings),
+                                    'locked' => (int)$o['enrolled_count'] > 0, 'enrolled' => (int)$o['enrolled_count'],
                                 ]), ENT_QUOTES) ?>"
                                 onclick="openOfferingModal(JSON.parse(this.dataset.offering))">Edit</button>
                         <form method="post" class="d-inline">
@@ -504,7 +577,7 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
                                         data-roster="<?= BASE_URL ?>/registrar/section-roster.php?id=<?= (int)$o['section_id'] ?>">Delete</button>
                             <?php else: ?>
                                 <button type="submit" class="btn btn-sm btn-outline-danger"
-                                        data-confirm="Delete this class offering? No students are enrolled in it." data-confirm-label="Delete" data-confirm-tone="danger">Delete</button>
+                                        data-confirm="Delete this class and its meetings? No students are enrolled in it." data-confirm-label="Delete" data-confirm-tone="danger">Delete</button>
                             <?php endif; ?>
                         </form>
                     <?php endif; ?>
@@ -513,7 +586,7 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
         <?php endforeach; ?>
         <?php if (empty($visibleOfferings)): ?>
             <tr><td colspan="<?= $colCount ?>" class="text-muted">
-                <?php if (empty($offerings)): ?>No class offerings yet.
+                <?php if (empty($offerings)): ?>No classes yet.
                 <?php elseif ($filterSection === 0 && $filterTerm !== 0): ?>No classes scheduled for this term yet.
                 <?php else: ?>No classes match this filter.<?php endif; ?>
             </td></tr>
@@ -535,7 +608,7 @@ $colCount = 6 + ($showTermCol ? 1 : 0) + ($showSectionCol ? 1 : 0);
             <li><strong>Irregular students:</strong> open the section roster and use <em>Change classes</em> to swap this subject to another class.</li>
             <li><strong>Regular students:</strong> use <em>Move section</em> on the roster.</li>
         </ul>
-        <p class="mb-0 text-muted small">To change only the teacher, room, day or time, use <em>Edit</em> instead. Students keep their seat.</p>
+        <p class="mb-0 text-muted small">To change only the teacher or the meetings, use <em>Edit</em> instead. Students keep their seat.</p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -554,18 +627,59 @@ document.querySelectorAll('.js-delete-blocked').forEach(function (b) {
 });
 </script>
 <script>
+var meetingDays = <?= json_encode($days) ?>;
+var roomList = <?= json_encode(array_map(fn($r) => [
+    'id' => (int)$r['room_id'], 'code' => $r['room_code'], 'type' => $r['type_name'],
+    'cap' => $r['capacity'] === null || (int)$r['is_unlimited'] === 1 ? null : (int)$r['capacity'], 'active' => (int)$r['is_active'] === 1,
+], $rooms), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+function roomOptionsHtml(currentId) {
+    var html = '<option value="">No room</option>', byType = {}, order = [];
+    roomList.forEach(function (r) {
+        if (!r.active && String(r.id) !== String(currentId)) { return; }
+        if (!byType[r.type]) { byType[r.type] = []; order.push(r.type); }
+        byType[r.type].push(r);
+    });
+    order.forEach(function (type) {
+        html += '<optgroup label="' + type.replace(/"/g, '&quot;') + '">';
+        byType[type].forEach(function (r) {
+            var label = r.code + (r.cap ? ' (seats ' + r.cap + ')' : '') + (r.active ? '' : ' - inactive');
+            html += '<option value="' + r.id + '"' + (String(r.id) === String(currentId) ? ' selected' : '') + '>' + label.replace(/</g, '&lt;') + '</option>';
+        });
+        html += '</optgroup>';
+    });
+    return html;
+}
 function fillModalForm(form, values) {
-    Object.keys(values).forEach(function (name) {
+    ['term_id', 'subject_id', 'teacher_id', 'section_id'].forEach(function (name) {
         var el = form.elements[name];
-        if (!el || el.type === 'hidden') { return; }
+        if (!el || values[name] === undefined) { return; }
         if (el.tomselect) { el.tomselect.setValue(values[name]); } else { el.value = values[name]; }
     });
+}
+function refreshMeetingNote() {
+    document.getElementById('noMeetingsNote').hidden = document.querySelectorAll('#meetingRows .meeting-row').length > 0;
+}
+function addMeetingRow(m) {
+    var row = document.createElement('div');
+    row.className = 'row g-2 mb-2 meeting-row';
+    var dayOptions = '<option value="">Day</option>' + meetingDays.map(function (d) {
+        return '<option value="' + d + '"' + (m.day === d ? ' selected' : '') + '>' + d + '</option>';
+    }).join('');
+    row.innerHTML =
+        '<div class="col-md-3"><select class="form-select" name="meeting_day[]">' + dayOptions + '</select></div>' +
+        '<div class="col-md-2"><input type="time" class="form-control" name="meeting_start[]" value="' + (m.start || '') + '"></div>' +
+        '<div class="col-md-2"><input type="time" class="form-control" name="meeting_end[]" value="' + (m.end || '') + '"></div>' +
+        '<div class="col-md-4"><select class="form-select" name="meeting_room[]">' + roomOptionsHtml(m.room_id) + '</select></div>' +
+        '<div class="col-md-1"><button type="button" class="btn btn-outline-danger w-100" aria-label="Remove meeting">&times;</button></div>';
+    row.querySelector('button').addEventListener('click', function () { row.remove(); refreshMeetingNote(); });
+    document.getElementById('meetingRows').appendChild(row);
+    refreshMeetingNote();
 }
 function openOfferingModal(values) {
     var form = document.getElementById('offeringForm');
     if (!form) { return; }
     var editing = !!values.offering_id, locked = !!values.locked;
-    if (!editing && Object.keys(values).length === 0) {
+    if (!editing) {
         form.reset();
         form.querySelectorAll('select.js-search').forEach(function (el) { if (el.tomselect) { el.tomselect.clear(true); } });
     }
@@ -576,6 +690,10 @@ function openOfferingModal(values) {
         if (!el) { return; }
         if (el.tomselect) { if (locked) { el.tomselect.disable(); } else { el.tomselect.enable(); } } else { el.disabled = locked; }
     });
+    document.getElementById('meetingRows').innerHTML = '';
+    (values.meetings || []).forEach(addMeetingRow);
+    if (!editing && !(values.meetings || []).length) { addMeetingRow({}); }
+    refreshMeetingNote();
     document.getElementById('offeringLockNote').hidden = !locked;
     document.getElementById('offeringLockCount').textContent = values.enrolled || 0;
     document.getElementById('offeringModalTitle').textContent = editing ? 'Edit Class' : 'Schedule a Class';
@@ -584,7 +702,10 @@ function openOfferingModal(values) {
 }
 <?php if ($reopenForm && !empty($terms)): ?>
 document.addEventListener('DOMContentLoaded', function () {
-    openOfferingModal(<?= json_encode(array_merge(array_intersect_key($_POST, array_flip(['offering_id', 'term_id', 'subject_id', 'teacher_id', 'section_id', 'day_of_week', 'start_time', 'end_time', 'room'])), ['locked' => $editLocked, 'enrolled' => $editEnrolled]), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
+    openOfferingModal(<?= json_encode(array_merge(
+        array_intersect_key($_POST, array_flip(['offering_id', 'term_id', 'subject_id', 'teacher_id', 'section_id'])),
+        ['meetings' => $reopenMeetings, 'locked' => $editLocked, 'enrolled' => $editEnrolled]
+    ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);
 });
 <?php endif; ?>
 </script>

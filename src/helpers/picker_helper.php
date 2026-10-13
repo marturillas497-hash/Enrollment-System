@@ -8,7 +8,8 @@ require_once __DIR__ . '/academic_helper.php';
 function buildPickerRows(PDO $pdo, int $studentId, int $curriculumId, int $termId, ?int $sectionId = null, ?int $rosterEnrollmentId = null): array
 {
     $stmt = $pdo->prepare(
-        'SELECT s.subject_id, s.subject_code, s.subject_name, s.units, MIN(cs.year_level) AS year_level, MIN(cs.semester) AS semester
+        'SELECT s.subject_id, s.subject_code, s.subject_name, s.units, MIN(cs.year_level) AS year_level, MIN(cs.semester) AS semester,
+                MAX(cs.required_standing) AS required_standing
          FROM Curriculum_subject cs JOIN Subject s ON s.subject_id = cs.subject_id
          WHERE cs.curriculum_id = :cid
          GROUP BY s.subject_id, s.subject_code, s.subject_name, s.units
@@ -28,36 +29,42 @@ function buildPickerRows(PDO $pdo, int $studentId, int $curriculumId, int $termI
     }
 
     $prereqStmt = $pdo->prepare(
-        'SELECT r.subject_id, r.subject_code FROM Prerequisite p
-         JOIN Subject r ON r.subject_id = p.prerequisite_subject_id WHERE p.subject_id = :sid'
+        'SELECT r.subject_id, r.subject_code FROM Curriculum_prerequisite p
+         JOIN Subject r ON r.subject_id = p.prerequisite_subject_id WHERE p.curriculum_id = :cid AND p.subject_id = :sid'
     );
     $offeringSql = 'SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, co.room, sec.section_name, sec.year_level
-                    FROM Class_Offering co JOIN Section sec ON sec.section_id = co.section_id
+                    FROM Class_Schedule co JOIN Section sec ON sec.section_id = co.section_id
                     WHERE co.subject_id = :subid AND co.term_id = :tid'
                  . ($sectionId ? ' AND co.section_id = :secid' : '')
                  . ' ORDER BY sec.year_level, sec.section_name, co.start_time';
     $offeringStmt = $pdo->prepare($offeringSql);
 
+    $completed = completedSubjectSet($pdo, $studentId);
+    $standing = studentStanding($pdo, $studentId, $curriculumId, $completed);
+
     $rows = [];
     foreach ($subjects as $subj) {
         $sid = (int)$subj['subject_id'];
-        if (isset($onRoster[$sid]) || hasCompletedSubject($pdo, $studentId, $sid)) {
+        if (isset($onRoster[$sid]) || isset($completed[$sid])) {
             continue;
         }
         $retake = hasFailedAttempt($pdo, $studentId, $sid);
 
-        $prereqStmt->execute(['sid' => $sid]);
+        $prereqStmt->execute(['cid' => $curriculumId, 'sid' => $sid]);
         $missing = [];
         foreach ($prereqStmt->fetchAll() as $req) {
-            if (!hasCompletedSubject($pdo, $studentId, (int)$req['subject_id'])) {
+            if (!isset($completed[(int)$req['subject_id']])) {
                 $missing[] = $req['subject_code'];
             }
         }
 
+        $standingNeeded = $subj['required_standing'] !== null && $standing < (int)$subj['required_standing']
+            ? (int)$subj['required_standing'] : null;
+
         $params = ['subid' => $sid, 'tid' => $termId];
         if ($sectionId) { $params['secid'] = $sectionId; }
         $offeringStmt->execute($params);
-        $offerings = $offeringStmt->fetchAll();
+        $offerings = foldMeetings($offeringStmt->fetchAll(), 'offering_id');
 
         $rows[] = [
             'subject_id' => $sid,
@@ -67,9 +74,10 @@ function buildPickerRows(PDO $pdo, int $studentId, int $curriculumId, int $termI
             'year_level' => (int)$subj['year_level'],
             'semester' => (int)$subj['semester'],
             'missing_prereqs' => $missing,
+            'standing_required' => $standingNeeded,
             'retake' => $retake,
             'offerings' => $offerings,
-            'locked' => $missing !== [] || $offerings === [],
+            'locked' => $missing !== [] || $standingNeeded !== null || $offerings === [],
         ];
     }
     return $rows;
@@ -107,7 +115,7 @@ function findScheduleConflict(PDO $pdo, array $offeringIds): ?string
     $in = implode(',', array_fill(0, count($offeringIds), '?'));
     $stmt = $pdo->prepare(
         "SELECT co.day_of_week, co.start_time, co.end_time, s.subject_code
-         FROM Class_Offering co JOIN Subject s ON s.subject_id = co.subject_id WHERE co.offering_id IN ($in)"
+         FROM Class_Schedule co JOIN Subject s ON s.subject_id = co.subject_id WHERE co.offering_id IN ($in)"
     );
     $stmt->execute($offeringIds);
     $slots = $stmt->fetchAll();
@@ -128,7 +136,7 @@ function rosterSlots(PDO $pdo, int $enrollmentId): array
 {
     $stmt = $pdo->prepare(
         'SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, s.subject_code
-         FROM Enrolled_subject es JOIN Class_Offering co ON co.offering_id = es.offering_id
+         FROM Enrolled_subject es JOIN Class_Schedule co ON co.offering_id = es.offering_id
          JOIN Subject s ON s.subject_id = co.subject_id WHERE es.enrollment_id = :e'
     );
     $stmt->execute(['e' => $enrollmentId]);

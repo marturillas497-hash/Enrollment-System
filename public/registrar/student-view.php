@@ -5,6 +5,7 @@ require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/schedule_helper.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 require_once __DIR__ . '/../../src/helpers/account_email_helper.php';
+require_once __DIR__ . '/../../src/helpers/correction_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -108,6 +109,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'chang
     }
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'resolve_flag') {
+    $stmt = $pdo->prepare('SELECT registrar_id, department_id FROM Registrar WHERE account_id = :aid');
+    $stmt->execute(['aid' => $user['account_id']]);
+    [$ok, $text] = correctionResolveFlag($pdo, $user, $stmt->fetch(), $studentId, (int)($_POST['flag_id'] ?? 0));
+    if ($ok) {
+        flashSet('student_status_msg', $text);
+        header('Location: ' . BASE_URL . '/registrar/student-view.php?id=' . $studentId . '&tab=general');
+        exit;
+    }
+    $error = $text;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_status') {
     $newStatus = $_POST['status'] ?? '';
     $statusLabels = ['active' => 'Active', 'on_leave' => 'On Leave', 'dropped' => 'Dropped', 'graduated' => 'Graduated'];
@@ -128,6 +141,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_s
         } else {
             $pdo->prepare('UPDATE Student SET overall_status = :status WHERE student_id = :id')
                 ->execute(['status' => $newStatus, 'id' => $studentId]);
+            auditLog($pdo, $user, 'student.status', 'student', $studentId,
+                'Status of ' . $student['first_name'] . ' ' . $student['last_name'] . ' (' . $student['student_id_number'] . ') changed from '
+                . ($statusLabels[$student['overall_status']] ?? $student['overall_status']) . ' to ' . $statusLabels[$newStatus] . '.',
+                ['status' => $student['overall_status']], ['status' => $newStatus]);
             flashSet('student_status_msg', 'Status changed to ' . $statusLabels[$newStatus] . '.');
             header('Location: ' . BASE_URL . '/registrar/student-view.php?id=' . $studentId . '&tab=general');
             exit;
@@ -208,7 +225,7 @@ if ($tab === 'schedule') {
     $stmt = $pdo->prepare(
         'SELECT s.subject_code, co.day_of_week, co.start_time, co.end_time, co.room, t.last_name, t.first_name
          FROM Enrolled_subject es
-         JOIN Class_Offering co ON co.offering_id = es.offering_id
+         JOIN Class_Schedule co ON co.offering_id = es.offering_id
          JOIN Subject s ON s.subject_id = co.subject_id
          JOIN Teacher t ON t.teacher_id = co.teacher_id
          WHERE es.enrollment_id = :eid ORDER BY co.start_time'
@@ -226,7 +243,7 @@ $shiftCredits = [];
 if ($tab === 'subjects') {
     $stmt = $pdo->prepare(
         'SELECT e.enrollment_id, e.year_level, e.status, e.student_standing, term.school_year, term.semester, sec.section_name,
-                sub.subject_code, sub.subject_name, sub.units, es.grade, es.remarks
+                sub.subject_code, sub.subject_name, sub.units, es.grade, es.remarks, es.corrected_at
          FROM Enrollment e
          JOIN School_term term ON term.term_id = e.term_id
          LEFT JOIN Section sec ON sec.section_id = e.section_id
@@ -291,6 +308,7 @@ $base = '?id=' . $studentId . '&tab=';
         <?= htmlspecialchars($student['program_code']) ?>
         <?= $student['section_name'] ? ' · ' . htmlspecialchars(sectionLabel($student['year_level'], $student['section_name'])) : '' ?>
         · <?= statusBadge($student['overall_status']) ?> <?= statusBadge($student['student_standing']) ?>
+        <span class="badge text-bg-light border"><?= htmlspecialchars(standingLabel(studentStanding($pdo, $studentId, (int)$student['curriculum_id']))) ?></span>
         <?= $isTransferee ? '<span class="badge text-bg-info">Transferee</span>' : '' ?>
     </p>
 
@@ -310,6 +328,22 @@ $base = '?id=' . $studentId . '&tab=';
     <?= tabBar($tabItems, $tab) ?>
 
     <?php if ($tab === 'general'): ?>
+        <?php $openFlags = correctionOpenFlags($pdo, $studentId); ?>
+        <?php if ($openFlags): ?>
+            <div class="alert alert-warning">
+                <div class="fw-semibold mb-2"><i class="bi bi-exclamation-triangle-fill"></i> A grade correction may affect this student</div>
+                <p class="small mb-2">A corrected grade changed what this student has completed. Nothing was changed automatically. Check the items below, then mark each as reviewed.</p>
+                <?php foreach ($openFlags as $flag): ?>
+                    <form method="post" class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                        <input type="hidden" name="action" value="resolve_flag">
+                        <input type="hidden" name="id" value="<?= (int)$studentId ?>">
+                        <input type="hidden" name="flag_id" value="<?= (int)$flag['flag_id'] ?>">
+                        <span class="flex-grow-1"><?= htmlspecialchars($flag['message']) ?></span>
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Mark reviewed</button>
+                    </form>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
         <?php if ($docMessage): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($docMessage) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
         <?php if ($docError): ?><div class="alert alert-danger"><?= htmlspecialchars($docError) ?></div><?php endif; ?>
         <?php if ($statusMessage): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($statusMessage) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
@@ -422,7 +456,7 @@ $base = '?id=' . $studentId . '&tab=';
                                 <td><?= htmlspecialchars($r['subject_name']) ?></td>
                                 <td><?= $units($r['units']) ?></td>
                                 <td><?= $r['grade'] !== null ? number_format((float)$r['grade'], 2) : '<span class="text-muted">&mdash;</span>' ?></td>
-                                <td><?= htmlspecialchars((string)$r['remarks']) ?></td>
+                                <td><?= htmlspecialchars((string)$r['remarks']) ?><?= !empty($r['corrected_at']) ? ' ' . statusBadge('corrected', 'Corrected', 'info') : '' ?></td>
                             </tr>
                         <?php endforeach; ?>
                         </tbody>

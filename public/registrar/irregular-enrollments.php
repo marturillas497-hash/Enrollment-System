@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/audit_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -35,6 +36,9 @@ if ($enrollment && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'approve') {
         $pdo->prepare("UPDATE Enrollment SET status = 'approved', approved_by = :by WHERE enrollment_id = :id")
             ->execute(['by' => $user['account_id'], 'id' => $enrollmentId]);
+        auditLog($pdo, $user, 'enrollment.approve', 'enrollment', (int)$enrollmentId,
+            'Irregular enrollment approved for ' . $enrollment['first_name'] . ' ' . $enrollment['last_name'] . ' (' . $enrollment['student_id_number'] . '), '
+            . $enrollment['school_year'] . ' Semester ' . $enrollment['semester'] . '.');
         $message = 'Enrollment approved.';
         $enrollment = null;
     } elseif ($action === 'reject') {
@@ -46,6 +50,9 @@ if ($enrollment && $_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $pdo->prepare("UPDATE Enrollment SET status = 'rejected', approved_by = :by, rejection_reason = :reason WHERE enrollment_id = :id")
                 ->execute(['by' => $user['account_id'], 'reason' => $reason, 'id' => $enrollmentId]);
+            auditLog($pdo, $user, 'enrollment.reject', 'enrollment', (int)$enrollmentId,
+                'Irregular enrollment rejected for ' . $enrollment['first_name'] . ' ' . $enrollment['last_name'] . ' (' . $enrollment['student_id_number'] . '). Reason: ' . $reason,
+                null, ['reason' => $reason]);
             $message = 'Enrollment rejected.';
             $enrollment = null;
         }
@@ -56,16 +63,16 @@ if ($enrollment && $_SERVER['REQUEST_METHOD'] === 'POST') {
 $chosenSubjects = [];
 if ($enrollment) {
     $stmt = $pdo->prepare(
-        'SELECT sub.subject_code, sub.subject_name, sub.units, sec.section_name,
-                co.day_of_week, co.start_time, co.end_time
+        'SELECT es.enrolled_subject_id, sub.subject_code, sub.subject_name, sub.units, sec.section_name,
+                co.day_of_week, co.start_time, co.end_time, co.room
          FROM Enrolled_subject es
-         JOIN Class_Offering co ON co.offering_id = es.offering_id
+         JOIN Class_Schedule co ON co.offering_id = es.offering_id
          JOIN Subject sub ON sub.subject_id = co.subject_id
          JOIN Section sec ON sec.section_id = co.section_id
          WHERE es.enrollment_id = :eid'
     );
     $stmt->execute(['eid' => $enrollmentId]);
-    $chosenSubjects = $stmt->fetchAll();
+    $chosenSubjects = foldMeetings($stmt->fetchAll(), 'enrolled_subject_id');
 }
 
 // List view: every pending irregular enrollment in MY department
@@ -123,7 +130,7 @@ if (!$enrollment) {
                         <td><?= htmlspecialchars($s['subject_name']) ?></td>
                         <td><?= $s['units'] ?></td>
                         <td><?= htmlspecialchars($s['section_name']) ?></td>
-                        <td><?= htmlspecialchars(formatSchedule($s['day_of_week'], $s['start_time'], $s['end_time'])) ?></td>
+                        <td><?= scheduleLinesHtml($s) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($chosenSubjects)): ?><tr><td colspan="5" class="text-muted">No subjects selected.</td></tr><?php endif; ?>

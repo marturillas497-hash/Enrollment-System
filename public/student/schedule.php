@@ -22,7 +22,7 @@ if ($latestEnrollment) {
         'SELECT s.subject_code, s.subject_name, co.day_of_week, co.start_time, co.end_time, co.room,
                 t.last_name, t.first_name
          FROM Enrolled_subject es
-         JOIN Class_Offering co ON co.offering_id = es.offering_id
+         JOIN Class_Schedule co ON co.offering_id = es.offering_id
          JOIN Subject s ON s.subject_id = co.subject_id
          JOIN Teacher t ON t.teacher_id = co.teacher_id
          WHERE es.enrollment_id = :eid

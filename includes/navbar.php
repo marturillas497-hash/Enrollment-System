@@ -104,11 +104,26 @@ function navActive(string $href): string
     <nav class="nav-items" aria-label="Main menu">
         <?php if ($role === 'admin'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/dashboard.php') ?>" href="<?= BASE_URL ?>/admin/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
+            <div class="sidebar-group">
+                <div class="sidebar-group-title">People</div>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-registrar.php') ?>" href="<?= BASE_URL ?>/admin/register-registrar.php"><i class="bi bi-person-plus"></i> Register Registrar</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-teacher.php') ?>" href="<?= BASE_URL ?>/admin/register-teacher.php"><i class="bi bi-person-plus"></i> Register Teacher</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/register-admission-staff.php') ?>" href="<?= BASE_URL ?>/admin/register-admission-staff.php"><i class="bi bi-person-plus"></i> Register Admission Staff</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/staff.php') ?>" href="<?= BASE_URL ?>/admin/staff.php"><i class="bi bi-people"></i> Staff Accounts</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/instructors.php') ?>" href="<?= BASE_URL ?>/admin/instructors.php"><i class="bi bi-person-lines-fill"></i> Instructors</a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-group-title">Academic Setup</div>
             <a class="nav-item-link<?= navActive(BASE_URL . '/admin/terms.php') ?>" href="<?= BASE_URL ?>/admin/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/rooms.php') ?>" href="<?= BASE_URL ?>/admin/rooms.php"><i class="bi bi-door-open"></i> Rooms</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/tags.php') ?>" href="<?= BASE_URL ?>/admin/tags.php"><i class="bi bi-tags"></i> Tags</a>
+            </div>
+
+            <div class="sidebar-group">
+                <div class="sidebar-group-title">System</div>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/admin/audit-log.php') ?>" href="<?= BASE_URL ?>/admin/audit-log.php"><i class="bi bi-journal-text"></i> Audit Log</a>
+            </div>
             <a class="nav-item-link<?= navActive(BASE_URL . '/profile.php') ?>" href="<?= BASE_URL ?>/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
         <?php elseif ($role === 'registrar'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/dashboard.php') ?>" href="<?= BASE_URL ?>/registrar/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
@@ -119,17 +134,18 @@ function navActive(string $href): string
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/students.php') ?>" href="<?= BASE_URL ?>/registrar/students.php"><i class="bi bi-people"></i> Students</a>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/shift-requests.php') ?>" href="<?= BASE_URL ?>/registrar/shift-requests.php"><i class="bi bi-box-arrow-in-right"></i> Shift Requests</a>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/irregular-enrollments.php') ?>" href="<?= BASE_URL ?>/registrar/irregular-enrollments.php"><i class="bi bi-list-check"></i> Irregular Enrollments</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/grade-corrections.php') ?>" href="<?= BASE_URL ?>/registrar/grade-corrections.php"><i class="bi bi-pencil-square"></i> Grade Corrections</a>
             </div>
 
             <div class="sidebar-group">
                 <div class="sidebar-group-title">Academic Setup</div>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/subjects.php') ?>" href="<?= BASE_URL ?>/registrar/subjects.php"><i class="bi bi-journal-bookmark"></i> Subjects</a>
-                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/prerequisites.php') ?>" href="<?= BASE_URL ?>/registrar/prerequisites.php"><i class="bi bi-diagram-2"></i> Prerequisites</a>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/curriculum.php') ?>" href="<?= BASE_URL ?>/registrar/curriculum.php"><i class="bi bi-file-earmark-text"></i> Curriculum</a>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/sections.php') ?>" href="<?= BASE_URL ?>/registrar/sections.php"><i class="bi bi-diagram-3"></i> Sections</a>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/terms.php') ?>" href="<?= BASE_URL ?>/registrar/terms.php"><i class="bi bi-clock-history"></i> Terms</a>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/class-offerings.php') ?>" href="<?= BASE_URL ?>/registrar/class-offerings.php"><i class="bi bi-bank"></i> Class Offerings</a>
                     <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/schedule.php') ?>" href="<?= BASE_URL ?>/registrar/schedule.php"><i class="bi bi-calendar3"></i> Schedule</a>
+                    <a class="nav-item-link<?= navActive(BASE_URL . '/registrar/instructors.php') ?>" href="<?= BASE_URL ?>/registrar/instructors.php"><i class="bi bi-person-lines-fill"></i> Instructors</a>
             </div>
         <?php elseif ($role === 'admission_staff'): ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/staff/dashboard.php') ?>" href="<?= BASE_URL ?>/staff/dashboard.php"><i class="bi bi-house-door"></i> Dashboard</a>
@@ -139,6 +155,7 @@ function navActive(string $href): string
             <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/my-subjects.php') ?>" href="<?= BASE_URL ?>/teacher/my-subjects.php"><i class="bi bi-journal-bookmark"></i> My Subjects</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/my-students.php') ?>" href="<?= BASE_URL ?>/teacher/my-students.php"><i class="bi bi-people"></i> My Students</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/grades.php') ?>" href="<?= BASE_URL ?>/teacher/grades.php"><i class="bi bi-clipboard-check"></i> Grades</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/class-history.php') ?>" href="<?= BASE_URL ?>/teacher/class-history.php"><i class="bi bi-clock-history"></i> Class History</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/teacher/schedule.php') ?>" href="<?= BASE_URL ?>/teacher/schedule.php"><i class="bi bi-calendar-week"></i> Schedule</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/profile.php') ?>" href="<?= BASE_URL ?>/profile.php"><i class="bi bi-person-circle"></i> Profile</a>
         <?php elseif ($role === 'student'): ?>
@@ -151,6 +168,7 @@ function navActive(string $href): string
             ?>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/shift-request.php') ?><?= $navShift['available'] ? '' : ' nav-item-locked' ?>" href="<?= BASE_URL ?>/student/shift-request.php"<?= $navShift['reason'] !== '' ? ' title="' . htmlspecialchars($navShift['reason']) . '"' : '' ?>><i class="bi bi-<?= $navShift['available'] ? 'arrow-left-right' : 'lock' ?>"></i> Shift Request</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/my-subjects.php') ?>" href="<?= BASE_URL ?>/student/my-subjects.php"><i class="bi bi-journal-bookmark"></i> My Subjects</a>
+            <a class="nav-item-link<?= navActive(BASE_URL . '/student/my-curriculum.php') ?>" href="<?= BASE_URL ?>/student/my-curriculum.php"><i class="bi bi-diagram-3"></i> My Curriculum</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/schedule.php') ?>" href="<?= BASE_URL ?>/student/schedule.php"><i class="bi bi-calendar-week"></i> Schedule</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/grades.php') ?>" href="<?= BASE_URL ?>/student/grades.php"><i class="bi bi-clipboard-check"></i> Grades</a>
             <a class="nav-item-link<?= navActive(BASE_URL . '/student/enrollment-history.php') ?>" href="<?= BASE_URL ?>/student/enrollment-history.php"><i class="bi bi-clock-history"></i> Enrollment History</a>

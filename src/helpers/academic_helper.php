@@ -47,6 +47,61 @@ function hasTakenOrCreditedSubject(PDO $pdo, int $studentId, int $subjectId): bo
     return $stmt->fetch() !== false;
 }
 
+/**
+ * Every subject the student has completed, as [subject_id => true], in one query:
+ * a graded pass (3.00 or better), an approved shift credit, or a transferee credit of 3.00 or better.
+ */
+function completedSubjectSet(PDO $pdo, int $studentId): array
+{
+    $stmt = $pdo->prepare(
+        "SELECT co.subject_id FROM Enrolled_subject es
+         JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
+         JOIN Class_Offering co ON co.offering_id = es.offering_id
+         WHERE e.student_id = :sid1 AND es.grade IS NOT NULL AND es.grade <= 3.00
+         UNION
+         SELECT sc.credited_subject_id FROM Shift_credit sc
+         JOIN Program_shift_request psr ON psr.request_id = sc.request_id
+         WHERE psr.student_id = :sid2 AND psr.status = 'approved'
+         UNION
+         SELECT tc.credited_subject_id FROM Transferee_credit tc
+         WHERE tc.student_id = :sid3 AND tc.previous_grade <= 3.00"
+    );
+    $stmt->execute(['sid1' => $studentId, 'sid2' => $studentId, 'sid3' => $studentId]);
+    return array_fill_keys(array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)), true);
+}
+
+/**
+ * Year standing, computed in one pass over the curriculum: a student has N-year standing when every
+ * subject in the years before N (all semesters) is completed. Failed, dropped, incomplete and ongoing
+ * subjects do not count. Range 1 to 4. Pass $completed to reuse a set already loaded.
+ */
+function studentStanding(PDO $pdo, int $studentId, int $curriculumId, ?array $completed = null): int
+{
+    $completed ??= completedSubjectSet($pdo, $studentId);
+    $stmt = $pdo->prepare('SELECT year_level, subject_id FROM Curriculum_subject WHERE curriculum_id = :cid');
+    $stmt->execute(['cid' => $curriculumId]);
+    $byYear = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $byYear[(int)$row['year_level']][] = (int)$row['subject_id'];
+    }
+    $standing = 1;
+    for ($year = 1; $year <= 3; $year++) {
+        foreach ($byYear[$year] ?? [] as $subjectId) {
+            if (!isset($completed[$subjectId])) {
+                return $standing;
+            }
+        }
+        $standing = $year + 1;
+    }
+    return $standing;
+}
+
+function standingLabel(int $standing): string
+{
+    $names = [1 => '1st', 2 => '2nd', 3 => '3rd', 4 => '4th'];
+    return ($names[$standing] ?? $standing . 'th') . ' year standing';
+}
+
 /** True if the student has any Enrolled_subject row for this subject, graded or not. */
 function hasEnrolledRecord(PDO $pdo, int $studentId, int $subjectId): bool
 {
@@ -131,13 +186,13 @@ function hasCompletedSubject(PDO $pdo, int $studentId, int $subjectId): bool
 
 /**
  * True if $subjectId already (directly or transitively) requires $prereqId as
- * a prerequisite — meaning adding "subjectId requires prereqId" would close a
- * loop. Walks the full Prerequisite graph (BFS), not just the direct pair, so
- * it catches chains of any length, not only A<->B.
+ * a prerequisite inside this curriculum, meaning adding "subjectId requires
+ * prereqId" would close a loop. Walks the curriculum's whole prerequisite graph
+ * (BFS), not just the direct pair, so it catches chains of any length.
  */
-function prerequisiteWouldCreateCycle(PDO $pdo, int $subjectId, int $prereqId): bool
+function prerequisiteWouldCreateCycle(PDO $pdo, int $curriculumId, int $subjectId, int $prereqId): bool
 {
-    $stmt = $pdo->prepare('SELECT prerequisite_subject_id FROM Prerequisite WHERE subject_id = :id');
+    $stmt = $pdo->prepare('SELECT prerequisite_subject_id FROM Curriculum_prerequisite WHERE curriculum_id = :cid AND subject_id = :id');
 
     $visited = [];
     $queue = [$prereqId];
@@ -151,7 +206,7 @@ function prerequisiteWouldCreateCycle(PDO $pdo, int $subjectId, int $prereqId): 
         }
         $visited[$current] = true;
 
-        $stmt->execute(['id' => $current]);
+        $stmt->execute(['cid' => $curriculumId, 'id' => $current]);
         foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $next) {
             $queue[] = (int)$next;
         }
@@ -231,4 +286,35 @@ function missingCurriculumSubjects(PDO $pdo, int $studentId, int $curriculumId):
         }
     }
     return $missing;
+}
+
+/**
+ * Recompute one enrollment's standing exactly as closing a term does (admin/terms.php): any grade above
+ * 3.00, a Dropped row or an Incomplete row makes it irregular, and so does an enrollment with no subjects.
+ * Returns 'regular' or 'irregular'. If term close rules change, change both places.
+ */
+function recomputeEnrollmentStanding(PDO $pdo, int $enrollmentId): string
+{
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(es.enrolled_subject_id) AS subject_count,
+                SUM(CASE
+                    WHEN es.grade IS NOT NULL AND es.grade > 3.00 THEN 1
+                    WHEN es.grade IS NULL AND es.remarks = 'Dropped' THEN 1
+                    ELSE 0
+                END) AS failed_count,
+                SUM(CASE
+                    WHEN es.enrolled_subject_id IS NOT NULL AND es.grade IS NULL AND es.remarks = 'Incomplete' THEN 1
+                    ELSE 0
+                END) AS incomplete_count
+         FROM Enrollment e
+         LEFT JOIN Enrolled_subject es ON es.enrollment_id = e.enrollment_id
+         WHERE e.enrollment_id = :id"
+    );
+    $stmt->execute(['id' => $enrollmentId]);
+    $row = $stmt->fetch();
+    $irregular = (int)$row['subject_count'] === 0 || (int)$row['failed_count'] > 0 || (int)$row['incomplete_count'] > 0;
+    $standing = $irregular ? 'irregular' : 'regular';
+    $pdo->prepare('UPDATE Enrollment SET student_standing = :standing WHERE enrollment_id = :id')
+        ->execute(['standing' => $standing, 'id' => $enrollmentId]);
+    return $standing;
 }

@@ -87,13 +87,13 @@
 
     /* Form fields — same inset-shadow neumorphic look as the login page */
     .form-control, .form-select {
-        background: var(--page-bg) !important;
+        background-color: var(--page-bg) !important;
         border: 1px solid transparent !important;
         border-radius: var(--radius-control) !important;
         box-shadow: var(--neu-inset-sm) !important;
     }
     .form-control:focus, .form-select:focus {
-        background: var(--page-bg) !important;
+        background-color: var(--page-bg) !important;
         box-shadow: var(--neu-inset-sm), 0 0 0 2px var(--royal-blue-light) !important;
     }
 

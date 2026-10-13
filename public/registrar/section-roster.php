@@ -61,15 +61,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $termId) {
             $stmt = $pdo->prepare(
                 'SELECT sec.*, p.program_code FROM Section sec JOIN Program p ON p.program_id = sec.program_id
                  WHERE sec.section_id = :t AND p.department_id = :dept AND sec.program_id = :pid
-                   AND sec.year_level = :yl AND sec.section_id != :cur'
+                   AND sec.year_level = :yl AND sec.curriculum_id = :cid AND sec.section_id != :cur'
             );
             $stmt->execute([
                 't' => (int)($_POST['target_section_id'] ?? 0), 'dept' => $myDepartmentId,
-                'pid' => $section['program_id'], 'yl' => $section['year_level'], 'cur' => $sectionId,
+                'pid' => $section['program_id'], 'yl' => $section['year_level'],
+                'cid' => $section['curriculum_id'], 'cur' => $sectionId,
             ]);
             $target = $stmt->fetch();
             if (!$target) {
-                throw new RuntimeException('Pick another section of the same program and year level.');
+                throw new RuntimeException('Pick another section of the same program, year level and curriculum.');
             }
 
             $graded = $pdo->prepare('SELECT COUNT(*) FROM Enrolled_subject WHERE enrollment_id = :e AND (grade IS NOT NULL OR remarks IS NOT NULL)');
@@ -205,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $termId) {
             }
             if ($final) {
                 $in = implode(',', array_fill(0, count($final), '?'));
-                $times = $pdo->prepare("SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, sub.subject_code FROM Class_Offering co JOIN Subject sub ON sub.subject_id = co.subject_id WHERE co.offering_id IN ($in)");
+                $times = $pdo->prepare("SELECT co.offering_id, co.day_of_week, co.start_time, co.end_time, sub.subject_code FROM Class_Schedule co JOIN Subject sub ON sub.subject_id = co.subject_id WHERE co.offering_id IN ($in)");
                 $times->execute($final);
                 $slots = $times->fetchAll();
                 for ($i = 0; $i < count($slots); $i++) {
@@ -280,10 +281,10 @@ $targets = [];
 if ($termId) {
     $stmt = $pdo->prepare(
         'SELECT sec.section_id, sec.section_name, sec.year_level, sec.max_slots FROM Section sec
-         WHERE sec.program_id = :pid AND sec.year_level = :yl AND sec.section_id != :cur
+         WHERE sec.program_id = :pid AND sec.year_level = :yl AND sec.curriculum_id = :cid AND sec.section_id != :cur
          ORDER BY sec.section_name'
     );
-    $stmt->execute(['pid' => $section['program_id'], 'yl' => $section['year_level'], 'cur' => $sectionId]);
+    $stmt->execute(['pid' => $section['program_id'], 'yl' => $section['year_level'], 'cid' => $section['curriculum_id'], 'cur' => $sectionId]);
     foreach ($stmt->fetchAll() as $t) {
         $t['occupancy'] = sectionOccupancy($pdo, (int)$t['section_id']);
         $targets[] = $t;
@@ -311,7 +312,7 @@ if ($editing) {
         'SELECT es.enrolled_subject_id, es.offering_id, es.grade, es.remarks, co.subject_id, sub.subject_code, sub.subject_name
          FROM Enrolled_subject es JOIN Class_Offering co ON co.offering_id = es.offering_id
          JOIN Subject sub ON sub.subject_id = co.subject_id
-         WHERE es.enrollment_id = :e ORDER BY sub.subject_code, co.start_time'
+         WHERE es.enrollment_id = :e ORDER BY sub.subject_code'
     );
     $stmt->execute(['e' => $editId]);
     $editRows = $stmt->fetchAll();
@@ -321,13 +322,13 @@ if ($editing) {
         $stmt = $pdo->prepare(
             "SELECT co.offering_id, co.subject_id, co.day_of_week, co.start_time, co.end_time, co.room,
                     sec.section_name, sec.year_level, p.program_code, t.last_name
-             FROM Class_Offering co JOIN Section sec ON sec.section_id = co.section_id
+             FROM Class_Schedule co JOIN Section sec ON sec.section_id = co.section_id
              JOIN Program p ON p.program_id = sec.program_id JOIN Teacher t ON t.teacher_id = co.teacher_id
              WHERE co.term_id = ? AND co.subject_id IN ($in)
              ORDER BY sec.year_level, sec.section_name, co.start_time"
         );
         $stmt->execute(array_merge([$termId], $subjectIds));
-        foreach ($stmt->fetchAll() as $o) { $editOptions[(int)$o['subject_id']][] = $o; }
+        foreach (foldMeetings($stmt->fetchAll(), 'offering_id') as $o) { $editOptions[(int)$o['subject_id']][] = $o; }
     }
 }
 ?>
@@ -379,7 +380,7 @@ if ($editing) {
                                 <select class="form-select form-select-sm" name="swap[<?= $r['enrolled_subject_id'] ?>]" <?= $locked ? 'disabled' : '' ?>>
                                     <?php foreach ($editOptions[(int)$r['subject_id']] ?? [] as $o): ?>
                                         <option value="<?= $o['offering_id'] ?>" <?= (int)$o['offering_id'] === (int)$r['offering_id'] ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars(sectionLabel($o['year_level'], $o['section_name'], $o['program_code']) . ' — ' . formatSchedule($o['day_of_week'], $o['start_time'], $o['end_time'], $o['room'] ?? '') . ' — ' . $o['last_name']) ?>
+                                            <?= htmlspecialchars(sectionLabel($o['year_level'], $o['section_name'], $o['program_code']) . ' — ' . implode(' / ', $o['schedule_lines']) . ' — ' . $o['last_name']) ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -415,7 +416,7 @@ if ($editing) {
                 <td>
                     <?php if ($active && $st['student_standing'] === 'regular'): ?>
                         <button type="button" class="btn btn-sm btn-outline-primary" <?= $graded || !$targets ? 'disabled' : '' ?>
-                                title="<?= $graded ? 'Grades are already entered' : (!$targets ? 'No other section for this program and year' : 'Move to another section') ?>"
+                                title="<?= $graded ? 'Grades are already entered' : (!$targets ? 'No other section for this program, year and curriculum' : 'Move to another section') ?>"
                                 onclick="openMove(<?= (int)$st['enrollment_id'] ?>, <?= htmlspecialchars(json_encode($st['first_name'] . ' ' . $st['last_name']), ENT_QUOTES) ?>)">Move section</button>
                     <?php elseif ($active): ?>
                         <a href="<?= htmlspecialchars($self . '&enrollment=' . (int)$st['enrollment_id']) ?>" class="btn btn-sm btn-outline-primary">Change classes</a>

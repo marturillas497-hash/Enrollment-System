@@ -6,6 +6,8 @@ require_once __DIR__ . '/../../src/helpers/password_helper.php';
 require_once __DIR__ . '/../../src/helpers/mail_helper.php';
 require_once __DIR__ . '/../../src/helpers/invite_helper.php';
 require_once __DIR__ . '/../../src/helpers/account_email_helper.php';
+require_once __DIR__ . '/../../src/helpers/tag_helper.php';
+require_once __DIR__ . '/../../src/helpers/instructor_helper.php';
 
 $user = requireRole(['admin']);
 $pdo = getDbConnection();
@@ -22,6 +24,7 @@ if ($flash) {
 }
 
 $departments = $pdo->query('SELECT department_id, department_name FROM Department ORDER BY department_name')->fetchAll();
+$allTags = allTags($pdo);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $lastName     = trim($_POST['last_name'] ?? '');
@@ -37,6 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Enter a valid email address.';
     } elseif (($emailConflict = accountEmailConflict($pdo, $email)) !== '') {
         $error = accountEmailConflictMessage($emailConflict) . ' Every account needs its own email address.';
+    } elseif (is_string($caps = validateTeacherCaps((string)($_POST['max_units'] ?? '24'), (string)($_POST['max_hours_per_week'] ?? '')))) {
+        $error = $caps;
+    } elseif (is_string($newTagNames = parseNewTags((string)($_POST['new_tags'] ?? '')))) {
+        $error = $newTagNames;
     } elseif (!isset($_POST['confirm_duplicate']) && ($duplicates = findDuplicateStaff($pdo, $firstName, $lastName))) {
         // form re-renders below with the warning
     } else {
@@ -60,8 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // 2. Teacher profile row — department assignment.
             $stmt = $pdo->prepare(
-                'INSERT INTO Teacher (account_id, department_id, last_name, first_name, middle_name, suffix)
-                 VALUES (:account_id, :department_id, :last_name, :first_name, :middle_name, :suffix)'
+                'INSERT INTO Teacher (account_id, department_id, last_name, first_name, middle_name, suffix, max_units, max_hours_per_week)
+                 VALUES (:account_id, :department_id, :last_name, :first_name, :middle_name, :suffix, :max_units, :max_hours)'
             );
             $stmt->execute([
                 'account_id'    => $newAccountId,
@@ -70,7 +77,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'first_name'    => $firstName,
                 'middle_name'   => $middleName !== '' ? $middleName : null,
                 'suffix'        => $suffix !== '' ? $suffix : null,
+                'max_units'     => $caps['units'],
+                'max_hours'     => $caps['hours'],
             ]);
+            $newTeacherId = (int)$pdo->lastInsertId();
+            replaceTeacherTags($pdo, $newTeacherId, resolveTagIds($pdo, (array)($_POST['tag_ids'] ?? []), $newTagNames));
 
             $pdo->commit();
 
@@ -192,6 +203,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </option>
                         <?php endforeach; ?>
                     </select>
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Max units per term</label>
+                        <input type="number" min="1" max="60" class="form-control" name="max_units" value="<?= htmlspecialchars($_POST['max_units'] ?? '24') ?>" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Max hours per week <span class="text-muted">(optional)</span></label>
+                        <input type="number" min="1" max="80" step="0.5" class="form-control" name="max_hours_per_week" placeholder="No cap"
+                               value="<?= htmlspecialchars($_SERVER['REQUEST_METHOD'] === 'POST' ? ($_POST['max_hours_per_week'] ?? '') : '30') ?>">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tags <span class="text-muted">(optional)</span></label>
+                    <?= renderTagPicker($allTags, array_map('intval', (array)($_POST['tag_ids'] ?? [])), (string)($_POST['new_tags'] ?? '')) ?>
+                    <div class="form-text">What this teacher can teach. Tags decide which subjects they can be matched to.</div>
                 </div>
                 <button type="submit" class="btn btn-primary w-100"><?= $duplicates ? 'Create Anyway' : 'Create Teacher Account' ?></button>
             </form>
