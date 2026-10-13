@@ -199,6 +199,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Auto-generate Classes</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/schedule.css">
 </head>
 <body class="bg-light">
 <?php require __DIR__ . '/../../includes/navbar.php'; ?>
@@ -438,6 +439,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
                     <label class="form-check-label small" for="genOnlyIssues">Show only classes that need attention<?= $issueRows ? ' (' . $issueRows . ')' : '' ?></label>
                 </div>
                 <div class="ms-auto d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="genWeekOpen"><i class="bi bi-calendar-week" aria-hidden="true"></i> Week view</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="genExpandAll">Expand all</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" id="genCollapseAll">Collapse all</button>
                 </div>
@@ -464,6 +466,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
                     <?php if ($st['state'] === 'ok'): ?><?= $chip('success', 'check-circle-fill', 'All OK') ?><?php endif; ?>
                 </span>
                 <span class="gen-muted gen-sec-wait">Students wait <?= $e($dur((int)$st['wait'])) ?></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary gen-wk-open" data-sec="<?= (int)$sid ?>"><i class="bi bi-calendar-week" aria-hidden="true"></i> Week</button>
             </summary>
             <div class="gen-classes">
             <?php foreach ($list as $r):
@@ -474,7 +477,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
                 $state = $r['errors'] ? 'bad' : ($r['warnings'] ? 'warn' : 'ok');
                 $tc = $needT ? null : ($ctx['teachers'][(int)$r['teacher_id']] ?? null);
                 ?>
-                <div class="gen-class" data-state="<?= $state ?>">
+                <div class="gen-class" data-state="<?= $state ?>" data-key="<?= $e($k) ?>" data-code="<?= $e($sub['code']) ?>">
                     <div class="gen-row-main">
                         <div>
                             <span class="gen-code"><?= $e($sub['code']) ?></span> <span class="gen-muted">· <?= rtrim(rtrim(number_format($sub['units'], 2), '0'), '.') ?> units</span>
@@ -601,6 +604,38 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
         </div>
     </div>
     </form>
+
+    <div class="modal fade" id="genWeekModal" tabindex="-1" aria-labelledby="genWeekTitle" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="genWeekTitle">Weekly view of the draft</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="gen-wk-controls">
+                        <div>
+                            <label class="gen-label" for="genWeekBy">Show by</label>
+                            <select id="genWeekBy" class="form-select form-select-sm">
+                                <option value="section">Section</option>
+                                <option value="teacher">Teacher</option>
+                                <option value="room">Room</option>
+                            </select>
+                        </div>
+                        <div class="gen-wk-pick">
+                            <label class="gen-label" for="genWeekPick">Which one</label>
+                            <select id="genWeekPick" class="form-select form-select-sm"></select>
+                        </div>
+                    </div>
+                    <div id="genWeekGrid"></div>
+                    <p class="gen-muted mt-2 mb-0">
+                        Drawn from the draft as it is now, including edits you have not checked yet. Red means a conflict or a class that needs attention, amber a warning,
+                        a dashed outline an edit that is not checked, and a dashed box the time students wait between classes. Click a class to open its Edit panel.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script>
     var genDays = <?= json_encode($dayChoices) ?>;
@@ -741,6 +776,265 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
         var y = null;
         try { y = sessionStorage.getItem(scrollKey); sessionStorage.removeItem(scrollKey); } catch (e) { y = null; }
         if (y !== null) { window.scrollTo(0, parseInt(y, 10) || 0); }
+    })();
+    </script>
+    <script>
+    (function () {
+        var modalEl = document.getElementById('genWeekModal');
+        var gridBox = document.getElementById('genWeekGrid');
+        var bySel = document.getElementById('genWeekBy');
+        var pickSel = document.getElementById('genWeekPick');
+        var state = { by: 'section', pick: '' };
+        var pendingKey = null;
+        var LUNCH_S = 690, LUNCH_E = 750;
+        var short = { Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu', Friday: 'Fri', Saturday: 'Sat' };
+
+        function el(tag, cls, text) {
+            var n = document.createElement(tag);
+            if (cls) { n.className = cls; }
+            if (text !== undefined) { n.textContent = text; }
+            return n;
+        }
+        function mins(v) {
+            var m = /^(\d{1,2}):(\d{2})/.exec(v || '');
+            return m ? parseInt(m[1], 10) * 60 + parseInt(m[2], 10) : null;
+        }
+        function t12(min) {
+            var h = Math.floor(min / 60), m = min % 60;
+            return ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + ' ' + (h >= 12 ? 'PM' : 'AM');
+        }
+        function dur(min) {
+            return min >= 60 ? Math.floor(min / 60) + ' h' + (min % 60 ? ' ' + (min % 60) + ' min' : '') : min + ' min';
+        }
+        function roomText(sel) {
+            return sel.options[sel.selectedIndex].text.replace(/\s*\(seats[^)]*\)/, '').replace(/ - inactive$/, '');
+        }
+        function teacherText(sel) {
+            var t = sel.options[sel.selectedIndex].text;
+            var m = /^(.*) \(([^()]*)\)$/.exec(t);
+            return m ? m[1] : t;
+        }
+
+        function collect() {
+            var out = [];
+            document.querySelectorAll('.gen-class').forEach(function (cls) {
+                if (cls.dataset.remove === '1') { return; }
+                var sec = cls.closest('.gen-sec');
+                var ts = cls.querySelector('.gen-teacher-select');
+                cls.querySelectorAll('.meeting-line').forEach(function (l) {
+                    var f = l.querySelectorAll('select, input');
+                    var s = mins(f[1].value), e = mins(f[2].value);
+                    if (!f[0].value || s === null || e === null || e <= s) { return; }
+                    out.push({
+                        key: cls.dataset.key, state: cls.dataset.state, dirty: cls.classList.contains('gen-dirty'), code: cls.dataset.code,
+                        secId: sec.dataset.sec, sec: sec.querySelector('.gen-sec-title').textContent,
+                        teacherId: ts.value || 'none', teacher: ts.value ? teacherText(ts) : 'No teacher',
+                        roomId: f[3].value || 'none', room: f[3].value ? roomText(f[3]) : 'No room',
+                        day: f[0].value, s: s, e: e, lane: 0, lanes: 1, clash: false
+                    });
+                });
+            });
+            return out;
+        }
+
+        function choices(ev, by) {
+            var map = {}, order = [];
+            if (by === 'section') {
+                document.querySelectorAll('.gen-sec').forEach(function (d) {
+                    map[d.dataset.sec] = d.querySelector('.gen-sec-title').textContent;
+                    order.push(d.dataset.sec);
+                });
+            } else {
+                ev.forEach(function (x) {
+                    var id = by === 'teacher' ? x.teacherId : x.roomId;
+                    if (id === 'none' || map[id] !== undefined) { return; }
+                    map[id] = by === 'teacher' ? x.teacher : x.room;
+                    order.push(id);
+                });
+                order.sort(function (a, b) { return map[a].localeCompare(map[b]); });
+            }
+            return { map: map, order: order };
+        }
+
+        function gapSegs(a, b) {
+            if (b <= LUNCH_S || a >= LUNCH_E) { return [[a, b]]; }
+            var out = [];
+            if (a < LUNCH_S) { out.push([a, LUNCH_S]); }
+            if (b > LUNCH_E) { out.push([LUNCH_E, b]); }
+            return out;
+        }
+
+        function setLanes(list) {
+            var cluster = [], reach = -1;
+            function flush() {
+                var lanes = [];
+                cluster.forEach(function (x) {
+                    var l = 0;
+                    while (lanes[l] !== undefined && lanes[l] > x.s) { l++; }
+                    lanes[l] = x.e;
+                    x.lane = l;
+                });
+                cluster.forEach(function (x) { x.lanes = lanes.length; x.clash = cluster.length > 1; });
+                cluster = [];
+            }
+            list.forEach(function (x) {
+                if (cluster.length && x.s >= reach) { flush(); reach = -1; }
+                cluster.push(x);
+                reach = Math.max(reach, x.e);
+            });
+            if (cluster.length) { flush(); }
+        }
+
+        function drawGrid(mine, by) {
+            var days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+            if (mine.some(function (x) { return x.day === 'Saturday'; })) { days.push('Saturday'); }
+            var lo = 420, hi = 1080;
+            mine.forEach(function (x) { lo = Math.min(lo, x.s); hi = Math.max(hi, x.e); });
+            lo = Math.floor(lo / 60) * 60;
+            hi = Math.ceil(hi / 60) * 60;
+            var rows = (hi - lo) / 30;
+            var lineStart = function (t) { return 2 + Math.floor((t - lo) / 30); };
+            var lineEnd = function (t) { return 2 + Math.ceil((t - lo) / 30); };
+
+            var grid = el('div', 'schedule-grid gen-wk-grid');
+            grid.style.gridTemplateColumns = '64px repeat(' + days.length + ', 1fr)';
+            grid.style.gridTemplateRows = 'auto repeat(' + rows + ', 22px)';
+            grid.style.minWidth = '640px';
+            grid.appendChild(el('div', 'sg-corner'));
+            days.forEach(function (d, i) {
+                var h = el('div', 'sg-day-header', short[d]);
+                h.style.gridColumn = String(i + 2);
+                grid.appendChild(h);
+            });
+            for (var slot = 0; slot < rows; slot++) {
+                var minutes = lo + slot * 30;
+                if (minutes % 60 === 0) {
+                    var lab = el('div', 'sg-time-label', t12(minutes).replace(':00', ''));
+                    lab.style.gridRow = String(slot + 2);
+                    grid.appendChild(lab);
+                }
+                var lunch = minutes >= LUNCH_S && minutes < LUNCH_E;
+                for (var d = 0; d < days.length; d++) {
+                    var c = el('div', 'sg-cell' + (lunch ? ' gen-wk-lunch' : ''));
+                    c.style.gridRow = String(slot + 2);
+                    c.style.gridColumn = String(d + 2);
+                    grid.appendChild(c);
+                }
+            }
+
+            days.forEach(function (day, di) {
+                var list = mine.filter(function (x) { return x.day === day; }).sort(function (a, b) { return a.s - b.s || a.e - b.e; });
+                setLanes(list);
+                if (by === 'section' && list.length > 1) {
+                    var prevEnd = list[0].e;
+                    for (var i = 1; i < list.length; i++) {
+                        if (list[i].s > prevEnd) {
+                            var segs = gapSegs(prevEnd, list[i].s);
+                            var total = segs.reduce(function (n, g) { return n + g[1] - g[0]; }, 0);
+                            segs.forEach(function (g) {
+                                var w = el('div', 'gen-wk-wait' + (total >= 90 ? ' gen-wk-wait--long' : ''), g[1] - g[0] >= 30 ? dur(g[1] - g[0]) + ' wait' : '');
+                                w.style.gridColumn = String(di + 2);
+                                w.style.gridRow = lineStart(g[0]) + ' / ' + Math.max(lineStart(g[0]) + 1, lineEnd(g[1]));
+                                grid.appendChild(w);
+                            });
+                        }
+                        prevEnd = Math.max(prevEnd, list[i].e);
+                    }
+                }
+                list.forEach(function (x) {
+                    var cls = 'sg-event gen-wk-ev';
+                    if (x.clash || x.state === 'bad') { cls += ' gen-wk-ev--bad'; } else if (x.state === 'warn') { cls += ' gen-wk-ev--warn'; }
+                    if (x.dirty) { cls += ' gen-wk-ev--dirty'; }
+                    var n = el('div', cls);
+                    n.dataset.key = x.key;
+                    n.tabIndex = 0;
+                    n.setAttribute('role', 'button');
+                    n.style.gridColumn = String(di + 2);
+                    n.style.gridRow = lineStart(x.s) + ' / ' + Math.max(lineStart(x.s) + 1, lineEnd(x.e));
+                    if (x.lanes > 1) {
+                        n.style.width = 'calc(' + (100 / x.lanes) + '% - 4px)';
+                        n.style.marginLeft = 'calc(' + (100 / x.lanes * x.lane) + '% + 2px)';
+                    }
+                    var extra = by === 'section' ? [x.room, x.teacher] : (by === 'teacher' ? [x.room, x.sec] : [x.sec, x.teacher]);
+                    n.title = x.code + ' · ' + t12(x.s) + ' – ' + t12(x.e) + ' · ' + extra.join(' · ') + (x.clash ? ' · overlaps another class' : '');
+                    n.appendChild(el('strong', '', x.code));
+                    n.appendChild(el('span', '', t12(x.s) + ' – ' + t12(x.e)));
+                    extra.forEach(function (t) { n.appendChild(el('span', '', t)); });
+                    grid.appendChild(n);
+                });
+            });
+
+            var wrap = el('div', 'table-responsive');
+            wrap.appendChild(grid);
+            return wrap;
+        }
+
+        function render() {
+            var ev = collect();
+            var by = state.by;
+            var ch = choices(ev, by);
+            if (ch.map[state.pick] === undefined) { state.pick = ch.order.length ? ch.order[0] : ''; }
+            bySel.value = by;
+            pickSel.innerHTML = '';
+            ch.order.forEach(function (id) {
+                var o = el('option', '', ch.map[id]);
+                o.value = id;
+                pickSel.appendChild(o);
+            });
+            pickSel.value = state.pick;
+            gridBox.innerHTML = '';
+            if (!ch.order.length) {
+                gridBox.appendChild(el('p', 'text-muted', 'Nothing to show yet.'));
+                return;
+            }
+            var mine = ev.filter(function (x) {
+                return (by === 'section' ? x.secId : (by === 'teacher' ? x.teacherId : x.roomId)) === state.pick;
+            });
+            gridBox.appendChild(drawGrid(mine, by));
+            if (!mine.length) {
+                gridBox.appendChild(el('p', 'gen-muted mt-2 mb-0', 'No meetings are placed for this ' + by + ' in the draft.'));
+            }
+        }
+
+        function openWeek(by, pick) {
+            state.by = by;
+            state.pick = pick || '';
+            render();
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+
+        document.getElementById('genWeekOpen').addEventListener('click', function () { openWeek('section', ''); });
+        document.addEventListener('click', function (ev) {
+            var b = ev.target.closest('.gen-wk-open');
+            if (b) { ev.preventDefault(); openWeek('section', b.dataset.sec); }
+        });
+        bySel.addEventListener('change', function () { state.by = bySel.value; state.pick = ''; render(); });
+        pickSel.addEventListener('change', function () { state.pick = pickSel.value; render(); });
+
+        function jump(key) {
+            var target = null;
+            document.querySelectorAll('.gen-class').forEach(function (c) { if (c.dataset.key === key) { target = c; } });
+            if (!target) { return; }
+            target.closest('details').open = true;
+            var edit = target.querySelector('.gen-edit');
+            if (edit && edit.getAttribute('aria-expanded') === 'false') { edit.click(); }
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            target.classList.add('gen-flash');
+            setTimeout(function () { target.classList.remove('gen-flash'); }, 1800);
+        }
+        function pick(ev) {
+            var n = ev.target.closest('.gen-wk-ev');
+            if (!n) { return; }
+            pendingKey = n.dataset.key;
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+        gridBox.addEventListener('click', pick);
+        gridBox.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(ev); }
+        });
+        modalEl.addEventListener('hidden.bs.modal', function () {
+            if (pendingKey !== null) { var k = pendingKey; pendingKey = null; jump(k); }
+        });
     })();
     </script>
 <?php endif; ?>
