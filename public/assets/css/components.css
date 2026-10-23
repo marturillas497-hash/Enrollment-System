@@ -15,12 +15,13 @@ body.bg-light { background-color: var(--page-bg) !important; }
 
 /* Large neumorphic fields (login, forgot password, apply) */
 .neu-input, .neu-select {
-    background: var(--page-bg) !important;
+    background-color: var(--page-bg) !important;
     border: none !important;
     border-radius: var(--radius-control-lg) !important;
     box-shadow: var(--neu-inset-lg);
     padding: 0.7rem 1rem !important;
 }
+.neu-select { padding-right: 2.5rem !important; }
 .neu-input:focus, .neu-select:focus {
     box-shadow: var(--neu-inset-lg), 0 0 0 2px var(--royal-blue-light);
 }

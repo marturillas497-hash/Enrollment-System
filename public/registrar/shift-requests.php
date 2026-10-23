@@ -139,7 +139,7 @@ if ($request && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->commit();
                 $message = 'Credit evaluation saved.';
             } catch (Exception $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
                 $error = errorMessage($e, 'Could not save evaluation.');
             }
         }

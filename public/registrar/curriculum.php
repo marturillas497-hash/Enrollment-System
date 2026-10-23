@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->commit();
                 $message = 'Curriculum created' . ($cloneFrom !== '' ? ', cloned from the previous version.' : '.');
             } catch (Exception $e) {
-                $pdo->rollBack();
+                if ($pdo->inTransaction()) { $pdo->rollBack(); }
                 $error = errorMessage($e, 'Could not create curriculum.');
             }
         }

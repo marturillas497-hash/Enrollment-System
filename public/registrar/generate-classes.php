@@ -358,7 +358,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
                         <input type="hidden" name="action" value="undo">
                         <input type="hidden" name="run_id" value="<?= (int)$r['run_id'] ?>">
                         <button type="submit" class="btn btn-sm btn-outline-danger" data-confirm-label="Undo run" data-confirm-tone="danger"
-                                data-confirm="Remove the classes from this run that nobody is enrolled in? Classes with students stay.">Undo this run</button>
+                                data-confirm="Remove the classes from this run that nobody is enrolled in? Classes with students, and classes you edited by hand, stay.">Undo this run</button>
                     </form>
                 </td>
             </tr>
@@ -366,6 +366,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
         </tbody>
     </table>
     </div>
+    <p class="small text-muted">A class you change by hand on Class Offerings leaves its run, so Undo never removes it.</p>
     <?php endif; ?>
 
 <?php else: ?>
@@ -803,6 +804,10 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
             var h = Math.floor(min / 60), m = min % 60;
             return ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + ' ' + (h >= 12 ? 'PM' : 'AM');
         }
+        function rng(s, e) {
+            var a = t12(s), b = t12(e);
+            return a.slice(-2) === b.slice(-2) ? a.slice(0, -3) + ' – ' + b : a + ' – ' + b;
+        }
         function dur(min) {
             return min >= 60 ? Math.floor(min / 60) + ' h' + (min % 60 ? ' ' + (min % 60) + ' min' : '') : min + ' min';
         }
@@ -898,7 +903,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
 
             var grid = el('div', 'schedule-grid gen-wk-grid');
             grid.style.gridTemplateColumns = '64px repeat(' + days.length + ', 1fr)';
-            grid.style.gridTemplateRows = 'auto repeat(' + rows + ', 22px)';
+            grid.style.gridTemplateRows = 'auto repeat(' + rows + ', 26px)';
             grid.style.minWidth = '640px';
             grid.appendChild(el('div', 'sg-corner'));
             days.forEach(function (d, i) {
@@ -958,7 +963,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
                     var extra = by === 'section' ? [x.room, x.teacher] : (by === 'teacher' ? [x.room, x.sec] : [x.sec, x.teacher]);
                     n.title = x.code + ' · ' + t12(x.s) + ' – ' + t12(x.e) + ' · ' + extra.join(' · ') + (x.clash ? ' · overlaps another class' : '');
                     n.appendChild(el('strong', '', x.code));
-                    n.appendChild(el('span', '', t12(x.s) + ' – ' + t12(x.e)));
+                    n.appendChild(el('span', '', rng(x.s, x.e)));
                     extra.forEach(function (t) { n.appendChild(el('span', '', t)); });
                     grid.appendChild(n);
                 });

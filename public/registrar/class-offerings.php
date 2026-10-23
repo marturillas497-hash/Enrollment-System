@@ -280,7 +280,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
             try {
                 $pdo->beginTransaction();
                 if ($offeringId) {
-                    $pdo->prepare('UPDATE Class_Offering SET subject_id = :sub, teacher_id = :teacher, section_id = :sec, term_id = :term WHERE offering_id = :self')
+                    $oldMeetings = $pdo->prepare('SELECT day_of_week, start_time, end_time, room_id FROM Class_Meeting WHERE offering_id = :o');
+                    $oldMeetings->execute(['o' => $offeringId]);
+                    $oldSig = array_map(fn($r) => $r['day_of_week'] . '|' . substr($r['start_time'], 0, 5) . '|' . substr($r['end_time'], 0, 5) . '|' . (int)$r['room_id'], $oldMeetings->fetchAll());
+                    $newSig = array_map(fn($m) => $m['day'] . '|' . $m['start'] . '|' . $m['end'] . '|' . (int)$m['room'], $meetings);
+                    sort($oldSig);
+                    sort($newSig);
+                    $changed = $oldSig !== $newSig
+                        || (int)$existing['subject_id'] !== (int)$subjectId || (int)$existing['teacher_id'] !== (int)$teacherId
+                        || (int)$existing['section_id'] !== (int)$sectionId || (int)$existing['term_id'] !== (int)$termId;
+                    // A class changed by hand no longer belongs to its generator run, so Undo leaves it alone.
+                    $pdo->prepare('UPDATE Class_Offering SET subject_id = :sub, teacher_id = :teacher, section_id = :sec, term_id = :term'
+                            . ($changed ? ', generation_run_id = NULL' : '') . ' WHERE offering_id = :self')
                         ->execute(['sub' => $subjectId, 'teacher' => $teacherId, 'sec' => $sectionId, 'term' => $termId, 'self' => $offeringId]);
                     $pdo->prepare('DELETE FROM Class_Meeting WHERE offering_id = :self')->execute(['self' => $offeringId]);
                     $classId = $offeringId;
