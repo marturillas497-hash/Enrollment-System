@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($name === '' || $yearLevel === '' || $programId === '' || $maxSlots === '' || $curriculumId === '') {
             $error = 'All fields are required.';
         } elseif (!ctype_digit((string)$yearLevel) || (int)$yearLevel < 1 || (int)$yearLevel > 4) {
-            $error = 'Year level must be between 1 and 4.';
+            $error = 'Intake year must be between 1 and 4.';
         } elseif (!in_array((int)$programId, $myProgramIds, true)) {
             $error = 'That program is not in your department.';
         } else {
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
                 $dupCheck->execute(['pid' => $programId, 'yl' => $yearLevel, 'name' => $name, 'id' => $id ?: 0]);
                 if ($dupCheck->fetch() !== false) {
-                    $error = "A section named \"$name\" already exists at Year $yearLevel for this program.";
+                    $error = "A section named \"$name\" already exists for intake Year $yearLevel in this program.";
                 }
             }
 
@@ -112,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Backstop for the DB-level uq_section_program_year_name constraint — the
                 // dupCheck above catches this in the normal case, this catches a race
                 // between two simultaneous saves, or a duplicate created by a direct DB edit.
-                $error = "A section named \"$name\" already exists at Year $yearLevel for this program.";
+                $error = "A section named \"$name\" already exists for intake Year $yearLevel in this program.";
                 }
             }
         }
@@ -183,7 +183,7 @@ $curriculaForForm = $curriculaForForm->fetchAll();
 
     <div class="table-responsive">
 <table class="table table-hover bg-white">
-        <thead><tr><?php if (count($programs) !== 1): ?><th>Program</th><?php endif; ?><th>Section</th><th>Year</th><th>Curriculum</th><th>Max Slots</th><th></th></tr></thead>
+        <thead><tr><?php if (count($programs) !== 1): ?><th>Program</th><?php endif; ?><th>Section</th><th>Intake year</th><th>Curriculum</th><th>Max Slots</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($sections as $s): ?>
             <tr>
@@ -238,7 +238,8 @@ $curriculaForForm = $curriculaForForm->fetchAll();
         <?php endif; ?>
         <div class="mb-3">
             <label class="form-label">Section Name</label>
-            <input class="form-control" name="section_name" id="sectionName" placeholder="A" required>
+            <input class="form-control" name="section_name" id="sectionName" placeholder="A 2025" required>
+            <div class="form-text">Name sections per batch, for example A 2025, so every name stays clear in lists.</div>
         </div>
         <div class="mb-3">
             <label class="form-label">Curriculum</label>
@@ -248,8 +249,9 @@ $curriculaForForm = $curriculaForForm->fetchAll();
         </div>
         <div class="row">
             <div class="col-6 mb-3">
-                <label class="form-label">Year Level</label>
+                <label class="form-label">Intake Year</label>
                 <input type="number" min="1" max="4" class="form-control" name="year_level" id="sectionYear" required>
+                <div class="form-text">The year students are placed in. They keep the section as they move up.</div>
             </div>
             <div class="col-6 mb-3">
                 <label class="form-label">Max Slots</label>

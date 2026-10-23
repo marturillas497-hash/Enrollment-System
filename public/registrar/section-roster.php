@@ -348,6 +348,7 @@ if ($editing) {
     <?php if ($term): ?>
         <p class="text-muted">
             <?= htmlspecialchars($term['school_year'] . ' — Semester ' . $term['semester']) ?>
+            · Intake Year <?= (int)$section['year_level'] ?>
             · <?= $occupancy ?> of <?= (int)$section['max_slots'] ?> seats held · <?= count($students) ?> enrolled this term
         </p>
     <?php endif; ?>

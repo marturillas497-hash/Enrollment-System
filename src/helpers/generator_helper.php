@@ -172,7 +172,7 @@ function genLoadContext(PDO $pdo, int $termId, int $departmentId): array
         $occupied = function_exists('sectionOccupancy') ? (int)sectionOccupancy($pdo, $sid) : 0;
         $ctx['sections'][$sid] = [
             'id' => $sid, 'name' => $s['section_name'], 'year' => (int)$s['year_level'], 'curriculum_id' => (int)$s['curriculum_id'],
-            'program' => $s['program_code'], 'label' => $s['program_code'] . ' · ' . $s['section_name'], 'occupied' => $occupied,
+            'program' => $s['program_code'], 'label' => sectionLabel($s['year_level'], $s['section_name'], $s['program_code']), 'occupied' => $occupied,
             'size' => $occupied > 0 ? $occupied : (int)$s['max_slots'],
         ];
     }

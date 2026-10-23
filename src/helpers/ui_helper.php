@@ -183,10 +183,37 @@ if (!function_exists('paginationNav')) {
 }
 
 if (!function_exists('sectionLabel')) {
-    /** "Year 1 – A", or "BSM · Year 1 – A" when a program code is passed. */
+    /**
+     * "A 2025", or "BSM · A 2025" when a program code is passed. A section's year level is the year
+     * students enter it, and they keep the section as they move up, so the year is shown only when
+     * the same name exists in another year of one program: "A (Year 2 intake)".
+     */
     function sectionLabel($yearLevel, string $sectionName, ?string $programCode = null): string
     {
-        return ($programCode ? $programCode . ' · ' : '') . 'Year ' . (int) $yearLevel . ' – ' . $sectionName;
+        $label = ($programCode ? $programCode . ' · ' : '') . $sectionName;
+        return sectionNameIsShared($sectionName) ? $label . ' (Year ' . (int) $yearLevel . ' intake)' : $label;
+    }
+}
+
+if (!function_exists('sectionNameIsShared')) {
+    function sectionNameIsShared(string $sectionName): bool
+    {
+        static $shared = null;
+        if ($shared === null) {
+            $shared = [];
+            global $pdo;
+            if (isset($pdo) && $pdo instanceof PDO) {
+                try {
+                    $names = $pdo->query('SELECT LOWER(section_name) FROM Section GROUP BY program_id, LOWER(section_name) HAVING COUNT(*) > 1')->fetchAll(PDO::FETCH_COLUMN);
+                    foreach ($names as $n) {
+                        $shared[$n] = true;
+                    }
+                } catch (Throwable $e) {
+                    $shared = [];
+                }
+            }
+        }
+        return isset($shared[strtolower($sectionName)]);
     }
 }
 

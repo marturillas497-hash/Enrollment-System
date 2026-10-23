@@ -192,9 +192,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'This subject cannot be removed because ' . count($holders) . ' student(s) already have a record for it: '
                     . curriculumStudentList($holders) . '.';
             } else {
-                $pdo->prepare('DELETE FROM Curriculum_subject WHERE curriculum_id = :c AND subject_id = :s')
-                    ->execute(['c' => $curriculumId, 's' => $subjectId]);
-                $message = 'Subject removed from curriculum.';
+                try {
+                    $pdo->beginTransaction();
+                    $links = $pdo->prepare('SELECT COUNT(*) FROM Curriculum_prerequisite WHERE curriculum_id = :c AND (subject_id = :s1 OR prerequisite_subject_id = :s2)');
+                    $links->execute(['c' => $curriculumId, 's1' => $subjectId, 's2' => $subjectId]);
+                    $linkCount = (int)$links->fetchColumn();
+                    $pdo->prepare('DELETE FROM Curriculum_subject WHERE curriculum_id = :c AND subject_id = :s')
+                        ->execute(['c' => $curriculumId, 's' => $subjectId]);
+                    $pdo->commit();
+                    $message = 'Subject removed from curriculum.' . ($linkCount > 0 ? ' ' . $linkCount . ' prerequisite link(s) went with it.' : '');
+                } catch (Exception $e) {
+                    if ($pdo->inTransaction()) { $pdo->rollBack(); }
+                    $error = errorMessage($e, 'Could not remove the subject.');
+                }
             }
         }
     } elseif ($action === 'save_prereqs') {
@@ -552,7 +562,7 @@ $curricula = $curricula->fetchAll();
                                     <button type="button" class="btn btn-sm btn-outline-primary"
                                             onclick="openPrereqModal(<?= (int)$cs['subject_id'] ?>)">Prerequisites</button>
                                     <?php $hasRecord = in_array((int)$cs['subject_id'], $recordedSubjectIds, true); ?>
-                                    <form method="post">
+                                    <form method="post" class="d-inline">
                                         <input type="hidden" name="action" value="remove_subject">
                                         <input type="hidden" name="curriculum_id" value="<?= $expanded['curriculum_id'] ?>">
                                         <input type="hidden" name="subject_id" value="<?= $cs['subject_id'] ?>">
@@ -568,7 +578,7 @@ $curricula = $curricula->fetchAll();
                                                 if ($own) { $warn .= ' It requires ' . implode(', ', $own) . '.'; }
                                                 if ($dep) { $warn .= ' It is required by ' . implode(', ', $dep) . '.'; }
                                                 if ($own || $dep) { $warn .= ' Those prerequisite links are removed too.'; }
-                                                if ($followers) { $warn .= ' These students follow this curriculum and will no longer see it for future choices: ' . curriculumStudentList($followers) . '.'; }
+                                                if ($followers) { $warn .= ' ' . count($followers) . ' student(s) follow this curriculum. They will no longer need this subject for their progress, year standing or graduation.'; }
                                                 echo htmlspecialchars($warn);
                                             ?>"
                                                     data-confirm-label="Remove" data-confirm-tone="danger">Remove</button>
