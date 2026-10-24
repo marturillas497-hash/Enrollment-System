@@ -24,6 +24,65 @@ function roomMeetingCount(PDO $pdo, int $roomId): int
     return (int)$stmt->fetchColumn();
 }
 
+/**
+ * Two classes in one room at the same time in the ongoing term. $together treats every given room as one
+ * room (a merge). $involve keeps only pairs that include that room. Returns the first 3 pairs and the total.
+ */
+function roomClashes(PDO $pdo, array $roomIds, bool $together = false, int $involve = 0): array
+{
+    $roomIds = array_values(array_map('intval', $roomIds));
+    if (!$roomIds) {
+        return ['total' => 0, 'rows' => []];
+    }
+    $in = implode(',', array_fill(0, count($roomIds), '?'));
+    $params = $roomIds;
+    $sameRoom = 'b.room_id = a.room_id';
+    if ($together) {
+        $sameRoom = "b.room_id IN ($in)";
+        $params = array_merge($params, $roomIds);
+    }
+    $involveSql = '';
+    if ($involve) {
+        $involveSql = ' AND (a.room_id = ? OR b.room_id = ?)';
+        $params[] = $involve;
+        $params[] = $involve;
+    }
+    $stmt = $pdo->prepare(
+        "SELECT sa.subject_code AS code_a, seca.section_name AS section_a, ra.room_code AS room_a, a.day_of_week, a.start_time AS start_a, a.end_time AS end_a,
+                sb.subject_code AS code_b, secb.section_name AS section_b, rb.room_code AS room_b, b.start_time AS start_b, b.end_time AS end_b,
+                COUNT(*) OVER () AS total
+         FROM Class_Meeting a
+         JOIN Class_Offering ca ON ca.offering_id = a.offering_id
+         JOIN School_term st ON st.term_id = ca.term_id AND st.status = 'ongoing'
+         JOIN Class_Meeting b ON b.meeting_id > a.meeting_id AND b.day_of_week = a.day_of_week
+              AND b.start_time < a.end_time AND a.start_time < b.end_time
+         JOIN Class_Offering cb ON cb.offering_id = b.offering_id AND cb.term_id = ca.term_id
+         JOIN Subject sa ON sa.subject_id = ca.subject_id
+         JOIN Subject sb ON sb.subject_id = cb.subject_id
+         JOIN Section seca ON seca.section_id = ca.section_id
+         JOIN Section secb ON secb.section_id = cb.section_id
+         JOIN Room ra ON ra.room_id = a.room_id
+         JOIN Room rb ON rb.room_id = b.room_id
+         WHERE a.room_id IN ($in) AND $sameRoom$involveSql
+         ORDER BY a.day_of_week, a.start_time
+         LIMIT 3"
+    );
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll();
+    return ['total' => $rows ? (int)$rows[0]['total'] : 0, 'rows' => $rows];
+}
+
+function roomClashText(array $clashes): string
+{
+    $parts = [];
+    foreach ($clashes['rows'] as $r) {
+        $parts[] = $r['code_a'] . ' (' . $r['section_a'] . ') ' . formatSchedule($r['day_of_week'], $r['start_a'], $r['end_a'], $r['room_a'])
+            . ' and ' . $r['code_b'] . ' (' . $r['section_b'] . ') ' . formatSchedule($r['day_of_week'], $r['start_b'], $r['end_b'], $r['room_b']);
+    }
+    $more = $clashes['total'] - count($parts);
+    return implode('; ', $parts) . ($more > 0 ? '; and ' . $more . ' more' : '') . '.';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     $id = ctype_digit((string)($_POST['room_id'] ?? '')) ? (int)$_POST['room_id'] : 0;
@@ -47,8 +106,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $dup = $pdo->prepare('SELECT 1 FROM Room WHERE LOWER(room_code) = LOWER(:c) AND room_id <> :id');
             $dup->execute(['c' => $code, 'id' => $id]);
+            $clashError = '';
+            if ($id && (int)$type['is_unlimited'] !== 1) {
+                $was = $pdo->prepare('SELECT rt.is_unlimited FROM Room r JOIN Room_type rt ON rt.room_type_id = r.room_type_id WHERE r.room_id = :id');
+                $was->execute(['id' => $id]);
+                if ((int)$was->fetchColumn() === 1) {
+                    $clashes = roomClashes($pdo, [$id]);
+                    if ($clashes['total'] > 0) {
+                        $clashError = 'This room is in a type with no limit, and classes overlap in it this term: ' . roomClashText($clashes)
+                            . ' A type that counts capacity allows one class at a time. Reschedule those classes first.';
+                    }
+                }
+            }
             if ($dup->fetch() !== false) {
                 $error = 'A room with that code already exists.';
+            } elseif ($clashError !== '') {
+                $error = $clashError;
             } else {
                 $capacity = ((int)$type['is_unlimited'] === 1 || $capacityRaw === '') ? null : (int)$capacityRaw;
                 try {
@@ -70,8 +143,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'toggle_room') {
         $tab = 'rooms';
         $active = ($_POST['active'] ?? '') === '1' ? 1 : 0;
-        $pdo->prepare('UPDATE Room SET is_active = :a WHERE room_id = :id')->execute(['a' => $active, 'id' => $id]);
-        $message = $active ? 'Room reactivated.' : 'Room deactivated. Classes already scheduled there keep it.';
+        try {
+            $pdo->prepare('UPDATE Room SET is_active = :a WHERE room_id = :id')->execute(['a' => $active, 'id' => $id]);
+            $message = $active ? 'Room reactivated.' : 'Room deactivated. Classes already scheduled there keep it.';
+        } catch (Exception $e) {
+            $error = errorMessage($e, 'Could not change the room.');
+        }
     } elseif ($action === 'remove_room') {
         $tab = 'rooms';
         if (roomMeetingCount($pdo, $id) === 0) {
@@ -94,21 +171,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($id === 0 || $into === 0 || $id === $into || count($found) !== 2) {
             $error = 'Pick two different rooms to merge.';
         } else {
-            $clash = false;
+            $clashes = ['total' => 0, 'rows' => []];
             if ((int)$found[$into] !== 1) {
-                $c = $pdo->prepare(
-                    'SELECT 1 FROM Class_Meeting a
-                     JOIN Class_Offering ca ON ca.offering_id = a.offering_id
-                     JOIN Class_Meeting b ON b.room_id = :into
-                     JOIN Class_Offering cb ON cb.offering_id = b.offering_id AND cb.term_id = ca.term_id
-                     WHERE a.room_id = :from AND a.day_of_week = b.day_of_week AND a.start_time < b.end_time AND b.start_time < a.end_time
-                     LIMIT 1'
-                );
-                $c->execute(['into' => $into, 'from' => $id]);
-                $clash = $c->fetch() !== false;
+                $clashes = roomClashes($pdo, [$id, $into], true, $id);
             }
-            if ($clash) {
-                $error = 'Merging would book the room twice at the same time. Move or reschedule those classes first.';
+            if ($clashes['total'] > 0) {
+                $error = 'Merging would put two classes in the same room at the same time this term: ' . roomClashText($clashes)
+                    . ' Move or reschedule one of them first.';
             } else {
                 try {
                     $pdo->beginTransaction();
@@ -132,8 +201,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $dup = $pdo->prepare('SELECT 1 FROM Room_type WHERE LOWER(type_name) = LOWER(:n) AND room_type_id <> :id');
             $dup->execute(['n' => $name, 'id' => $typeId]);
+            $clashError = '';
+            if ($typeId && !$unlimited) {
+                $was = $pdo->prepare('SELECT is_unlimited FROM Room_type WHERE room_type_id = :id');
+                $was->execute(['id' => $typeId]);
+                if ((int)$was->fetchColumn() === 1) {
+                    $typeRooms = $pdo->prepare('SELECT room_id FROM Room WHERE room_type_id = :id');
+                    $typeRooms->execute(['id' => $typeId]);
+                    $clashes = roomClashes($pdo, $typeRooms->fetchAll(PDO::FETCH_COLUMN));
+                    if ($clashes['total'] > 0) {
+                        $clashError = 'Rooms of this type already have overlapping classes this term: ' . roomClashText($clashes)
+                            . ' Counting capacity would double-book them. Reschedule those classes first.';
+                    }
+                }
+            }
             if ($dup->fetch() !== false) {
                 $error = 'A room type with that name already exists.';
+            } elseif ($clashError !== '') {
+                $error = $clashError;
             } else {
                 try {
                     if ($typeId) {
@@ -159,8 +244,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($usedBy > 0) {
             $error = 'This room type is in use by ' . $usedBy . ' room(s). Move or remove those rooms first.';
         } else {
-            $pdo->prepare('DELETE FROM Room_type WHERE room_type_id = :id')->execute(['id' => $typeId]);
-            $message = 'Room type deleted.';
+            try {
+                $pdo->prepare('DELETE FROM Room_type WHERE room_type_id = :id')->execute(['id' => $typeId]);
+                $message = 'Room type deleted.';
+            } catch (Exception $e) {
+                $error = errorMessage($e, 'Could not delete the room type.');
+            }
         }
     }
 }
@@ -315,7 +404,7 @@ $e = fn($v): string => htmlspecialchars((string)$v);
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <p>Every class that uses <strong id="mergeName"></strong> will use the room you pick below, and <strong id="mergeName2"></strong> will be deleted. Use this to join the same room typed in different ways.</p>
+            <p>Every class that uses <strong id="mergeName"></strong> will use the room you pick below, and <strong id="mergeName2"></strong> will be deleted. Use this to join the same room typed in different ways. It is refused if two classes would then share the room at the same time.</p>
             <label class="form-label">Keep this room</label>
             <select class="form-select" name="into_room_id" id="mergeInto" required>
                 <?php foreach ($rooms as $r): ?><option value="<?= (int)$r['room_id'] ?>"><?= $e($r['room_code']) ?></option><?php endforeach; ?>
@@ -399,6 +488,7 @@ $e = fn($v): string => htmlspecialchars((string)$v);
             <?php if ($reopen === 'type'): ?><div class="alert alert-danger js-modal-alert"><?= $e($error) ?></div><?php endif; ?>
             <div class="mb-3"><label class="form-label">Type name</label><input class="form-control" name="type_name" id="typeName" maxlength="100" required></div>
             <div class="form-check"><input class="form-check-input" type="checkbox" name="is_unlimited" id="typeUnlimited"><label class="form-check-label" for="typeUnlimited">No capacity limit, never conflicts</label></div>
+            <div class="form-text">Turning this off later is refused while classes overlap in rooms of this type.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
