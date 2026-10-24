@@ -154,7 +154,7 @@ if ($termId && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = genGenerate($pdo, $ctx, $chosen, $seed, $years);
             $_SESSION['gen_draft'] = [
                 'term_id' => $termId, 'dept_id' => $deptId, 'sections' => $chosen, 'years' => $years, 'seed' => $seed,
-                'attempts' => $result['attempts'], 'rows' => $result['rows'], 'unplaced' => $result['unplaced'],
+                'attempts' => $result['attempts'], 'seconds' => $result['seconds'], 'rows' => $result['rows'], 'unplaced' => $result['unplaced'],
             ];
             header('Location: ' . $self . '?step=preview');
             exit;
@@ -246,6 +246,29 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
             <input type="hidden" name="action" value="generate">
             <?php
             $plan = genSectionPlan($pdo, $ctx);
+            $needing = 0;
+            foreach ($ctx['sections'] as $sid => $sec) {
+                if (($plan[$sid][$sec['teach_year']] ?? 0) > 0) { $needing++; }
+            }
+            $runsNeeded = (int)ceil($needing / GEN_MAX_SECTIONS);
+            ?>
+            <?php if ($ctx['sections']): ?>
+            <div class="small mb-3">
+                <?php if ($needing === 0): ?>
+                    Every section already has all its classes for this term.
+                <?php else: ?>
+                    <strong><?= $needing ?> of <?= count($ctx['sections']) ?> section<?= count($ctx['sections']) === 1 ? '' : 's' ?></strong> still <?= $needing === 1 ? 'has' : 'have' ?> classes to schedule.
+                    One run drafts up to <?= GEN_MAX_SECTIONS ?> sections, so you need <strong><?= $runsNeeded ?> run<?= $runsNeeded === 1 ? '' : 's' ?></strong>.
+                    Classes you save count as taken in the next run, so teachers and rooms fill up as you go.
+                    <div class="text-muted mt-1">Why the limit? The preview is one form with a field for every day, time and room, and the host cuts off forms past a set size. Keeping a run small keeps your edits from being lost.</div>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="genPickNext">Select the next <?= GEN_MAX_SECTIONS ?> that need classes</button>
+                        <button type="button" class="btn btn-sm btn-link" id="genClear">Clear</button>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+            <?php
             $any = false;
             foreach ($ctx['sections'] as $sid => $sec):
                 $todo = $plan[$sid][$sec['teach_year']] ?? 0;
@@ -255,7 +278,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
                     <div class="form-check mb-0 flex-grow-1">
                         <input class="form-check-input gen-pick" type="checkbox" name="sections[]" value="<?= $sid ?>" id="sec<?= $sid ?>"<?= $anyYear ? '' : ' disabled data-empty="1"' ?>>
                         <label class="form-check-label" for="sec<?= $sid ?>"><?= $e($sec['label']) ?><?= $sec['occupied'] > 0 ? ' <span class="text-muted small">· ' . $sec['occupied'] . ' student' . ($sec['occupied'] === 1 ? '' : 's') . '</span>' : '' ?>
-                            <span class="text-muted small gen-todo"><?= $anyYear ? '(' . $todo . ' class' . ($todo === 1 ? '' : 'es') . ' to schedule' . ($todo === 0 ? ', all already scheduled' : '') . ')' : '(nothing to schedule)' ?></span></label>
+                            <span class="badge text-bg-<?= !$anyYear ? 'secondary' : ($todo === 0 ? 'success' : 'warning') ?> ms-1 gen-todo"><?= $anyYear ? ($todo === 0 ? 'All scheduled' : $todo . ' class' . ($todo === 1 ? '' : 'es') . ' to schedule') : 'Nothing to schedule' ?></span></label>
                     </div>
                     <div class="d-flex align-items-center gap-2">
                         <label class="small text-muted mb-0" for="year<?= $sid ?>">Teach year</label>
@@ -290,7 +313,8 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
             var label = row.querySelector('.gen-todo');
             sel.addEventListener('change', function () {
                 var n = plan[sel.value] || 0;
-                label.textContent = '(' + n + ' class' + (n === 1 ? '' : 'es') + ' to schedule' + (n === 0 ? ', all already scheduled' : '') + ')';
+                label.textContent = n === 0 ? 'All scheduled' : n + ' class' + (n === 1 ? '' : 'es') + ' to schedule';
+                label.className = 'badge ms-1 gen-todo text-bg-' + (n === 0 ? 'success' : 'warning');
             });
         });
         var capBox = document.getElementById('genCapacity');
@@ -323,6 +347,30 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
         function scheduleCapacity() { clearTimeout(capTimer); capTimer = setTimeout(loadCapacity, 250); }
         picks.forEach(function (p) { p.addEventListener('change', scheduleCapacity); });
         document.querySelectorAll('.gen-year').forEach(function (s) { s.addEventListener('change', scheduleCapacity); });
+        var pickNext = document.getElementById('genPickNext');
+        if (pickNext) {
+            pickNext.addEventListener('click', function () {
+                var left = max;
+                document.querySelectorAll('.gen-section').forEach(function (row) {
+                    var p = row.querySelector('.gen-pick');
+                    if (p.dataset.empty) { return; }
+                    var plan = JSON.parse(row.getAttribute('data-plan'));
+                    var need = (plan[row.querySelector('.gen-year').value] || 0) > 0;
+                    p.checked = need && left > 0;
+                    if (p.checked) { left--; }
+                });
+                refreshCap();
+                scheduleCapacity();
+            });
+        }
+        var clearBtn = document.getElementById('genClear');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                picks.forEach(function (p) { p.checked = false; });
+                refreshCap();
+                scheduleCapacity();
+            });
+        }
         refreshCap();
         loadCapacity();
     })();
@@ -373,6 +421,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
     <?php
     $check = genValidate($pdo, $ctx, $draft['rows']);
     $rows = $check['rows'];
+    $busyMap = genBusyTeachers($ctx, $rows, $check['subjects']);
     $bySection = [];
     foreach ($rows as $r) { $bySection[$r['section_id']][] = $r; }
     $canSave = $rows && $check['blockers'] === 0 && $check['need_teacher'] === 0;
@@ -432,7 +481,7 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
                 Students wait <strong><?= $e($dur((int)$q['idle'])) ?></strong> in total between classes<?= $q['long_waits'] ? ' (longest ' . $e($dur((int)$q['longest_wait'])) . ', ' . $q['long_waits'] . ' wait' . ($q['long_waits'] === 1 ? '' : 's') . ' of ' . GEN_LONG_WAIT . ' min or more)' : '' ?>.
                 <?= $q['teacher_chains'] ? '<span class="text-warning-emphasis">' . $q['teacher_chains'] . ' stretch' . ($q['teacher_chains'] === 1 ? '' : 'es') . ' where a teacher has more than ' . GEN_MAX_CHAIN . ' classes in a row.</span>' : 'No teacher has more than ' . GEN_MAX_CHAIN . ' classes in a row.' ?>
                 <?= $q['single_days'] ? $q['single_days'] . ' section day' . ($q['single_days'] === 1 ? ' has' : 's have') . ' only one class.' : '' ?>
-                <span class="gen-muted">Best of <?= $attempts ?> arrangement<?= $attempts === 1 ? '' : 's' ?> tried.</span>
+                <span class="gen-muted">Best of <?= $attempts ?> arrangement<?= $attempts === 1 ? '' : 's' ?> tried<?= isset($draft['seconds']) ? ' in ' . number_format((float)$draft['seconds'], 1) . ' s' : '' ?>.</span>
             </div>
             <div class="gen-toolbar">
                 <div class="form-check form-switch mb-0">
@@ -518,12 +567,36 @@ $ctx = $termId ? genLoadContext($pdo, $termId, $deptId) : null;
                         <div class="gen-editor-grid">
                             <div>
                                 <label class="gen-label" for="t-<?= $e($k) ?>">Teacher</label>
+                                <?php
+                                $busyHere = $busyMap[$k] ?? [];
+                                $rank = ['full' => 0, 'partial' => 1, 'untagged' => 2, 'none' => 3];
+                                $freeOpts = [];
+                                $busyOpts = [];
+                                foreach ($ctx['teachers'] as $t) {
+                                    $lv = tagMatchLevel($sub['tags'], $t['tags']);
+                                    $opt = '<option value="' . $t['id'] . '"' . ((int)$r['teacher_id'] === $t['id'] ? ' selected' : '') . '>' . $e($t['name']) . ' (' . $e($matchLabel($lv)) . ')</option>';
+                                    if (isset($busyHere[$t['id']])) {
+                                        $busyOpts[] = $opt;
+                                    } else {
+                                        $freeOpts[] = [$rank[$lv] ?? 4, $t['name'], $opt];
+                                    }
+                                }
+                                usort($freeOpts, fn($a, $b) => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+                                $freeOpts = array_column($freeOpts, 2);
+                                ?>
                                 <select class="form-select form-select-sm gen-teacher-select" id="t-<?= $e($k) ?>" name="row[<?= $e($k) ?>][teacher]">
                                     <option value="">Unassigned</option>
-                                    <?php foreach ($ctx['teachers'] as $t): ?>
-                                        <option value="<?= $t['id'] ?>"<?= (int)$r['teacher_id'] === $t['id'] ? ' selected' : '' ?>><?= $e($t['name']) ?> (<?= $e($matchLabel(tagMatchLevel($sub['tags'], $t['tags']))) ?>)</option>
-                                    <?php endforeach; ?>
+                                    <?php if ($busyOpts): ?>
+                                        <?php if ($freeOpts): ?><optgroup label="Free at this time"><?= implode('', $freeOpts) ?></optgroup><?php endif; ?>
+                                        <optgroup label="Busy at this time"><?= implode('', $busyOpts) ?></optgroup>
+                                    <?php else: ?>
+                                        <?= implode('', $freeOpts) ?>
+                                    <?php endif; ?>
                                 </select>
+                                <?php if ($busyHere): ?>
+                                    <?php $why = []; foreach ($busyHere as $tid => $when) { $why[] = $ctx['teachers'][$tid]['name'] . ' (' . $when . ')'; } ?>
+                                    <div class="form-text">Busy at this time: <?= $e(implode('; ', array_slice($why, 0, 3))) ?><?= count($why) > 3 ? '; and ' . (count($why) - 3) . ' more' : '' ?>. Based on the times at the last check: change a time, then press Check again.</div>
+                                <?php endif; ?>
                             </div>
                             <div>
                                 <div class="gen-label">Meetings</div>

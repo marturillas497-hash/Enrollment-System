@@ -913,7 +913,8 @@ function genCapacity(PDO $pdo, array $ctx, array $sectionIds, array $years): arr
  */
 function genGenerate(PDO $pdo, array $ctx, array $sectionIds, int $seed, array $years = [], float $budgetSeconds = 10.0): array
 {
-    $deadline = microtime(true) + $budgetSeconds;
+    $started = microtime(true);
+    $deadline = $started + $budgetSeconds;
 
     [$tasks, $subjects] = genBuildTasks($pdo, $ctx, $sectionIds, $years);
 
@@ -928,7 +929,7 @@ function genGenerate(PDO $pdo, array $ctx, array $sectionIds, int $seed, array $
         $settled = $best['unplaced'] === [] && $attempts >= GEN_MIN_ATTEMPTS;
     } while (!$result['timed_out'] && !$settled && $attempts < GEN_MAX_ATTEMPTS && microtime(true) < $deadline);
 
-    return ['rows' => $best['rows'], 'unplaced' => $best['unplaced'], 'attempts' => $attempts];
+    return ['rows' => $best['rows'], 'unplaced' => $best['unplaced'], 'attempts' => $attempts, 'seconds' => round(microtime(true) - $started, 1)];
 }
 
 /**
@@ -1077,6 +1078,58 @@ function genValidate(PDO $pdo, array $ctx, array $rows): array
         if ($r['warnings']) { $warned++; }
     }
     return ['rows' => $rows, 'subjects' => $subjects, 'blockers' => $blockers, 'conflicts' => $conflicts, 'need_teacher' => $needTeacher, 'warned' => $warned];
+}
+
+/**
+ * Teachers already teaching at the time of a row's meetings, from saved classes and the other draft rows.
+ * Returns [rowKey => [teacherId => "Mon 9:00 AM with ANAT 101"]].
+ */
+function genBusyTeachers(array $ctx, array $rows, array $subjects): array
+{
+    $short = ['Monday' => 'Mon', 'Tuesday' => 'Tue', 'Wednesday' => 'Wed', 'Thursday' => 'Thu', 'Friday' => 'Fri', 'Saturday' => 'Sat'];
+    $draft = [];
+    foreach ($rows as $key => $r) {
+        if ($r['teacher_id'] === null) {
+            continue;
+        }
+        $code = $subjects[$r['subject_id']]['code'] ?? 'another class';
+        foreach ($r['meetings'] as $m) {
+            $s = genMin((string)$m['start']);
+            $e = genMin((string)$m['end']);
+            if ($s !== null && $e !== null && $s < $e) {
+                $draft[(int)$r['teacher_id']][(string)$m['day']][] = [$s, $e, $key, $code];
+            }
+        }
+    }
+    $out = [];
+    foreach ($rows as $key => $r) {
+        foreach ($r['meetings'] as $m) {
+            $s = genMin((string)$m['start']);
+            $e = genMin((string)$m['end']);
+            $day = (string)$m['day'];
+            if ($s === null || $e === null || $s >= $e) {
+                continue;
+            }
+            foreach ($ctx['teachers'] as $tid => $t) {
+                if (isset($out[$key][(int)$tid])) {
+                    continue;
+                }
+                $hit = $ctx['occ']->clash('teacher', (int)$tid, $day, $s, $e);
+                if ($hit === null) {
+                    foreach ($draft[(int)$tid][$day] ?? [] as [$ds, $de, $dk, $dc]) {
+                        if ($dk !== $key && $s < $de && $ds < $e) {
+                            $hit = $dc;
+                            break;
+                        }
+                    }
+                }
+                if ($hit !== null) {
+                    $out[$key][(int)$tid] = ($short[$day] ?? $day) . ' ' . genFmtTime($s) . ' with ' . $hit;
+                }
+            }
+        }
+    }
+    return $out;
 }
 
 /**
