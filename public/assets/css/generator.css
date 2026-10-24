@@ -171,7 +171,7 @@
 .gen-wk-controls > div { min-width: 140px; }
 .gen-wk-pick { flex: 1 1 220px; }
 .gen-wk-lunch { background: var(--surface-tint); }
-.gen-wk-ev { cursor: pointer; }
+.gen-wk-ev { cursor: pointer; font-size: 0.7rem; line-height: 1.2; padding: 3px 5px; }
 .gen-wk-ev:focus-visible { outline: 2px solid var(--royal-blue-light); outline-offset: 1px; }
 .gen-wk-ev--warn { background: var(--status-warning-bg); color: var(--status-warning-fg); border: 1px solid var(--status-warning-fg); }
 .gen-wk-ev--bad { background: var(--status-danger-bg); color: var(--status-danger-fg); border: 1px solid var(--status-danger-fg); }
