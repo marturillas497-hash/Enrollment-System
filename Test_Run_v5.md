@@ -4,9 +4,10 @@
 
 Run top to bottom on your own computer (XAMPP). The database is loaded from seed files, so nobody types the setup data. Each round has checkboxes, then the exact inputs underneath.
 
-> [!info] Two phases
+> [!info] Three phases
 > **Phase A (Rounds 0 to 21)** is the v4 run on the small seed (`seed_test.sql`, 5 students). **Phase B (Rounds 22 to 30)** is new: class generation at scale, on the real BSIS 2023 curriculum, with 87 students, 13 teachers and 13 rooms (`seed_test.sql` plus `seed_generator.sql`).
-> The two phases are **independent**, each starts with its own reset. If class generation is what you care about, **run Phase B first**.
+> **Phase C (Rounds 31 to 41)** is the October 24 session: a seed with **all four years** (189 students, 10 BSIS sections, 40 applicants) and checks for every fix since v5 was written (Undo, section labels, curriculum removal, rooms, the Class Offerings form, busy teachers, the start screen).
+> The phases are **independent**, each starts with its own reset. If class generation is what you care about, **run Phase B first**, then Phase C.
 
 > [!info] Legend
 > **P1** = must pass, run it | **P2** = should pass, run it if you have time | **P3** = optional, skip when rushed
@@ -14,7 +15,7 @@ Run top to bottom on your own computer (XAMPP). The database is loaded from seed
 > If something fails, write it in the bug log at the bottom (round, what you did, what you expected, what happened) and keep going.
 
 > [!tip] If you only have about an hour, run these and skip the rest
-> Round 0, 2, 3.5, 5, 6, 9, 10, 11, 14, 17 (Phase A), then 22, 24, 25, 26, 27, 28 (Phase B). Everything else is P2 or P3.
+> Round 0, 2, 3.5, 5, 6, 9, 10, 11, 14, 17 (Phase A), then 22, 24, 25, 26, 27, 28 (Phase B), then 31, 32, 33, 34, 37, 38 (Phase C). Everything else is P2 or P3.
 
 ---
 
@@ -22,27 +23,27 @@ Run top to bottom on your own computer (XAMPP). The database is loaded from seed
 
 At the login page pick the **Role** first, then type the username and password.
 
-| Role (login dropdown) | Username | Name | Notes |
-| --------------------- | -------- | ---- | ----- |
-| Admin | `Admin` | Admin | email is empty on purpose |
-| Registrar | `alcantara_ramon` | Registrar A, BSIS (CTIS) | 🆕 **forced password change** on first login |
-| Registrar | `alcantara_ramon2` | Registrar B, College of Medicine (BSM) | |
-| Instructor | `bautista_carla` | Bautista, Carla (CTIS) | max 9 units, 20 hours a week |
-| Instructor | `lim_daniel` | Lim, Daniel (CTIS) | |
-| Instructor | `navarro_elena` | Navarro, Elena (BSM) | |
-| Admission Staff | `ocampo_patricia` | Ocampo, Patricia | |
-| Student | `2026-00001` | Juan Dela Cruz Jr. | 🆕 **forced password change** on first login |
-| Student | `2026-00002` | Maria Reyes | |
-| Student | `2026-00003` | Pedro Ramos | |
-| Student | `2026-00004` | Ana Villanueva | transferee |
-| Student | `2026-00005` | Luis Garcia | |
+| Role (login dropdown) | Username | Password | Name | Notes |
+| --------------------- | -------- | -------- | ---- | ----- |
+| Admin | `Admin` | `mist2027` | Admin | email is empty on purpose |
+| Registrar | `alcantara_ramon` | `mist2027`, then `Mist@Test2027` | Registrar A, BSIS (CTIS) | 🆕 **forced password change** on first login |
+| Registrar | `alcantara_ramon2` | `mist2027` | Registrar B, College of Medicine (BSM) | |
+| Instructor | `bautista_carla` | `mist2027` | Bautista, Carla (CTIS) | max 9 units, 20 hours a week |
+| Instructor | `lim_daniel` | `mist2027` | Lim, Daniel (CTIS) | |
+| Instructor | `navarro_elena` | `mist2027` | Navarro, Elena (BSM) | |
+| Admission Staff | `ocampo_patricia` | `mist2027` | Ocampo, Patricia | |
+| Student | `2026-00001` | `mist2027`, then `Mist@Test2027` | Juan Dela Cruz Jr. | 🆕 **forced password change** on first login |
+| Student | `2026-00002` | `mist2027` | Maria Reyes | |
+| Student | `2026-00003` | `mist2027` | Pedro Ramos | |
+| Student | `2026-00004` | `mist2027` | Ana Villanueva | transferee |
+| Student | `2026-00005` | `mist2027` | Luis Garcia | |
 
 All seeded emails end in `@mist.test`, so no email ever reaches them. That is why Round 19 asks you to change an email to a real inbox first.
 
 **Accounts you create during the run** (Rina, the extra registrar, the extra teacher) are created as **invited accounts with no password**. They cannot log in until someone uses the emailed link, and that is fine, you do not need to log in as them. Round 19 tests that link.
 
-> [!note] Phase B accounts
-> `seed_generator.sql` adds 10 teachers and 82 students, all with password `mist2027`. They are listed in the Phase B section (before Round 22). Phase A never needs them.
+> [!note] Phase B and C accounts
+> `seed_generator.sql` adds 10 teachers and 82 students, and `seed_all_years.sql` adds 8 more teachers and 107 students, all with password `mist2027`. They are listed in the Phase B section (before Round 22) and the Phase C section (before Round 31). Phase A never needs them.
 
 ## What is already in the database
 
@@ -932,20 +933,20 @@ SELECT 'room', COUNT(*) FROM Class_Meeting a JOIN Class_Meeting b ON a.meeting_i
 
 **Teachers** (all BSIS, Role `Instructor`, password `mist2027`)
 
-| Username | Name | Tags | Max units | Note |
-| -------- | ---- | ---- | --------- | ---- |
-| `bautista_carla` | Bautista, Carla | Programming, Database | 9 | already at 9 of 9 with the 3 `TEST-A` classes |
-| `lim_daniel` | Lim, Daniel | Programming, Mathematics | 24 | |
-| `santos_mark` | Santos, Mark | Programming, Web Development | 24 | |
-| `villanueva_grace` | Villanueva, Grace | Information Systems, Systems Analysis, Database | 24 | |
-| `ramirez_joel` | Ramirez, Joel | Networking | 12 (18 h) | the only Networking teacher |
-| `castillo_anna` | Castillo, Anna | Mathematics | 24 | |
-| `mendoza_rico` | Mendoza, Rico | Social Science, English, Humanities | 24 | |
-| `flores_liza` | Flores, Liza | Management, Research, Accounting | 24 | |
-| `torres_nina` | Torres, Nina | Science and Technology, NSTP | 24 | |
-| `aquino_ben` | Aquino, Ben | Physical Education | **4** (10 h) | low on purpose |
-| `dizon_carlo` | Dizon, Carlo | none | 24 | no tags on purpose |
-| `reyes_tess` | Reyes, Tess | Programming | 24 | **deactivated** on purpose, cannot log in |
+| Username | Password | Name | Tags | Max units | Note |
+| -------- | -------- | ---- | ---- | --------- | ---- |
+| `bautista_carla` | `mist2027` | Bautista, Carla | Programming, Database | 9 | already at 9 of 9 with the 3 `TEST-A` classes |
+| `lim_daniel` | `mist2027` | Lim, Daniel | Programming, Mathematics | 24 | |
+| `santos_mark` | `mist2027` | Santos, Mark | Programming, Web Development | 24 | |
+| `villanueva_grace` | `mist2027` | Villanueva, Grace | Information Systems, Systems Analysis, Database | 24 | |
+| `ramirez_joel` | `mist2027` | Ramirez, Joel | Networking | 12 (18 h) | the only Networking teacher |
+| `castillo_anna` | `mist2027` | Castillo, Anna | Mathematics | 24 | |
+| `mendoza_rico` | `mist2027` | Mendoza, Rico | Social Science, English, Humanities | 24 | |
+| `flores_liza` | `mist2027` | Flores, Liza | Management, Research, Accounting | 24 | |
+| `torres_nina` | `mist2027` | Torres, Nina | Science and Technology, NSTP | 24 | |
+| `aquino_ben` | `mist2027` | Aquino, Ben | Physical Education | **4** (10 h) | low on purpose |
+| `dizon_carlo` | `mist2027` | Dizon, Carlo | none | 24 | no tags on purpose |
+| `reyes_tess` | `mist2027` | Reyes, Tess | Programming | 24 | **deactivated** on purpose, cannot log in |
 
 **Sections** (all BSIS, all follow `BSIS 2023`)
 
@@ -1036,7 +1037,8 @@ SELECT 'room', COUNT(*) FROM Class_Meeting a JOIN Class_Meeting b ON a.meeting_i
 **Session:** Registrar A, Class Offerings, **Auto-generate**.
 
 - [ ] The readiness box says `PolSci` has no tags and so gets no teacher, and `Dizon, Carlo` has no tags and is never chosen. It does **not** name Reyes, Tess. It does **not** warn about a missing room type. It may also list `TST101` to `TST103` as having no weekly parts (they belong to the test curriculum), that is fine
-- [ ] The sections list shows `TEST-A`, `A 2027`, `B 2027`, `A 2026`, `A 2025`, `A 2024`. `TEST-A` has nothing left to generate and cannot be ticked
+- [ ] The sections list shows `TEST-A`, `A 2027`, `B 2027`, `A 2026`, `A 2025`, `A 2024`. `TEST-A` has nothing left to generate and cannot be ticked (its badge says **Nothing to schedule**)
+- [ ] Above the list a summary says **5 of 6 sections** still have classes to schedule and that you need **1 run**. Each section has a badge: **8 classes to schedule**, **6 classes to schedule**, **4 classes to schedule** (`A 2027`, `B 2027`, `A 2026` show 8, `A 2025` 6, `A 2024` 4)
 - [ ] Tick `A 2027`, `B 2027`, `A 2026`, `A 2025`, `A 2024`. Check each teach year (table below) and the student counts next to the names
 - [ ] Try to tick a **sixth** section: not allowed (5 per run). Untick it
 - [ ] The capacity box appears after you tick. **Physical Education** is marked **short** (3 classes need 6 units, Aquino has 4). The other groups are fine or tight, write down any other short line
@@ -1058,6 +1060,7 @@ SELECT 'room', COUNT(*) FROM Class_Meeting a JOIN Class_Meeting b ON a.meeting_i
 - [ ] The top card says **34 classes** drafted, **2 need a teacher**, **0 with a conflict**, and **0 not placed**. A quality line shows the total waiting time. Nothing is saved yet
 - [ ] The 2 gaps say: one `PE` class (an "every teacher ... would go over a limit" message that names Aquino, Ben) and `PolSci` ("This subject has no tags, so no teacher could be matched.")
 - [ ] **Save is disabled** while any class has no teacher
+- [ ] The card also says **Best of N arrangements tried in X s**. Write the seconds down, they tell us whether a bigger run is safe on the live host
 - [ ] Press **Expand all**: each row shows subject, teacher and match level, the meetings as text (like `Wed 12:30 PM – 3:30 PM · T-LAB2`), a status chip and an **Edit** button
 - [ ] The switch **Show only classes that need attention** leaves the 2 gap classes and any warnings. Switch it off again. **Collapse all** and **Expand all** both work
 
@@ -1177,6 +1180,207 @@ SELECT 'room', COUNT(*) FROM Class_Meeting a JOIN Class_Meeting b ON a.meeting_i
 
 ---
 
+# Phase C: All four years, and the October 24 fixes
+
+> [!info] What Phase C is
+> Phase B generated 34 classes for 5 sections. Phase C gives the generator **10 sections in all four years** (68 classes, two runs) and checks every change made since v5 was written: Undo skipping hand-edited classes, section labels, curriculum subject removal, room double-booking checks, the Class Offerings form, busy teachers, and the start screen.
+> It starts with its own reset: import `seed_test.sql`, then `seed_generator.sql`, then `seed_all_years.sql`, once each. **Do not mix it with Phase B**, the teacher list and the counts differ.
+
+## Phase C data
+
+**Teachers added** (all BSIS, Role `Instructor`, 24 units and 30 hours a week each)
+
+| Username | Password | Name | Tags |
+| -------- | -------- | ---- | ---- |
+| `lim_paolo` | `mist2027` | Lim, Paolo | Programming, Web Development |
+| `navarro_marco` | `mist2027` | Navarro, Marco | Information Systems, Database, Systems Analysis |
+| `domingo_ruth` | `mist2027` | Domingo, Ruth | Humanities, English, Social Science |
+| `pascual_ian` | `mist2027` | Pascual, Ian | Management, Research |
+| `tan_victor` | `mist2027` | Tan, Victor | Networking |
+| `cruz_maricel` | `mist2027` | Cruz, Maricel | Information Systems, Management |
+| `garcia_noel` | `mist2027` | Garcia, Noel | Mathematics, Science and Technology |
+| `lopez_dina` | `mist2027` | Lopez, Dina | Programming, Database |
+
+**Students added** (Role `Student`, password `mist2027`, no forced change). Their last enrollment is in the closed term `2026-2027` Semester 2.
+
+| Usernames | Password | Section | Count | Teach year this term |
+| --------- | -------- | ------- | ----- | -------------------- |
+| `2026-00301` to `2026-00334` | `mist2027` | `B 2026` | 34 | 2 |
+| `2026-00335` to `2026-00360` | `mist2027` | `C 2026` | 26 | 2 |
+| `2025-00361` to `2025-00387` | `mist2027` | `B 2025` | 27 | 3 |
+| `2024-00388` to `2024-00407` | `mist2027` | `B 2024` | 20 | 4 |
+
+**Applicants** (no login yet): 40 validated freshmen, emails `applicant101@mist.test` to `applicant140@mist.test`, waiting in Registrar A's **Place Student**, **Awaiting Placement**. The registrar places them after year 1 classes exist.
+
+**BSIS sections** (in the order the start screen lists them)
+
+| Section | Students | Teach year | Classes | Run |
+| ------- | -------- | ---------- | ------- | --- |
+| `A 2026` | 32 | 2 | 8 | 1 |
+| `A 2027` | 0 (35 slots) | 1 | 8 | 1 |
+| `B 2026` | 34 | 2 | 8 | 1 |
+| `B 2027` | 0 (30 slots) | 1 | 8 | 1 |
+| `C 2026` | 26 | 2 | 8 | 1 |
+| `C 2027` | 0 (30 slots) | 1 | 8 | 2 |
+| `TEST-A` | 5 | | nothing to schedule | |
+| `A 2025` | 28 | 3 | 6 | 2 |
+| `B 2025` | 27 | 3 | 6 | 2 |
+| `A 2024` | 22 | 4 | 4 | 2 |
+| `B 2024` | 20 | 4 | 4 | 2 |
+
+**Expected after both runs:** 68 classes, none left unplaced, about **7 classes without a teacher** that you assign by hand: `PolSci` three times (no tags) and 4 of the 6 PE classes (Aquino's cap of 4 units covers 2). Run 1 should show **6** gaps (3 `PolSci`, 3 PE) and run 2 **1** (`PE 1` in `C 2027`). `B 2026` has 34 students, more than the 30 seats of `T-LAB1` and `NET-1`, so expect room-size warnings there.
+
+> [!tip] Assigning the gaps
+> Save stays off until every class has a teacher. For `PolSci` pick `Mendoza, Rico` or `Domingo, Ruth` (they teach social science). For the PE classes pick `Dizon, Carlo` (no tags). Each pick shows a tag warning, that is expected.
+
+---
+
+## Round 31: Load the all-years seed (P1) 🆕
+
+- [ ] Select `enrollment_system`, import `sql/seed_test.sql`, then `sql/seed_generator.sql`, then `sql/seed_all_years.sql`, no error. The last result shows:
+
+| item | n |
+| ---- | - |
+| Teachers in BSIS (20) | `20` |
+| BSIS sections (11, with TEST-A) | `11` |
+| Students in B 2026 (34) | `34` |
+| Students in C 2026 (26) | `26` |
+| Students in B 2025 (27) | `27` |
+| Students in B 2024 (20) | `20` |
+| BSIS students in all sections (189) | `189` |
+| Validated applicants not placed (40) | `40` |
+
+- [ ] Log in as `alcantara_ramon` (`mist2027`, forced change to `Mist@Test2027`). Sections lists the 11 BSIS sections. The column is called **Intake year**, and the form says "The year students are placed in. They keep the section as they move up."
+- [ ] Place Student, Awaiting Placement shows the 40 applicants
+
+---
+
+## Round 32: Start screen, summary and Select next 5 (P1) 🆕
+
+**Session:** Registrar A, Class Offerings, **Auto-generate**.
+
+- [ ] The summary above the list says **10 of 11 sections** still have classes to schedule, one run drafts up to 5, so you need **2 runs**, plus a line explaining why there is a limit
+- [ ] Sections are listed in this order: `A 2026`, `A 2027`, `B 2026`, `B 2027`, `C 2026`, `C 2027`, `TEST-A`, `A 2025`, `B 2025`, `A 2024`, `B 2024`. No section shows a year in its name (just `A 2026`)
+- [ ] Each section has a badge: **8 classes to schedule** (first six), **Nothing to schedule** for `TEST-A`, **6** for `A 2025` and `B 2025`, **4** for `A 2024` and `B 2024`
+- [ ] Press **Select the next 5 that need classes**: `A 2026`, `A 2027`, `B 2026`, `B 2027`, `C 2026` are ticked, the counter says **5 of 5 chosen**, the rest are disabled
+- [ ] Press **Clear**: nothing ticked. Press Select the next 5 again
+- [ ] Change the teach year of `A 2026` from 2 to 4. Its badge changes to **4 classes to schedule** (year 4 has 4 classes). Put it back to 2 and the badge says 8 again
+- [ ] The capacity box appears. Write down every line marked **tight** or **short**. **Physical Education** should be **short**
+
+---
+
+## Round 33: Run 1 and run 2 (P1) 🆕
+
+- [ ] Press **Generate preview**. The card says **40 classes**, **0 not placed**, **6 need a teacher** (3 `PolSci`, 3 PE), and **Best of N arrangements tried in X s**. Write down N and X
+- [ ] Assign the 6 gaps (see the tip above), **Check again**, then **Save**. Message: 40 classes saved
+- [ ] Back on the start screen the five sections show **All scheduled** and the summary says **5 of 11 sections** still have classes, **1 run**
+- [ ] Press Select the next 5 that need classes: `C 2027`, `A 2025`, `B 2025`, `A 2024`, `B 2024`. Generate. The card says **28 classes**, **0 not placed**, about **1 needs a teacher** (`PE 1` in `C 2027`). Write down N and X again
+- [ ] Assign it, Check again, Save. All 11 sections now show **All scheduled** or **Nothing to schedule**, and the summary says every section has all its classes
+- [ ] Class Offerings, List: **68 classes** in term 2027-2028 Semester 1 (plus the 3 `TEST-A` classes, 71 in all)
+- [ ] "Earlier runs this term" lists two runs (40 and 28)
+
+---
+
+## Round 34: Busy teachers in the Edit panel (P1) 🆕
+
+Do this in run 1 or run 2 **before** pressing Save, or repeat Round 33 after Undo (Round 35).
+
+- [ ] Open a class **with** a teacher, for example `CC 102`. Write down one meeting (day, time) and the teacher
+- [ ] Open the Edit panel of a `PolSci` class (no teacher). Set one of its meetings to **exactly that day and time**, press **Check again**, reopen the panel
+- [ ] The teacher list is split into **Free at this time** and **Busy at this time**. The teacher you wrote down is under Busy, and a line under the list says "Busy at this time: ... (Mon 8:00 AM with CC 102)" (your day, time and subject)
+- [ ] In the Free group, for a subject that has tags (open a `PE 3` class), teachers with a full tag match come first, then partial, then none, and names inside a level are alphabetical. For `PolSci` (no tags) every teacher is listed alphabetically
+- [ ] Pick the busy teacher anyway, press Check again: the row says the teacher is already teaching and Save stays off. Pick a free teacher instead and the message goes away
+- [ ] A class that already has a teacher: that teacher is **not** listed as busy because of the class itself
+
+---
+
+## Round 35: Hand edits and Undo (P1) 🆕
+
+**Session:** Registrar A, after Round 33 (both runs saved).
+
+- [ ] Class Offerings, List: **Edit** one class from run 2, change its room to one that is free at that time (if a room conflict message appears, pick another), Save. "Class updated."
+- [ ] Edit a second class from run 2 and press **Save Changes** without changing anything
+- [ ] Auto-generate, "Earlier runs this term": run 2 now shows **27** classes (the room change took one out of the run) and a note says a class you change by hand leaves its run
+- [ ] **Undo this run** on run 2. The message mentions the classes removed. The class you changed **stays**, the unchanged-save class **goes**, and the other run 2 classes go. Class Offerings now shows **41 classes** (plus the 3 `TEST-A` classes)
+- [ ] Run Auto-generate again for the sections that lost classes and Save, so the data is back to 68 classes (assign gaps again)
+
+---
+
+## Round 36: Place the year 1 applicants (P2) 🆕
+
+- [ ] Place Student, Awaiting Placement: pick one applicant, choose **Curriculum** `BSIS 2023`, section `A 2027`. The confirm screen lists the 8 year 1 classes of `A 2027`
+- [ ] Place the student. The result card shows an ID number and says an invite was emailed (it cannot be delivered, see Known behaviours)
+- [ ] The section roster for `A 2027` lists the student, and its header shows **Intake Year 1**
+
+---
+
+## Round 37: The Class Offerings form (P1) 🆕
+
+**Run this right after Round 31, before Round 33**, so `C 2027` has no classes. It deletes what it creates, so the counts in Round 33 still hold.
+
+- [ ] Class Offerings, **Schedule a Class**. The form order is **Term, Section, Subject, Teacher**
+- [ ] Pick no section first: the Subject list shows every subject and a note says to pick a section to narrow it
+- [ ] Pick section `C 2027`: the Subject list shrinks from about 62 subjects to the **26 semester 1 subjects of `BSIS 2023`** (8 + 8 + 6 + 4), sorted by year, each ending in `(Year 1)`, `(Year 2)` and so on, with a note "Showing the 26 subjects ...". Tick **Show all subjects**: the full list appears and your section stays
+- [ ] Pick a subject, then change the **Term** or the **Section**: a subject that is no longer in the list is cleared. Untick and tick Show all subjects with a subject picked: it is **not** cleared
+- [ ] Back to `C 2027`, subject `CC 101`, teacher `Santos, Mark`. Add a meeting **Saturday 6:00 PM to 8:00 PM** in a **Lecture Room**, and a second one **Monday 11:30 AM to 1:00 PM** with **No room**. Save
+- [ ] The class is saved and an amber list says: the teacher has none of the subject's tags, Saturday 6:00 PM is outside school days or hours, Monday 11:30 AM is outside school days or hours (the lunch hour), and meeting 2 has no room yet. Room type is also named if `CC 101` prefers a room type other than a lecture room
+- [ ] Tick `Show all subjects`, schedule an off-curriculum subject (a BSM subject such as `ANAT 101`) for `C 2027` with a teacher and no meetings. The warning list says the subject is **not in the section's curriculum for this semester, fine for a catch-up class**
+- [ ] **Edit** that catch-up class: the Subject list still shows `ANAT 101` selected, even though Show all subjects is unticked
+- [ ] **Delete** both classes you created
+- [ ] **Two browsers (optional, hard to time):** start a generator **Save** in one and a manual **Schedule Class** save in the other at the same moment. At most one waits, and the second may say "Another registrar is saving classes right now. Try again in a moment." Nothing is lost or doubled
+
+---
+
+## Round 38: Rooms refuse double bookings (P1) 🆕
+
+**Session:** Admin, Rooms. Needs Round 33 done (classes scheduled in rooms).
+
+- [ ] Registrar A, Schedule, **By Room**, find two limited rooms that each have a class at the same day and an overlapping time (the generator makes this easy, write down the two rooms and the classes)
+- [ ] Admin, Rooms, **Merge** one of them into the other. It is **refused**, naming both classes with their day, time and room, for example "Merging would put two classes in the same room at the same time this term: ...". Nothing is merged
+- [ ] Merge two rooms that never share a time, for example the inactive `T-301` into any lecture room. It works
+- [ ] Rooms, Room types: add a type **Test Offsite** with **No capacity limit** ticked, then a room `OFF-1` of that type
+- [ ] Registrar A, Class Offerings: schedule two classes for two different sections and two different teachers at the **same day and time** in `OFF-1`. Both save (an unlimited type never conflicts)
+- [ ] Admin, Rooms: edit `OFF-1` and change its type to **Lecture Room**. **Refused**, naming the two overlapping classes
+- [ ] Admin, Rooms, Room types: edit **Test Offsite** and untick **No capacity limit**. **Refused**, naming the two classes
+- [ ] The help text in the type form says turning the limit off is refused while classes overlap, and the Merge form says it is refused if two classes would share the room
+- [ ] Delete the two test classes. Now both edits above succeed (or just delete the type)
+
+> [!note] Ongoing term only
+> The checks look at the ongoing term. Overlaps in closed terms are history and never block a merge.
+
+---
+
+## Round 39: Sections and curriculum (P2) 🆕
+
+- [ ] **Labels.** On Class Offerings, Schedule and the generator start screen, BSIS sections read like `A 2026`, with no `Year 2 –` in front. Registrar B's sections read `A (Year 1 intake)`, `A (Year 2 intake)` and so on, because the name `A` exists in several years of one program
+- [ ] The student enroll preview (log in as a student who is about to enroll) no longer says "Section Year 1 – ...", it shows the section name
+- [ ] **Sections page.** The column and the form field are **Intake year**. Create a section with a name that already exists in the same intake year: the message says "already exists for intake Year N in this program"
+- [ ] **Curriculum, remove a subject.** Clone `BSIS 2023` first (create a curriculum by cloning, name it `BSIS Test Copy`) so the real curriculum, and the counts in Round 33, stay as they are. In the copy, find a subject that has prerequisites. The **Prerequisites** and **Remove** buttons sit side by side
+- [ ] Press **Remove** on that subject in the copy and confirm. The message says how many prerequisite links went with it
+- [ ] On `BSIS 2023` itself press **Remove** on any subject and read the confirm text, then **Cancel**. It says how many prerequisite links go and that 189 students follow the curriculum (a number, not a list of names). Do not confirm
+- [ ] Removing a subject a student has already taken is refused and lists the students. This needs Phase A data (Juan has grades), the all-years seed has no graded subjects
+- [ ] Creating a curriculum with a name that already exists shows an error and does not crash
+
+---
+
+## Round 40: Look and feel (P2) 🆕
+
+- [ ] The **Role** dropdown on the login page shows an arrow. The Program dropdown on the apply page shows an arrow and long text does not run under it
+- [ ] The Class Offerings modal at phone width (about 400 px): Term, Section, Subject, Teacher stack, the Show all subjects checkbox sits under the Subject list
+- [ ] The weekly view blocks in the generator preview (Week view button) show the subject, teacher and room text without being clipped
+- [ ] Browser console: no red errors on Class Offerings, Auto-generate and Rooms
+
+---
+
+## Round 41: Standing after term close and corrections (P2) 🆕
+
+This checks that the shared standing rule behaves like the two old copies.
+
+- [ ] Close a term (Admin, Terms) that has a mix of grades, as in Round 10. The message shows the same regular and irregular counts you expected
+- [ ] Approve a grade correction that turns a pass into a failure (as in Round 18): the student's enrollment becomes **irregular**. Approve one that turns a failure into a pass for a student with nothing else wrong: it becomes **regular**
+
+---
+
 ## Known behaviours (do not report these as new bugs)
 
 | # | What you will see | Why |
@@ -1193,6 +1397,9 @@ SELECT 'room', COUNT(*) FROM Class_Meeting a JOIN Class_Meeting b ON a.meeting_i
 | 10 | The generator plans for sections only, never retakes | by design, add retake classes by hand |
 | 11 | A few days can end up with a single class, and a few waits can be long | the cost-based placement is a trade-off, write down how many you see |
 | 12 | The capacity check is an estimate | a teacher with several tags counts in every group they match |
+| 13 | On Class Offerings, tag, room type and hours warnings appear **after** saving, in a list under "The class was saved" | by design, nothing there blocks a save except conflicts |
+| 14 | The "Busy at this time" teachers in the generator's Edit panel reflect the times at the last **Check again** | change a time, press Check again, reopen the panel |
+| 15 | A section shows its **intake year** (the year students are placed in), not their current year | students keep their section as they move up |
 
 ---
 
