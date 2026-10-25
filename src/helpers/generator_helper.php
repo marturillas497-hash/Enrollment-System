@@ -1080,6 +1080,70 @@ function genValidate(PDO $pdo, array $ctx, array $rows): array
     return ['rows' => $rows, 'subjects' => $subjects, 'blockers' => $blockers, 'conflicts' => $conflicts, 'need_teacher' => $needTeacher, 'warned' => $warned];
 }
 
+/** Soft warnings for a class made by hand, worded like the generator's: tag match, room type, school days and hours. */
+function manualClassWarnings(PDO $pdo, int $subjectId, int $teacherId, array $meetings, array $roomById): array
+{
+    $warnings = [];
+    $stmt = $pdo->prepare('SELECT tag_id FROM Subject_tag WHERE subject_id = :id');
+    $stmt->execute(['id' => $subjectId]);
+    $subjectTags = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    $stmt = $pdo->prepare('SELECT tag_id FROM Teacher_tag WHERE teacher_id = :id');
+    $stmt->execute(['id' => $teacherId]);
+    $level = tagMatchLevel($subjectTags, array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN)));
+    if ($level === 'untagged') {
+        $warnings[] = 'The subject has no tags, so the teacher could not be checked.';
+    } elseif ($level === 'none') {
+        $warnings[] = 'This teacher has none of the subject\'s tags.';
+    } elseif ($level === 'partial') {
+        $warnings[] = 'The teacher matches only some of the subject\'s tags.';
+    }
+
+    $types = [];
+    foreach ($pdo->query('SELECT room_type_id, type_name FROM Room_type')->fetchAll() as $t) {
+        $types[(int)$t['room_type_id']] = $t['type_name'];
+    }
+    $stmt = $pdo->prepare('SELECT preferred_room_type_id, fallback_room_type_id FROM Subject_requirement WHERE subject_id = :id');
+    $stmt->execute(['id' => $subjectId]);
+    $parts = $stmt->fetchAll();
+    $preferred = [];
+    $fallback = [];
+    foreach ($parts as $p) {
+        if ($p['preferred_room_type_id'] !== null) {
+            $preferred[] = (int)$p['preferred_room_type_id'];
+        }
+        if ($p['fallback_room_type_id'] !== null) {
+            $fallback[] = (int)$p['fallback_room_type_id'];
+        }
+    }
+    if (!$parts) {
+        $lecture = $pdo->query("SELECT room_type_id FROM Room_type WHERE type_name = 'Lecture Room'")->fetchColumn();
+        $preferred = $lecture !== false ? [(int)$lecture] : [];
+    }
+    $typeNames = fn(array $ids) => implode(' or ', array_unique(array_map(fn($i) => $types[$i] ?? 'another type', $ids)));
+
+    foreach (array_values($meetings) as $i => $m) {
+        $s = genMin((string)$m['start']);
+        $e = genMin((string)$m['end']);
+        if ($s === null || $e === null) {
+            continue;
+        }
+        $when = $m['day'] . ' ' . genFmtTime($s) . ' to ' . genFmtTime($e);
+        $room = $m['room'] !== '' ? ($roomById[(int)$m['room']] ?? null) : null;
+        if ($room === null) {
+            $warnings[] = 'Meeting ' . ($i + 1) . ' (' . $when . ') has no room yet.';
+        } elseif ($preferred && !in_array((int)$room['room_type_id'], $preferred, true)) {
+            $isFallback = $fallback && in_array((int)$room['room_type_id'], $fallback, true);
+            $warnings[] = 'Room ' . $room['room_code'] . ' (' . $room['type_name'] . ') is ' . ($isFallback ? 'the fallback type, not the preferred room type' : 'not the preferred room type')
+                . '. This subject prefers ' . $typeNames($preferred)
+                . ($fallback && !$isFallback ? ', with ' . $typeNames($fallback) . ' as the fallback' : '') . '.';
+        }
+        if ($m['day'] === 'Saturday' || $s < GEN_DAY_START || $e > GEN_DAY_END || ($s < GEN_LUNCH_END && $e > GEN_LUNCH_START)) {
+            $warnings[] = $when . ' is outside school days or hours (Monday to Friday, 7:30 AM to 5:30 PM, no classes 11:30 AM to 12:30 PM).';
+        }
+    }
+    return array_values(array_unique($warnings));
+}
+
 /**
  * Teachers already teaching at the time of a row's meetings, from saved classes and the other draft rows.
  * Returns [rowKey => [teacherId => "Mon 9:00 AM with ANAT 101"]].

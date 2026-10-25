@@ -4,6 +4,7 @@ require_once __DIR__ . '/../../includes/session.php';
 require_once __DIR__ . '/../../src/helpers/schedule_helper.php';
 require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 require_once __DIR__ . '/../../src/helpers/instructor_helper.php';
+require_once __DIR__ . '/../../src/helpers/generator_helper.php';
 
 $user = requireRole(['registrar']);
 $pdo = getDbConnection();
@@ -13,7 +14,7 @@ $stmt->execute(['aid' => $user['account_id']]);
 $myDepartmentId = $stmt->fetchColumn();
 
 $error = '';
-$warning = '';
+$warnings = [];
 $message = flashGet('offering_msg') ?? '';
 
 // Subjects are shared across every department (e.g. GE1 is taken by multiple programs), so they are not scoped.
@@ -30,7 +31,7 @@ $teachers = $teachers->fetchAll();
 $myTeacherIds = array_column($teachers, 'teacher_id');
 
 $sections = $pdo->prepare(
-    'SELECT sec.section_id, sec.section_name, sec.year_level, p.program_code
+    'SELECT sec.section_id, sec.section_name, sec.year_level, sec.curriculum_id, p.program_code
      FROM Section sec JOIN Program p ON p.program_id = sec.program_id
      WHERE p.department_id = :dept
      ORDER BY p.program_code, sec.year_level, sec.section_name'
@@ -42,9 +43,30 @@ $mySectionIds = array_column($sections, 'section_id');
 
 $terms = $pdo->query("SELECT term_id, school_year, semester FROM School_term WHERE status = 'ongoing' ORDER BY term_id DESC")->fetchAll();
 
+// What each section's curriculum offers in a semester, to narrow the Subject list and to warn about catch-up classes.
+$sectionCurriculum = [];
+foreach ($sections as $s) {
+    if (!empty($s['curriculum_id'])) {
+        $sectionCurriculum[(int)$s['section_id']] = (int)$s['curriculum_id'];
+    }
+}
+$termSemester = [];
+foreach ($terms as $t) {
+    $termSemester[(int)$t['term_id']] = (int)$t['semester'];
+}
+$subjectScope = [];
+if ($sectionCurriculum) {
+    $curriculumIds = array_values(array_unique($sectionCurriculum));
+    $scopeStmt = $pdo->prepare('SELECT curriculum_id, semester, subject_id, year_level FROM Curriculum_subject WHERE curriculum_id IN (' . implode(',', array_fill(0, count($curriculumIds), '?')) . ')');
+    $scopeStmt->execute($curriculumIds);
+    foreach ($scopeStmt->fetchAll() as $r) {
+        $subjectScope[(int)$r['curriculum_id']][(int)$r['semester']][] = [(int)$r['subject_id'], (int)$r['year_level']];
+    }
+}
+
 // Rooms are managed by the administrator. Registrars only pick from them.
 $rooms = $pdo->query(
-    'SELECT r.room_id, r.room_code, r.capacity, r.is_active, rt.type_name, rt.is_unlimited
+    'SELECT r.room_id, r.room_code, r.room_type_id, r.capacity, r.is_active, rt.type_name, rt.is_unlimited
      FROM Room r JOIN Room_type rt ON rt.room_type_id = r.room_type_id ORDER BY rt.type_name, r.room_code'
 )->fetchAll();
 $roomById = [];
@@ -174,9 +196,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
          * A class is one subject for one section in one term, with one teacher. Meetings are its weekly
          * time slots. A class with no meetings shows as TBA (for example OJT, thesis or a clinical rotation).
          */
+        $lockHeld = (int)$pdo->query("SELECT GET_LOCK('mist_generate_classes', 8)")->fetchColumn() === 1;
         $dup = $pdo->prepare('SELECT 1 FROM Class_Offering WHERE term_id = :t AND section_id = :sec AND subject_id = :sub AND offering_id <> :self');
         $dup->execute(['t' => $termId, 'sec' => $sectionId, 'sub' => $subjectId, 'self' => $offeringId]);
-        if ($dup->fetch() !== false) {
+        if (!$lockHeld) {
+            $error = 'Another registrar is saving classes right now. Try again in a moment.';
+        } elseif ($dup->fetch() !== false) {
             $error = 'This section already has a class for that subject this term. Edit that class to add or change its meetings.';
         }
 
@@ -252,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
         // A class that already has students: the new meetings must not overlap their other classes.
         if ($error === '' && $offeringId && $editEnrolled > 0) {
             $clash = $pdo->prepare(
-                'SELECT sub.subject_code, st.last_name, COUNT(*) OVER () AS total
+                'SELECT DISTINCT st.student_id, sub.subject_code, st.last_name
                  FROM Enrolled_subject es
                  JOIN Enrolled_subject es2 ON es2.enrollment_id = es.enrollment_id AND es2.offering_id <> es.offering_id
                  JOIN Class_Offering co2 ON co2.offering_id = es2.offering_id
@@ -261,15 +286,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                  JOIN Enrollment e ON e.enrollment_id = es.enrollment_id
                  JOIN Student st ON st.student_id = e.student_id
                  WHERE es.offering_id = :self AND cm2.day_of_week = :day
-                   AND cm2.start_time < :end_time AND cm2.end_time > :start_time
-                 LIMIT 1'
+                   AND cm2.start_time < :end_time AND cm2.end_time > :start_time'
             );
             foreach ($meetings as $m) {
                 $clash->execute(['self' => $offeringId, 'day' => $m['day'], 'end_time' => $m['end'], 'start_time' => $m['start']]);
-                $hit = $clash->fetch();
-                if ($hit) {
+                $hits = $clash->fetchAll();
+                if ($hits) {
+                    $hit = $hits[0];
+                    $students = count(array_unique(array_column($hits, 'student_id')));
                     $error = 'A meeting on ' . $m['day'] . ' overlaps ' . $hit['subject_code'] . ' for ' . $hit['last_name']
-                        . ((int)$hit['total'] > 1 ? ' and ' . ((int)$hit['total'] - 1) . ' other enrolled student(s)' : '')
+                        . ($students > 1 ? ' and ' . ($students - 1) . ' other enrolled student(s)' : '')
                         . '. Pick a time that fits their schedules.';
                     break;
                 }
@@ -323,7 +349,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                     }
                 }
                 foreach ($tooSmall as $code => $cap) {
-                    $warning .= 'Room ' . $code . ' seats ' . $cap . ', but about ' . $expected . ' student(s) will attend this class (the section plus students joining from other sections). ';
+                    $warnings[] = 'Room ' . $code . ' seats ' . $cap . ', but about ' . $expected . ' student(s) will attend this class (the section plus students joining from other sections).';
                 }
 
                 // Non-blocking: a teacher over their units or weekly hours limit.
@@ -332,13 +358,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
                 $limitRow = $limits->fetch();
                 $overText = $limitRow ? loadWarningText($limitRow, teacherLoad($pdo, (int)$teacherId, (int)$termId)) : '';
                 if ($overText !== '') {
-                    $warning .= 'This teacher is now over their limit this term: ' . $overText . '. ';
+                    $warnings[] = 'This teacher is now over their limit this term: ' . $overText . '.';
+                }
+
+                try {
+                    foreach (manualClassWarnings($pdo, (int)$subjectId, (int)$teacherId, $meetings, $roomById) as $w) {
+                        $warnings[] = $w;
+                    }
+                    $curId = $sectionCurriculum[(int)$sectionId] ?? 0;
+                    $semNo = $termSemester[(int)$termId] ?? 0;
+                    $offered = array_map('intval', array_column($subjectScope[$curId][$semNo] ?? [], 0));
+                    if ($curId && $semNo && !in_array((int)$subjectId, $offered, true)) {
+                        $warnings[] = 'This subject is not in the section\'s curriculum for this semester. That is fine for a catch-up class.';
+                    }
+                } catch (Throwable $e) {
+                    // The class is saved already. These extra checks are advisory only.
                 }
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) { $pdo->rollBack(); }
                 $error = errorMessage($e, 'Could not save the class.');
                 $message = '';
             }
+        }
+        if ($lockHeld) {
+            $pdo->query("SELECT RELEASE_LOCK('mist_generate_classes')")->fetchColumn();
         }
     }
 }
@@ -495,7 +538,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '' && ($_POST['action'] 
     <?php endif; ?>
 
     <?php if ($message): ?><div class="alert alert-success alert-dismissible fade show" data-auto-dismiss="4000"><?= htmlspecialchars($message) ?><button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div><?php endif; ?>
-    <?php if ($warning): ?><div class="alert alert-warning"><?= htmlspecialchars(trim($warning)) ?></div><?php endif; ?>
+    <?php if ($warnings): ?>
+    <div class="alert alert-warning">
+        <div class="fw-semibold mb-1">The class was saved. Please check:</div>
+        <ul class="mb-0"><?php foreach ($warnings as $w): ?><li><?= htmlspecialchars($w) ?></li><?php endforeach; ?></ul>
+    </div>
+    <?php endif; ?>
     <?php if ($deleteError): ?><div class="alert alert-danger"><?= htmlspecialchars($deleteError) ?></div><?php endif; ?>
     <?php $reopenForm = $error !== '' && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') !== 'delete_offering'; ?>
     <?php if ($error && !$reopenForm): ?><div class="alert alert-danger"><?= htmlspecialchars($error) ?></div><?php endif; ?>
@@ -528,6 +576,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '' && ($_POST['action'] 
                     </select>
                 </div>
                 <div class="col-md-8 mb-3">
+                    <label class="form-label">Section</label>
+                    <select class="form-select js-search" name="section_id" data-placeholder="Search sections">
+                        <option value="">Select</option>
+                        <?php foreach ($sections as $s): ?>
+                            <option value="<?= $s['section_id'] ?>"><?= htmlspecialchars(sectionLabel($s['year_level'], $s['section_name'], $multiProgram ? $s['program_code'] : null)) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-12 mb-3">
                     <label class="form-label">Subject</label>
                     <select class="form-select js-search" name="subject_id" data-placeholder="Search subjects">
                         <option value="">Select</option>
@@ -535,22 +592,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error !== '' && ($_POST['action'] 
                             <option value="<?= $s['subject_id'] ?>"><?= htmlspecialchars($s['subject_code'] . ' - ' . $s['subject_name']) ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="showAllSubjects">
+                        <label class="form-check-label" for="showAllSubjects">Show all subjects</label>
+                    </div>
+                    <div class="form-text" id="subjectScopeNote"></div>
                 </div>
-                <div class="col-md-6 mb-3">
+                <div class="col-12 mb-3">
                     <label class="form-label">Teacher</label>
                     <select class="form-select js-search" name="teacher_id" data-placeholder="Search teachers">
                         <option value="">Select</option>
                         <?php foreach ($teachers as $t): ?>
                             <option value="<?= $t['teacher_id'] ?>"><?= htmlspecialchars($t['last_name'] . ', ' . $t['first_name']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label class="form-label">Section</label>
-                    <select class="form-select js-search" name="section_id" data-placeholder="Search sections">
-                        <option value="">Select</option>
-                        <?php foreach ($sections as $s): ?>
-                            <option value="<?= $s['section_id'] ?>"><?= htmlspecialchars(sectionLabel($s['year_level'], $s['section_name'], $multiProgram ? $s['program_code'] : null)) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -758,13 +811,78 @@ function roomOptionsHtml(currentId) {
     });
     return html;
 }
+var allSubjects = <?= json_encode(array_map(fn($s) => ['id' => (string)$s['subject_id'], 'label' => $s['subject_code'] . ' - ' . $s['subject_name']], $subjects), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+var subjectScope = <?= json_encode($subjectScope) ?>;
+var sectionCurriculum = <?= json_encode($sectionCurriculum) ?>;
+var termSemester = <?= json_encode($termSemester) ?>;
+function subjectChoices(form, keepId) {
+    var showAll = document.getElementById('showAllSubjects').checked;
+    var note = document.getElementById('subjectScopeNote');
+    var cur = sectionCurriculum[form.elements.section_id.value];
+    var sem = termSemester[form.elements.term_id.value];
+    var rows = cur && sem ? ((subjectScope[cur] && subjectScope[cur][sem]) || []) : null;
+    var choices = allSubjects;
+    note.textContent = '';
+    if (!showAll) {
+        if (rows === null) {
+            note.textContent = 'Pick a section to list only the subjects of its curriculum for this semester.';
+        } else if (rows.length === 0) {
+            note.textContent = 'This curriculum has no subjects this semester, so every subject is listed.';
+        } else {
+            var label = {};
+            allSubjects.forEach(function (s) { label[s.id] = s.label; });
+            choices = rows.slice().sort(function (a, b) {
+                return a[1] - b[1] || (label[a[0]] || '').localeCompare(label[b[0]] || '');
+            }).map(function (r) { return { id: String(r[0]), label: (label[r[0]] || '') + ' (Year ' + r[1] + ')' }; });
+            note.textContent = 'Showing the ' + choices.length + ' subjects this section\'s curriculum offers this semester. Tick Show all subjects for catch-up classes.';
+        }
+    }
+    if (keepId && !choices.some(function (c) { return c.id === String(keepId); })) {
+        var extra = allSubjects.filter(function (s) { return s.id === String(keepId); })[0];
+        if (extra) { choices = choices.concat([extra]); }
+    }
+    return choices;
+}
+function refreshSubjectOptions(form, keepId) {
+    var el = form.elements.subject_id;
+    if (!el) { return; }
+    var current = el.tomselect ? el.tomselect.getValue() : el.value;
+    var choices = subjectChoices(form, keepId);
+    var stillThere = choices.some(function (c) { return c.id === String(current); });
+    if (el.tomselect) {
+        var ts = el.tomselect;
+        if (current && !stillThere) { ts.clear(true); }
+        ts.clearOptions();
+        ts.addOptions(choices.map(function (c) { return { value: c.id, text: c.label }; }));
+        ts.refreshOptions(false);
+    } else {
+        el.innerHTML = '<option value="">Select</option>' + choices.map(function (c) {
+            return '<option value="' + c.id + '">' + c.label.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</option>';
+        }).join('');
+        el.value = stillThere ? current : '';
+    }
+}
 function fillModalForm(form, values) {
-    ['term_id', 'subject_id', 'teacher_id', 'section_id'].forEach(function (name) {
+    function put(name) {
         var el = form.elements[name];
         if (!el || values[name] === undefined) { return; }
         if (el.tomselect) { el.tomselect.setValue(values[name]); } else { el.value = values[name]; }
-    });
+    }
+    ['term_id', 'section_id'].forEach(put);
+    refreshSubjectOptions(form, values.subject_id);
+    ['subject_id', 'teacher_id'].forEach(put);
 }
+(function () {
+    var form = document.getElementById('offeringForm');
+    if (!form) { return; }
+    ['section_id', 'term_id'].forEach(function (n) {
+        form.elements[n].addEventListener('change', function () { refreshSubjectOptions(form); });
+    });
+    document.getElementById('showAllSubjects').addEventListener('change', function () {
+        var el = form.elements.subject_id;
+        refreshSubjectOptions(form, el.tomselect ? el.tomselect.getValue() : el.value);
+    });
+})();
 function refreshMeetingNote() {
     document.getElementById('noMeetingsNote').hidden = document.querySelectorAll('#meetingRows .meeting-row').length > 0;
 }
