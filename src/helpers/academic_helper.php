@@ -289,14 +289,14 @@ function missingCurriculumSubjects(PDO $pdo, int $studentId, int $curriculumId):
 }
 
 /**
- * Recompute one enrollment's standing exactly as closing a term does (admin/terms.php): any grade above
- * 3.00, a Dropped row or an Incomplete row makes it irregular, and so does an enrollment with no subjects.
- * Returns 'regular' or 'irregular'. If term close rules change, change both places.
+ * The one standing rule, used by term close (admin/terms.php) and by grade corrections. Returns one row per
+ * enrollment matching $where (written against the aliases e and es) with its subject, failed and incomplete counts.
  */
-function recomputeEnrollmentStanding(PDO $pdo, int $enrollmentId): string
+function enrollmentStandingCounts(PDO $pdo, string $where, array $params): array
 {
     $stmt = $pdo->prepare(
-        "SELECT COUNT(es.enrolled_subject_id) AS subject_count,
+        "SELECT e.enrollment_id,
+                COUNT(es.enrolled_subject_id) AS subject_count,
                 SUM(CASE
                     WHEN es.grade IS NOT NULL AND es.grade > 3.00 THEN 1
                     WHEN es.grade IS NULL AND es.remarks = 'Dropped' THEN 1
@@ -308,12 +308,25 @@ function recomputeEnrollmentStanding(PDO $pdo, int $enrollmentId): string
                 END) AS incomplete_count
          FROM Enrollment e
          LEFT JOIN Enrolled_subject es ON es.enrollment_id = e.enrollment_id
-         WHERE e.enrollment_id = :id"
+         WHERE $where
+         GROUP BY e.enrollment_id"
     );
-    $stmt->execute(['id' => $enrollmentId]);
-    $row = $stmt->fetch();
-    $irregular = (int)$row['subject_count'] === 0 || (int)$row['failed_count'] > 0 || (int)$row['incomplete_count'] > 0;
-    $standing = $irregular ? 'irregular' : 'regular';
+    $stmt->execute($params);
+    return $stmt->fetchAll();
+}
+
+/** Irregular when the enrollment has no subjects, a grade above 3.00, a Dropped row or an Incomplete row. */
+function standingFromCounts(array $counts): string
+{
+    $irregular = (int)$counts['subject_count'] === 0 || (int)$counts['failed_count'] > 0 || (int)$counts['incomplete_count'] > 0;
+    return $irregular ? 'irregular' : 'regular';
+}
+
+/** Recompute and store one enrollment's standing. Returns 'regular' or 'irregular'. */
+function recomputeEnrollmentStanding(PDO $pdo, int $enrollmentId): string
+{
+    $rows = enrollmentStandingCounts($pdo, 'e.enrollment_id = :id', ['id' => $enrollmentId]);
+    $standing = $rows ? standingFromCounts($rows[0]) : 'irregular';
     $pdo->prepare('UPDATE Enrollment SET student_standing = :standing WHERE enrollment_id = :id')
         ->execute(['standing' => $standing, 'id' => $enrollmentId]);
     return $standing;

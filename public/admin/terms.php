@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../includes/session.php';
+require_once __DIR__ . '/../../src/helpers/academic_helper.php';
 
 $user = requireRole(['admin']);
 $pdo = getDbConnection();
@@ -99,25 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      * is a failure, Incomplete means no final grade. An enrollment with no subjects
                      * at all (a shift approval the student never filled) stays irregular.
                      */
-                    $stmt = $pdo->prepare(
-                        "SELECT e.enrollment_id,
-                                COUNT(es.enrolled_subject_id) AS subject_count,
-                                SUM(CASE
-                                    WHEN es.grade IS NOT NULL AND es.grade > 3.00 THEN 1
-                                    WHEN es.grade IS NULL AND es.remarks = 'Dropped' THEN 1
-                                    ELSE 0
-                                END) AS failed_count,
-                                SUM(CASE
-                                    WHEN es.enrolled_subject_id IS NOT NULL AND es.grade IS NULL AND es.remarks = 'Incomplete' THEN 1
-                                    ELSE 0
-                                END) AS incomplete_count
-                         FROM Enrollment e
-                         LEFT JOIN Enrolled_subject es ON es.enrollment_id = e.enrollment_id
-                         WHERE e.term_id = :term_id AND e.status = 'approved'
-                         GROUP BY e.enrollment_id"
-                    );
-                    $stmt->execute(['term_id' => $termId]);
-                    $enrollments = $stmt->fetchAll();
+                    $enrollments = enrollmentStandingCounts($pdo, "e.term_id = :term_id AND e.status = 'approved'", ['term_id' => $termId]);
 
                     $updateStanding = $pdo->prepare(
                         'UPDATE Enrollment SET student_standing = :standing WHERE enrollment_id = :id'
@@ -128,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $emptyCount = 0;
                     foreach ($enrollments as $e) {
                         $empty = (int)$e['subject_count'] === 0;
-                        $irregular = $empty || (int)$e['failed_count'] > 0 || (int)$e['incomplete_count'] > 0;
+                        $irregular = standingFromCounts($e) === 'irregular';
                         $updateStanding->execute(['standing' => $irregular ? 'irregular' : 'regular', 'id' => $e['enrollment_id']]);
                         $irregular ? $irregularCount++ : $regularCount++;
                         if ($empty) {
